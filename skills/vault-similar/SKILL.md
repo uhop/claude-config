@@ -2,7 +2,6 @@
 name: vault-similar
 description: Find records semantically similar to a given vault note via embedding nearest-neighbours. Backed by `GET /sections/{record_id}/similar`. Use when the user says /vault-similar, asks "what other notes are like this one", or wants to discover related concepts beyond what's explicitly wikilinked. Returns ranked records by cosine similarity. Requires vault-storage (`:8123`) — Obsidian's REST API doesn't expose embeddings.
 user_invocable: true
-disable-model-invocation: true
 ---
 
 # Vault — semantic neighbours of a note

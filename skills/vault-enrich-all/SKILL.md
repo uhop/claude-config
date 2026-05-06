@@ -2,7 +2,6 @@
 name: vault-enrich-all
 description: "Generate or refresh agent-derived frontmatter enrichment (summary, key_concepts, tags_suggested, related_proposed, edge_classifications, complexity) for vault notes. Writes a namespaced `agent:` block per note that the indexer / chunker / embedder will consume for HyDE-style retrieval augmentation. Use when the user says /vault-enrich-all, asks to backfill summaries / concept tags, or wants to densify the agent-derived metadata layer. Per design `[[projects/vault-storage/design/agent-frontmatter-enrichment]]` — refines C12 by separating user-authored top-level frontmatter from agent-authored enrichment."
 user_invocable: true
-disable-model-invocation: true
 ---
 
 # Vault — agent-driven frontmatter enrichment

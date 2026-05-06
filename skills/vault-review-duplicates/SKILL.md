@@ -2,7 +2,6 @@
 name: vault-review-duplicates
 description: "Triage pending `duplicate` suggestions filed by vault-storage's pairwise vector-similarity scan. Decide per pair: confirm as duplicate (merge into one note, redirect wikilinks), accept as related-but-distinct (add `related:` entries on both notes), flag as contradiction (file a `contradiction_candidate`), or reject as a false positive. Backed by `GET /suggestions?kind=duplicate` + the standard frontmatter writer + `vault_delete_file`. Use when the user says /vault-review-duplicates, asks to triage near-duplicate notes, or wants to clean up the topical graph. Requires vault-storage (`:8123`)."
 user_invocable: true
-disable-model-invocation: true
 ---
 
 # Vault — review duplicate suggestions

@@ -2,7 +2,6 @@
 name: vault-compact
 description: "Compact an atomized folder of vault pieces by summarizing the oldest entries into a single summary file and archiving the originals to `<folder>/archive/`. Use when the user says /vault-compact <folder>, asks to summarize a verbose project's logs/decisions, wants to bound a running file's size per the vault's hygiene policy, or wants to triage pending `compaction_candidate` suggestions filed by the server-side scan. Originals are preserved (move not delete). Requires vault-storage (`:8123`)."
 user_invocable: true
-disable-model-invocation: true
 ---
 
 # Vault — compact a folder of pieces
