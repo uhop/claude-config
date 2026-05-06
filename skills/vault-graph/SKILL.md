@@ -2,6 +2,7 @@
 name: vault-graph
 description: Walk the typed-edge neighborhood around a vault note. Backed by `GET /sections/{record_id}/neighborhood`. Use when the user says /vault-graph, asks "what does this note connect to and how", wants to see the wiki-link / classified-edge structure around a record, or needs to expand context beyond a single note. Returns layered records + typed edges; depth caps at 5. Requires vault-storage (`:8123`).
 user_invocable: true
+disable-model-invocation: true
 ---
 
 # Vault — typed-edge neighborhood

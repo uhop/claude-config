@@ -2,6 +2,7 @@
 name: vault-review-tags
 description: Triage pending tag-related suggestions — `new_tag` (an unknown tag is on FM, decide canonical/alias/typo) and `tag_suggestion` (agent thinks this record should also have tag X, decide accept/reject). Backed by `GET /suggestions?kind=new_tag|tag_suggestion`, `POST /tags/{taxonomy,aliases}`, and `PUT /vault/{path}`. Use when the user says /vault-review-tags, asks to clean up the tag taxonomy, or wants to chip away at either tag-review queue. Requires vault-storage (`:8123`).
 user_invocable: true
+disable-model-invocation: true
 ---
 
 # Vault — review tag suggestions

@@ -2,6 +2,7 @@
 name: vault-search
 description: Search the vault for notes matching a query. Backed by `POST /search/simple/` — works against both the Obsidian Local REST API (lexical only) and vault-storage (lexical + semantic). Use when the user says /vault-search, asks to find notes matching a phrase, or wants to locate the right note to read before answering a question. Returns ranked hits with snippets.
 user_invocable: true
+disable-model-invocation: true
 ---
 
 # Vault — search

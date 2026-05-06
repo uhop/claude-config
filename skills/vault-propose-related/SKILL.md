@@ -2,6 +2,7 @@
 name: vault-propose-related
 description: "Propose missing `related:` entries for vault notes by reviewing semantic-NN candidates. Use when the user says /vault propose-related, asks to densify cross-references in the vault, or wants to expand `related:` arrays without reading every note manually. Per source note, fetches top-K embedding nearest neighbours, filters out existing related: + body wikilinks, judges which remaining candidates are genuine semantic matches, writes accepted proposals either to a review note (default, conservative) or directly into source FM (--apply mode)."
 user_invocable: true
+disable-model-invocation: true
 ---
 
 # Propose missing `related:` entries

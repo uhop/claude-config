@@ -2,6 +2,7 @@
 name: vault-review-edges
 description: Triage pending `edge_type` suggestions in the vault — promote default `cites` body wikilinks to a more specific edge type (derived-from, applies-to, supersedes, etc.) by editing the source record's frontmatter `edges:` map, or confirm `cites` is correct and reject the suggestion. Backed by `GET /suggestions?kind=edge_type&status=pending` and the standard frontmatter writer. Use when the user says /vault-review-edges, asks to triage / clean up the typed-edge graph, or wants to chip away at the classifier's review queue. Requires vault-storage (`:8123`) — the suggestion-filing logic is server-side.
 user_invocable: true
+disable-model-invocation: true
 ---
 
 # Vault — review edge_type suggestions
