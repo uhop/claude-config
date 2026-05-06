@@ -374,6 +374,12 @@ input, and the sub-agent's `--auto` mode is conservative on ambiguity.
 The summary surfaces the residue so the user can decide whether to
 hand-triage or leave it for the next sweep.
 
+The action set is computed once from the baseline at step 1. Kinds that
+emerge **during** the sweep (e.g., `agent_enrichment_stale` newly
+triggered by an FM write made by another sub-agent) are reported as
+residue, not chased. This keeps each invocation bounded; a second
+`/vault sweep` picks them up.
+
 ### /vault (no subcommand)
 
 Show vault status: note counts per folder, recently updated notes, any lint warnings.
