@@ -305,6 +305,75 @@ is fast (a few ms) but unnecessary. The endpoint reports
 fellBack, durationMs}`; surface anything non-zero, otherwise stay
 quiet.
 
+### /vault sweep [options]
+
+Drain every safely-automatable maintenance queue in one pass. Orchestrates
+the existing review/cleanup skills + endpoints; loops each queue with
+`--auto --limit=100` until the count hits zero or stops dropping.
+
+```
+/vault sweep                         # safe defaults
+/vault sweep --dry-run               # report what would run; no writes
+/vault sweep --include=edge_type,new_tag
+/vault sweep --exclude=tag_suggestion
+/vault sweep --include-destructive   # also runs duplicate review + compaction
+/vault sweep --max-passes=N          # loop cap per kind (default 5)
+```
+
+#### Safe set (default)
+
+| Source | Action |
+| --- | --- |
+| `lint.orphan_embeddings` + `lint.orphan_doc_embeddings` | `POST /maintenance/cleanup-lint` |
+| `lint.records_without_embeddings` + `lint.embedding_hash_drift` | `POST /maintenance/embed-pending` |
+| `suggestions.edge_type` | `/vault-review-edges --auto --limit=100` |
+| `suggestions.new_tag` | `/vault-review-tags --auto --limit=100` |
+| `suggestions.tag_suggestion` | `/vault-review-tags --auto --kind=tag_suggestion --limit=100` |
+| `suggestions.agent_enrichment_stale` | `/vault-enrich-all --auto --stale --limit=100` |
+
+#### Opt-in (`--include-destructive`)
+
+| Source | Action |
+| --- | --- |
+| `suggestions.duplicate` | `/vault-review-duplicates --auto --limit=100` (merge can delete) |
+| `suggestions.compaction_candidate` | `/vault-compact <folder>` per candidate |
+
+#### Always skipped
+
+- `raw_inbox.ready` — `/vault ingest` is a separate workflow; the user
+  flips `ready: true` when a draft is finished, not the sweep.
+- `suggestions.archive_candidate` — per-record retention judgment.
+- `suggestions.inefficiency_detected` / `infrastructure_upgrade` —
+  reports-only, no action surface.
+
+#### Procedure
+
+1. **Baseline.** Pull `vault-curl /system/lint -s`,
+   `vault-curl /suggestions/summary -s`, and (cheap) record counts.
+   Compute the action set from the safe defaults plus
+   `--include` / `--exclude` / `--include-destructive`.
+2. **Dry-run.** If `--dry-run`, print the planned action set with
+   per-kind counts and stop.
+3. **One-shot endpoints first.** Run `cleanup-lint` and `embed-pending`
+   (in parallel, both POST). Each completes in seconds; together they
+   tighten the lint baseline before the suggestion-driven passes
+   touch records.
+4. **Per-kind drain loop.** For each suggestion kind in the action set,
+   for at most `--max-passes` iterations (default 5):
+   - Dispatch the corresponding review skill with `--auto --limit=100`.
+   - Refetch `/suggestions/summary`; record the new count for that kind.
+   - Stop when count reaches 0, or when count didn't decrease since
+     the previous pass (stuck — sub-agent deferred, or items need
+     human judgment).
+5. **Final summary.** Print before/after counts per kind, total time,
+   and any kind that stopped above zero with a note about why
+   (max-passes reached vs. stuck vs. skipped).
+
+A stuck kind isn't a failure — some suggestions legitimately need user
+input, and the sub-agent's `--auto` mode is conservative on ambiguity.
+The summary surfaces the residue so the user can decide whether to
+hand-triage or leave it for the next sweep.
+
 ### /vault (no subcommand)
 
 Show vault status: note counts per folder, recently updated notes, any lint warnings.
