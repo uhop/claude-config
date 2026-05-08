@@ -6,7 +6,8 @@
     "defaultMode": "auto"
   },
   "enabledPlugins": {
-    "typescript-lsp@claude-plugins-official": true
+    "typescript-lsp@claude-plugins-official": true,
+    "clangd-lsp@claude-plugins-official": true
   },
   "effortLevel": "xhigh",
   "tui": "fullscreen",
@@ -14,7 +15,10 @@
   "mcpServers": {
     "vault": {
       "command": "npx",
-      "args": ["-y", "@uhop/vault-storage-mcp@latest"],
+      "args": [
+        "-y",
+        "@uhop/vault-storage-mcp@latest"
+      ],
       "env": {
         "VAULT_API_URL": "${VAULT_API_URL}",
         "VAULT_API_TOKEN": "${VAULT_API_TOKEN}"
