@@ -16,8 +16,17 @@ follows the AGENTS.md / llms.txt convention.
 4. Check that `llms.txt` and `llms-full.txt` are up to date with any API changes
    (run `/ai-docs-update` if not).
 5. Verify `package.json`:
-   - `files` array includes all necessary entries (e.g. `src`, `llms.txt`,
-     `llms-full.txt`).
+   - `files` array **includes** the source artifact (e.g. `src`) plus the
+     consumer-facing AI-docs: `llms.txt`, `llms-full.txt`, `AGENTS.md`,
+     `ARCHITECTURE.md` (per the tarball AI-docs convention — these are
+     useful for AI tools in downstream projects discovering the package
+     through `npm install`, no network round-trip required). See
+     `[[topics/tarball-ai-docs-convention]]` in the vault.
+   - `files` array **does not** include authoring-tool-local files —
+     `CLAUDE.md` (pointer to AGENTS.md, redundant), `.cursorrules` /
+     `.windsurfrules` / `.clinerules` (byte-identical to AGENTS.md,
+     redundant), `.claude/`, `.windsurf/`, `.github/`, `CODEBASE.md`
+     (where present, redundant with ARCHITECTURE.md).
    - `exports` map is correct.
    - `description` and `keywords` are current.
 6. Check that the copyright year in `LICENSE` includes the current year.
@@ -50,13 +59,39 @@ follows the AGENTS.md / llms.txt convention.
    current entry to cliff-notes density and add the section footer link.
    Don't update only the README — readers who follow the "for more info"
    link land on a stale page if you do.
-9. **Sweep dependencies for staleness.** Run `npm outdated` and bump anything
-   with a newer major or minor available. For libraries this is non-negotiable —
-   stale ranges generate user complaints when consumers run a different version
-   of the same dep. See [[dep-version-freshness]] in the vault for the full
-   rationale and the "when adding" half of the rule.
-10. Run `npm install` (or `npm install --package-lock-only`) to regenerate
-    `package-lock.json` after any bumps from step 9.
+9. **Sweep dependencies to current — edit `package.json` directly.** Run
+   `npm outdated` to identify what's behind, then **hand-edit `package.json`**
+   to bump the version range for each reported line to the latest (e.g.,
+   `"prettier": "^3.8.1"` → `"^3.8.3"`). Make these edits alongside step 7's
+   version bump so all `package.json` changes land as one cohesive batch.
+   **Bump everything `npm outdated` reports**, including in-range patches
+   where `current < wanted` — leaving in-range patches alone ships stale
+   deps and the next release-check sees the same diff again.
+
+   Do **not** use `npm install <pkg>@latest --save-dev` (or `--save`) — it
+   interleaves a `package.json` rewrite with an implicit lockfile regen and
+   breaks the "edit `package.json` first, regenerate the lockfile after"
+   pipeline this skill assumes. The hand-edit + step-10 regen is the
+   intended order; that keeps every `package.json` change human-authored
+   and reviewable as a single batch.
+
+   For libraries the sweep is non-negotiable: stale ranges generate user
+   complaints when consumers run a different version of the same dep. See
+   [[dep-version-freshness]] in the vault for the full rationale and the
+   "when adding" half of the rule.
+10. **Regenerate `package-lock.json` — unconditional, after all `package.json`
+    edits land.** Run `npm install` (or `npm install --package-lock-only`).
+    Unconditional even when step 9 had nothing to bump: the lockfile records
+    `version` at the root entry and the self-package entry, and step 7's
+    version bump alone makes those stale. Skipping ships a tarball whose
+    lockfile contradicts `package.json`. Diff should be minimal (root +
+    self-entry `version`) when no deps were bumped — verify it's clean and
+    move on.
+
+    After the regen, re-run `npm run lint` (or whichever style check the
+    project uses) — toolchain patches occasionally introduce new style rules
+    (e.g., a Prettier patch can flag previously-clean files). Auto-apply via
+    `npm run lint:fix` and review the diff before continuing.
 11. Run the full test suite: `npm test`.
 12. Dry-run publish to verify package contents: `npm pack --dry-run`.
 13. Stop and report — do **not** commit, tag, or publish without explicit

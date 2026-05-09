@@ -46,3 +46,24 @@ Full prose + per-project hot-path anchors at
 `[[topics/nano-bench-for-perf-experiments]]` (vault-storage at
 `croc.lan:8123` — see
 `vault-curl /vault/topics/nano-bench-for-perf-experiments.md`).
+
+## Git — never rewrite pushed history
+
+**Once a commit is pushed, do not rewrite it.** No `git commit --amend`,
+no `git rebase` (interactive or otherwise), no force-push, no tag move
+on a published tag. If something is wrong with a pushed commit or tag,
+the fix is a **follow-up commit** (and a new tag if a release is
+involved — never re-point an existing tag).
+
+This applies to every repo on this machine, every branch, every tag.
+The user is firm on it: history rewrites are off the table the moment
+a commit hits a remote.
+
+When the user says "committed & pushed" or "I pushed it" or similar —
+that's the cutoff. Reach for amend / rebase / force-push only when
+told explicitly that nothing has been pushed yet AND the user has
+asked for a rewrite. Otherwise: follow-up commit, no exceptions.
+
+Local-only history (uncommitted, or committed but never pushed) is
+fair game to amend / rebase before pushing — but verify by asking or
+by checking `git log @{push}..HEAD` rather than assuming.
