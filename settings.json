@@ -3,6 +3,12 @@
     "allow": [
       "Bash(vault-curl:*)"
     ],
+    "deny": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git tag:*)",
+      "Bash(npm publish:*)"
+    ],
     "defaultMode": "auto"
   },
   "enabledPlugins": {
