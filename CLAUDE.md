@@ -29,3 +29,11 @@ Prefer prefix `++i` / `--i`.
 ## Performance
 
 Measure with `nano-bench` (`~/Open/nano-bench/`). No ad-hoc timing.
+
+## Fleet standards
+
+When asked to bring a uhop project to "fleet standards" (or any
+synonym), read the vault topic `topics/fleet-conventions-bundle`
+first — the canonical checklist with a per-slice compliance
+matrix. Don't infer from a sister project; sisters may themselves be
+partly behind.
