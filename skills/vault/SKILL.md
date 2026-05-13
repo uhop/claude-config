@@ -80,6 +80,18 @@ Discovery is dynamic via the live API, not via a curated index file:
 | Find a note about X | `vault_search(X, mode=semantic)` |
 | What links to / from X? | `vault_backlinks(X)` / `vault_neighborhood(X)` |
 | Tag taxonomy | `vault_list_tags`, `vault_records_by_tag` |
+| Top items across the fleet | `vault_queue_top(limit=N)` |
+| One project's open queue | `vault_queue_by_project(name)` |
+| One project's archive | `vault_queue_project_archive(name)` |
+| Everything at priority N (Backlog) | `vault_queue_by_priority(n)` |
+| Fleet-wide Active / Watching | `vault_queue_by_section(section)` |
+
+Queue endpoints are backed by `queue_items`, a derivative the watcher keeps in
+sync with each project's `queue.md` and `queue-archive.md`. Markdown stays
+source of truth — see [[topics/project-queue-convention]] for the shape and
+[[projects/vault-storage/design/queue-items-table]] for schema + identity
+model. Call `vault_queue_reindex` after a multi-machine pull to repopulate
+slices the watcher didn't witness.
 
 ## Note format
 
