@@ -1,6 +1,6 @@
 # claude-config
 
-Personal Claude Code configuration — commands, skills, settings, and `CLAUDE.md`.
+Personal Claude Code configuration — commands, skills, hooks, settings, and `CLAUDE.md`.
 
 ## Install
 
@@ -21,7 +21,13 @@ Once both are bootstrapped, `playbash-{daily,weekly,clean}` (from dotfiles) will
 
 ## What gets installed
 
-Top-level `CLAUDE.md`, `settings.json`, and the contents of `commands/` and `skills/` are symlinked into `~/.claude/`. Anything else in `~/.claude/` (per-host `settings.local.json`, runtime caches, `plugins/`, `projects/`, `sessions/`, etc.) is left untouched.
+Top-level `CLAUDE.md`, `settings.json`, and the contents of `commands/`, `skills/`, and `hooks/` are symlinked into `~/.claude/`. Anything else in `~/.claude/` (per-host `settings.local.json`, runtime caches, `plugins/`, `projects/`, `sessions/`, etc.) is left untouched.
+
+### `hooks/`
+
+`PreToolUse` / `PostToolUse` scripts that gate or react to tool calls. Currently:
+
+- `git-commit-gate.sh` — reinstates the old default-deny for `git commit`, but allows it in projects that opt in by creating `.claude/git-commit-allowed`. Wired in via `settings.json`'s `hooks.PreToolUse`. The script's header comment documents the why and the contract; the per-project marker is intended to be committed alongside the project so the opt-in travels with the code.
 
 ## Uninstall
 

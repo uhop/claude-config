@@ -9,7 +9,7 @@ import {homedir} from 'node:os';
 
 const SOURCE = dirname(fileURLToPath(import.meta.url));
 const TARGET = join(homedir(), '.claude');
-const INSTALL = ['CLAUDE.md', 'settings.json', 'commands', 'skills'];
+const INSTALL = ['CLAUDE.md', 'settings.json', 'commands', 'skills', 'hooks'];
 
 const APPLY = process.argv.includes('--apply');
 const HELP = process.argv.includes('--help') || process.argv.includes('-h');
