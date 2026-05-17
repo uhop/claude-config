@@ -28,17 +28,6 @@
           }
         ]
       }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "startup|resume",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/vault-resume-hook.sh"
-          }
-        ]
-      }
     ]
   },
   "mcpServers": {
