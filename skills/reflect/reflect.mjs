@@ -238,6 +238,20 @@ const signals = {
 const failureBuckets = new Map();
 const failureExamples = new Map();
 
+// Known accepted-as-noise error signatures — suppressed from repeated_failures
+// to keep reports actionable. Each entry resolved via /clarify with explicit
+// "accept as noise" decision; pattern is the tool-internal error message
+// matched as a case-insensitive substring against the (lowercased, whitespace-
+// collapsed, first-120-char) error signature.
+//
+// Don't grow this list lightly — every entry hides real-looking signal. Each
+// addition should reference a clarify-queue archive entry.
+const SUPPRESSED_FAILURE_SUBSTRINGS = [
+  // Q-2026-05-17-001 — accepted as noise. Tool description already says
+  // "must Read before Edit/Write"; recovery is one Read call.
+  'file has not been read yet'
+];
+
 let sessionsAnalyzed = 0;
 
 for (const t of transcripts) {
@@ -391,10 +405,12 @@ for (const t of transcripts) {
   }
 }
 
-// Emit repeated_failures (≥ 3× across window)
+// Emit repeated_failures (≥ 3× across window), skipping suppressed sigs.
 for (const [key, count] of failureBuckets) {
   if (count < 3) continue;
   const ex = failureExamples.get(key);
+  const sigLower = (ex?.error_text ?? '').toLowerCase();
+  if (SUPPRESSED_FAILURE_SUBSTRINGS.some(s => sigLower.includes(s))) continue;
   signals.repeated_failures.push({
     kind: 'repeated_failure',
     occurrences: count,
