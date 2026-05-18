@@ -260,13 +260,24 @@ Rebuild context from the vault.
    If `total == 0`, omit. Don't auto-triage; the dedicated review skills
    (`/vault-review-edges`, `/vault-review-duplicates`, `/vault-review-tags`)
    handle decisions.
-5. Read the 3 most recent session logs in `logs/`.
-6. Read relevant project notes for the current working directory.
-7. Summarize current state and what's left to do. If `check-drift` flagged
+5. **Agent-workflow surface** — peek at the cross-machine workflow queue
+   and clarification backlog. Two reads in parallel:
+   - `vault-curl /vault/projects/agent-workflow/queue.md -s` — extract the
+     `## Active` section. If non-empty (not `(empty)`), surface those items
+     verbatim under a `Workflow:` heading. `## Backlog` stays quiet to avoid
+     noise.
+   - `vault-curl /vault/projects/agent-workflow/clarify-queue.md -s` — count
+     `### Q-` headings under `## Pending`. If `> 0`, surface one line like
+     `Clarify queue: 8 pending (/clarify to drain)`. If 0, omit. 404 on
+     either file → the agent-workflow project isn't scaffolded yet; omit
+     silently (it's an opt-in surface, not a required one).
+6. Read the 3 most recent session logs in `logs/`.
+7. Read relevant project notes for the current working directory.
+8. Summarize current state and what's left to do. If `check-drift` flagged
    new commits / tags / publishes that aren't reflected in `projects/<name>`
    notes, update those notes to match (or at minimum flag the divergence in
    the summary).
-8. After syncing, run `check-drift --update` so the baseline captures the
+9. After syncing, run `check-drift --update` so the baseline captures the
    refreshed view and the next resume starts from a clean slate.
 
 ### /vault wrap [optional log slug]
