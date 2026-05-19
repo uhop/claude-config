@@ -23,6 +23,10 @@ For "fleet standards" (or any synonym), read [[topics/fleet-conventions-bundle]]
 
 The Claude Code status line's "N shells" counts `Bash(run_in_background: true)` processes the harness registered this session. Use `BashOutput(shell_id)` to peek, `KillShell(shell_id)` to terminate. Shell IDs (e.g. `bash_1`) are in the original Bash result — scan prior tool calls; **never run `ps`**. Skill: `/bg-shells` enumerates them.
 
+## REST API probes
+
+Probing or sniffing an HTTP API uses safe verbs only — `GET`, `HEAD`, `OPTIONS`. Mutating verbs (`PUT`, `POST`, `DELETE`, `PATCH`) may have side effects even on paths that don't exist (auto-create, idempotent overwrite, audit-log entries). For existence checks: prefer `OPTIONS` or `GET`. For shape discovery: `OPTIONS`.
+
 ## Config repo
 
 This file + `~/.claude/{settings.json,commands,skills,hooks}` are symlinks from `~/Open/claude-config/` (repo `uhop/claude-config`) — edits via either path land in the repo. New artifacts go there; `node install.mjs --apply` wires new symlinks. Per-host overrides: `~/.claude/settings.local.json`. Fleet propagation: `claude-config-update` (in `playbash-{daily,weekly,clean}`).

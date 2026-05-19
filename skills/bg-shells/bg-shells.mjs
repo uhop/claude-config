@@ -6,6 +6,18 @@
 // tool_result. This script enumerates them so the agent doesn't have to run
 // `ps` (which won't find them — they live in the harness's registry).
 //
+// Background signal sources (in priority order):
+//   1) `row.toolUseResult.backgroundTaskId` — modern Claude Code (≥ 2.1.x).
+//      The shell-id is alphanumeric (`bc4hsi1fy`), not `bash_<n>`. The
+//      tool_use input no longer carries `run_in_background` (the harness
+//      strips it on persist).
+//   2) `"Command running in background with ID: <id>"` in the result body —
+//      same modern shape, text form.
+//   3) `bash_<n>` token in the result body — legacy Claude Code.
+//
+// Kill detection accepts both `TaskStop(task_id|shell_id)` (modern) and
+// `KillShell(shell_id)` (legacy).
+//
 // Usage:
 //   bg-shells.mjs                       # list as text
 //   bg-shells.mjs --json                # JSON output
@@ -91,10 +103,11 @@ const shellsBySession = [];
 
 for (const sessionPath of sessionPaths) {
   const content = readFileSync(sessionPath, 'utf8');
-  const shells = [];
   const killedIds = new Set();
-  // tool_use_id → shell entry index (so the matching tool_result can fill shell_id)
-  const useIdToShell = new Map();
+  // tool_use_id → tentative bash entry. Every Bash tool_use lands here; only
+  // entries that pick up a shell_id (from the corresponding tool_result) are
+  // confirmed as background and emitted.
+  const bashByUseId = new Map();
 
   for (const line of content.split('\n')) {
     if (!line) continue;
@@ -104,46 +117,72 @@ for (const sessionPath of sessionPaths) {
     } catch {
       continue;
     }
-    if (!Array.isArray(row.message?.content)) continue;
 
-    if (row.type === 'assistant') {
+    // Assistant rows carry tool_use entries.
+    if (row.type === 'assistant' && Array.isArray(row.message?.content)) {
       for (const b of row.message.content) {
         if (b?.type !== 'tool_use') continue;
-        if (b.name === 'Bash' && b.input?.run_in_background === true) {
-          const entry = {
+        if (b.name === 'Bash') {
+          bashByUseId.set(b.id, {
             tool_use_id: b.id,
-            command: b.input.command ?? '',
-            description: b.input.description ?? '',
+            command: b.input?.command ?? '',
+            description: b.input?.description ?? '',
             started_iso: row.timestamp ?? null,
             shell_id: null
-          };
-          shells.push(entry);
-          useIdToShell.set(b.id, shells.length - 1);
-        } else if (b.name === 'KillShell' && b.input?.shell_id) {
-          killedIds.add(b.input.shell_id);
+          });
+        } else if (
+          (b.name === 'TaskStop' || b.name === 'KillShell') &&
+          (b.input?.task_id || b.input?.shell_id)
+        ) {
+          killedIds.add(b.input.task_id ?? b.input.shell_id);
         }
       }
-    } else if (row.type === 'user') {
-      for (const b of row.message.content) {
-        if (b?.type !== 'tool_result' || !b.tool_use_id) continue;
-        const idx = useIdToShell.get(b.tool_use_id);
-        if (idx === undefined) continue;
-        const body =
-          typeof b.content === 'string'
-            ? b.content
-            : Array.isArray(b.content)
-              ? b.content.map(s => s?.text ?? '').join('\n')
-              : '';
-        const m = /\b(bash_\d+)\b/i.exec(body);
-        if (m) shells[idx].shell_id = m[1];
-      }
+      continue;
     }
+
+    // User rows carry tool_results. Two signals identify background:
+    //   1) Modern: `row.toolUseResult.backgroundTaskId` (sibling of `message`).
+    //   2) Legacy: the result body text contains "Command running in
+    //      background with ID: <id>" or a bare `bash_<n>` token.
+    if (row.type !== 'user') continue;
+    const blocks = Array.isArray(row.message?.content) ? row.message.content : [];
+    const trBlock = blocks.find(b => b?.type === 'tool_result' && b.tool_use_id);
+    if (!trBlock) continue;
+    const entry = bashByUseId.get(trBlock.tool_use_id);
+    if (!entry) continue;
+
+    const bgId = row.toolUseResult?.backgroundTaskId;
+    if (bgId) {
+      entry.shell_id = bgId;
+      continue;
+    }
+
+    // Legacy fallback: only when `toolUseResult` is absent ENTIRELY. On
+    // modern data toolUseResult is always present, and the lack of
+    // `backgroundTaskId` means the call was foreground — falling back to
+    // text-pattern matching here is a false-positive trap (any fg bash
+    // output that mentions a bash_<n> token or the "Command running in
+    // background" string would otherwise get misclassified as bg).
+    if (row.toolUseResult) continue;
+
+    const body =
+      typeof trBlock.content === 'string'
+        ? trBlock.content
+        : Array.isArray(trBlock.content)
+          ? trBlock.content.map(s => s?.text ?? '').join('\n')
+          : '';
+    // Anchored to start of body — the harness emits this line first when
+    // backgrounding. Embedded matches risk misclassifying a foreground call
+    // whose output happens to mention a shell-id-shaped token.
+    const m = /^Command running in background with ID:\s*([A-Za-z0-9_-]+)/.exec(body);
+    if (m) entry.shell_id = m[1];
   }
 
+  const shells = [...bashByUseId.values()].filter(e => e.shell_id);
   for (const sh of shells) {
-    if (!sh.shell_id) sh.status = 'unknown (shell_id not captured)';
-    else if (killedIds.has(sh.shell_id)) sh.status = 'killed';
-    else sh.status = 'started (run/exit state unknown — check via BashOutput)';
+    sh.status = killedIds.has(sh.shell_id)
+      ? 'killed'
+      : 'started (run/exit state unknown — check via TaskOutput)';
   }
 
   shellsBySession.push({session: sessionPath, shells});
@@ -169,5 +208,5 @@ if (AS_JSON) {
       console.log();
     }
   }
-  console.log('Use BashOutput(shell_id) to peek pending output; KillShell(shell_id) to terminate.');
+  console.log('Use TaskOutput(task_id) to peek pending output; TaskStop(task_id) to terminate.');
 }
