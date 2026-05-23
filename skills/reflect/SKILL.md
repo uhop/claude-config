@@ -162,10 +162,19 @@ Read all three to dedupe; write only to vault + claude-config.
 
    ```bash
    mkdir -p ~/.cache/reflect && \
-   jq --null-input --arg now "$(date -Is)" --argjson ms "$(date +%s%3N)" \
-     '{last_run_iso: $now, last_run_ms: $ms}' \
+   jq --null-input --arg now "$(date -Is)" \
+     '{last_run_iso: $now, last_run_ms: (now * 1000 | floor)}' \
      > ~/.cache/reflect/last-run.json
    ```
+
+   Uses `jq`'s built-in `now` (UTC seconds, decimal) and converts to ms.
+   Don't use `date +%s%3N` — GNU date's `%3` truncation directive is
+   widely ignored, yielding `<seconds><nanoseconds>` (19 digits) which
+   `new Date(...)` interprets as a far-future timestamp and crashes
+   `reflect.mjs`'s window resolution. Also don't use
+   `node -e 'console.log(Date.now())'` — on machines with colorized
+   console output, the value comes back wrapped in ANSI escape codes
+   that break `jq --argjson`.
 
    Then PUT updated `projects/agent-workflow/state.md` with the new `last_run` JSON block (read it first, swap the JSON, PUT back). Local cache is what `--since=last-run` reads; vault state is the cross-machine source of truth.
 
