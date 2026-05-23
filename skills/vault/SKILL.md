@@ -369,6 +369,26 @@ the existing review/cleanup skills + endpoints; loops each queue with
 - `suggestions.inefficiency_detected` / `infrastructure_upgrade` —
   reports-only, no action surface.
 
+#### Ordering constraints
+
+Some kinds mutate state that other kinds read. Process them in declared
+order; never dispatch two ordered kinds as parallel sub-agents.
+
+- **`new_tag` before `tag_suggestion`.** `new_tag` mints canonical tags
+  and aliases into the taxonomy; `tag_suggestion`'s accept/reject logic
+  reads the canonical-taxonomy state at decision time. Parallel
+  dispatch races — a `tag_suggestion` agent can reject a suggestion
+  whose tag the concurrent `new_tag` agent is about to canonicalize.
+  Drain `new_tag` to zero (or to a stuck pass) before starting
+  `tag_suggestion`. The 2026-05-13 instance was harmless (the tag was
+  already on the record's FM, so the rejection didn't drop intent),
+  but the failure mode generalizes.
+
+Kinds with no declared ordering have no inter-kind dependency; they
+may run sequentially in arbitrary order. Default to sequential
+per-kind processing — concurrent sub-agents complicate failure
+attribution and the per-kind passes are already cheap.
+
 #### Procedure
 
 1. **Baseline.** Pull `vault-curl /system/lint -s`,
@@ -381,8 +401,13 @@ the existing review/cleanup skills + endpoints; loops each queue with
    (in parallel, both POST). Each completes in seconds; together they
    tighten the lint baseline before the suggestion-driven passes
    touch records.
-4. **Per-kind drain loop.** For each suggestion kind in the action set,
-   for at most `--max-passes` iterations (default 5):
+4. **Per-kind drain loop.** Process suggestion kinds **sequentially**,
+   one kind fully drained before the next starts. Honor the declared
+   ordering in § Ordering constraints; otherwise any sequential order
+   is fine. Never dispatch two kinds as concurrent sub-agents — even
+   pairs with no declared ordering, since concurrent FM writes muddy
+   failure attribution. For each kind, for at most `--max-passes`
+   iterations (default 5):
    - Dispatch the corresponding review skill with `--auto --limit=100`.
    - Refetch `/suggestions/summary`; record the new count for that kind.
    - Stop when count reaches 0, or when count didn't decrease since

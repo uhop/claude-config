@@ -1,6 +1,6 @@
 ---
 name: vault-review-tags
-description: Triage pending tag-related suggestions — `new_tag` (an unknown tag is on FM, decide canonical/alias/typo) and `tag_suggestion` (agent thinks this record should also have tag X, decide accept/reject). Backed by `GET /suggestions?kind=new_tag|tag_suggestion`, `POST /tags/{taxonomy,aliases}`, and `PUT /vault/{path}`. Use when the user says /vault-review-tags, asks to clean up the tag taxonomy, or wants to chip away at either tag-review queue. Requires vault-storage (`:8123`).
+description: Triage pending tag-related suggestions — `new_tag` (an unknown tag is on FM, decide canonical/alias/typo) and `tag_suggestion` (agent thinks this record should also have tag X, decide accept/reject). Backed by `GET /suggestions?kind=new_tag|tag_suggestion`, `POST /tags/{taxonomy,aliases}`, and the server-side tag-membership primitives `POST /sections/{id}/tags` + `DELETE /sections/{id}/tags/{tag}`. Use when the user says /vault-review-tags, asks to clean up the tag taxonomy, or wants to chip away at either tag-review queue. Requires vault-storage (`:8123`).
 user_invocable: true
 ---
 
@@ -106,50 +106,26 @@ exist in the taxonomy (404 otherwise — add it first via 4a).
 
 ### 4c. Reject (typo)
 
-For each suggestion (looped over the group's records):
+For each suggestion (looped over the group's records), remove the tag
+via the server-side membership primitive — atomic on the server, no
+client-side read-modify-write:
 
-1. **Read the existing FM** (meta endpoint, no body needed for the tag list):
+1. **Remove the tag from FM:**
    ```bash
-   vault-curl "/sections/$RECORD_ID/meta" -s | jq '.tags' > /tmp/tags.json
+   vault-curl "/sections/$RECORD_ID/tags/$BAD_TAG" -X DELETE -s
    ```
-2. **Compute the new tags list** — same array minus the bad tag.
-   ```bash
-   jq --arg bad "$BAD_TAG" 'map(select(. != $bad))' /tmp/tags.json > /tmp/new-tags.json
-   ```
-3. **Read the body once** (to pass through unchanged in the JSON write):
-   ```bash
-   vault-curl "/vault/$FILE_PATH" -s | awk '/^---$/{c++; next} c>=2{print}' > /tmp/body.md
-   ```
-4. **Write back via the JSON path** — only the `tags` key needs to change;
-   the writer's shallow FM merge preserves everything else (title, agent,
-   related, edges, …):
-   ```bash
-   jq --null-input \
-     --rawfile body /tmp/body.md \
-     --slurpfile tags /tmp/new-tags.json \
-     '{frontmatter: {tags: $tags[0]}, body: $body}' \
-     > /tmp/payload.json
-
-   vault-curl "/vault/$FILE_PATH" -X PUT \
-     -H 'Content-Type: application/json' \
-     --data-binary @/tmp/payload.json \
-     -o /dev/null -w "%{http_code}\n"
-   ```
-   Expect `204`. The JSON path sidesteps any YAML quoting concerns for
-   tags that contain hyphens, leading-special characters, or shadow-
-   keyword strings (e.g., a tag literally named `null` or `true`).
-5. **Mark the suggestion rejected:**
+   Response: `200 {tags: [...]}` with the post-delete tag list.
+   Idempotent: removing a tag that isn't present is a no-op success.
+2. **Mark the suggestion rejected:**
    ```bash
    vault-curl "/suggestions/$SUG_ID/reject" -X POST -s -o /dev/null -w "%{http_code}\n"
    ```
 
-The reject path is the most file-touching path — that's expected; typos
-genuinely need the source corrected.
-
-Legacy markdown path: GET full file, hand-edit the FM block to remove
-the tag, PUT with `Content-Type: text/markdown`. Works fine for simple
-tag arrays but the JSON path is more robust and is the default
-convention across the vault skills.
+The membership endpoint runs the whole read-modify-write transaction
+server-side under the writer's lock, so concurrent edits to the same
+file from a different writer can't be silently clobbered by a stale
+local read. The next import (triggered by the write) auto-resolves any
+matching pending suggestions.
 
 ### 5. Report summary
 
@@ -203,25 +179,22 @@ mismatch, scope mismatch, or duplication of an already-realized tag).
 
 ### 4a. Accept
 
-For each accepted suggestion:
+Add the tag via the server-side membership primitive — atomic on the
+server, no client-side read-modify-write:
 
-1. **Read the source file:**
-   ```bash
-   vault-curl "/vault/$FILE_PATH" -s -o /tmp/src.md
-   ```
-2. **Edit the FM `tags:` array** to add the tag. Preserve other tags
-   verbatim. If the tag is unknown to the taxonomy, run
-   `POST /tags/taxonomy {tag}` first (or `/tags/aliases` if it's a
-   synonym of an existing canonical).
-3. **Write back:**
-   ```bash
-   vault-curl "/vault/$FILE_PATH" -X PUT \
-     -H 'Content-Type: text/markdown' \
-     --data-binary @/tmp/src.md \
-     -o /dev/null -w "%{http_code}\n"
-   ```
-   Expect `204`. The next reimport (immediate, via the writer's import
-   pass) auto-accepts the matching pending suggestion.
+```bash
+vault-curl "/sections/$RECORD_ID/tags" -X POST \
+  -H 'Content-Type: application/json' \
+  --data-binary "$(jq --null-input --arg tag "$NEW_TAG" '{tag: $tag}')" -s
+```
+
+Response: `200 {tags: [...]}` with the post-add tag list. Idempotent:
+re-POSTing a tag that's already present is a no-op success. If the
+tag is unknown to the taxonomy, run `POST /tags/taxonomy {tag}` first
+(or `/tags/aliases` if it's a synonym of an existing canonical) —
+otherwise the import will file a `new_tag` suggestion for it. The
+next import (triggered by the write) auto-accepts the matching
+pending `tag_suggestion`.
 
 ### 4b. Reject
 

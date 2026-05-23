@@ -10,13 +10,6 @@
     ],
     "defaultMode": "auto"
   },
-  "enabledPlugins": {
-    "typescript-lsp@claude-plugins-official": true,
-    "clangd-lsp@claude-plugins-official": true
-  },
-  "effortLevel": "xhigh",
-  "tui": "fullscreen",
-  "skipAutoPermissionPrompt": true,
   "hooks": {
     "PreToolUse": [
       {
@@ -30,6 +23,14 @@
       }
     ]
   },
+  "enabledPlugins": {
+    "typescript-lsp@claude-plugins-official": true,
+    "clangd-lsp@claude-plugins-official": true
+  },
+  "effortLevel": "xhigh",
+  "tui": "fullscreen",
+  "autoCompactEnabled": true,
+  "skipAutoPermissionPrompt": true,
   "mcpServers": {
     "vault": {
       "command": "npx",
