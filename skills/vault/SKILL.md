@@ -43,6 +43,19 @@ API endpoints (invoked via `vault-curl <path> [curl-options...]`):
 - **Search**: `vault-curl /search/simple/ -X POST -G --data-urlencode 'query=...'`
   - The Obsidian Local REST API expects `query` as a URL parameter on a POST; `-G --data-urlencode` produces the right form.
 
+### Guard `jq` pipes in parallel Bash batches
+
+When you fire several calls as parallel Bash tool calls in one message — as
+`/vault resume`, `/vault wrap`, and `/vault sweep` all do — never let a
+`vault-curl … | jq …` pipe exit non-zero. If the API returns an unexpected
+shape, `jq` exits non-zero → the Bash call exits non-zero → the harness
+**cancels its in-flight parallel siblings** (the classic casualty is
+`check-drift.sh` sharing a batch with these reads). Append `|| true` to any
+such pipe (or guard it as `if vault-curl …; then jq …; fi`) so a malformed
+response degrades to empty output instead of taking down the whole batch.
+Bare `vault-curl … -s` reads with no `jq` stage are already safe and need no
+guard.
+
 ### Fallback: raw `curl`
 
 If `vault-curl` is unavailable, verify env vars explicitly:
@@ -227,7 +240,10 @@ Save a session log.
 
 ### /vault resume
 
-Rebuild context from the vault.
+Rebuild context from the vault. Several steps below run as parallel Bash
+calls; guard every `vault-curl … | jq …` pipe with `|| true` per § "Guard
+`jq` pipes in parallel Bash batches" so a malformed response can't cancel
+`check-drift.sh` running in the same batch.
 
 1. **Drift check first.** Run `~/.claude/skills/vault-check-drift/check-drift.sh`
    from the current project directory (see the `vault-check-drift` skill for

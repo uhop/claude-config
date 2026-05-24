@@ -19,6 +19,7 @@
 import {readdirSync, readFileSync, writeFileSync, statSync, existsSync, mkdirSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {homedir} from 'node:os';
+import {createHash} from 'node:crypto';
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -159,7 +160,8 @@ const flatten = row => {
     errorResults: [],
     hasToolUse: false,
     toolNames: [],
-    toolInputs: []
+    toolInputs: [],
+    toolUseIds: []
   };
   const content = row.message?.content;
   if (typeof content === 'string') {
@@ -183,9 +185,12 @@ const flatten = row => {
       const cleaned = stripSyntheticBlocks(block.text);
       if (cleaned.length > 0) out.userText += (out.userText ? '\n' : '') + cleaned;
     } else if (block.type === 'tool_use') {
+      // Push name / input / id together so the three arrays stay index-aligned
+      // — Pass 2's stuck-loop gate reads toolUseIds[j] alongside toolInputs[j].
       out.hasToolUse = true;
-      if (block.name) out.toolNames.push(block.name);
-      if (block.input) out.toolInputs.push(block.input);
+      out.toolNames.push(block.name ?? '(unknown)');
+      out.toolInputs.push(block.input ?? {});
+      out.toolUseIds.push(block.id ?? null);
     } else if (block.type === 'tool_result') {
       const body = extractBody(block);
       if (body) out.toolResultText += (out.toolResultText ? '\n' : '') + body;
@@ -214,11 +219,14 @@ const buildExcerpt = events => {
   return s;
 };
 
-// Simple fingerprint of a tool_use input (first N chars of stringify) —
-// good enough for "did the agent retry the same thing".
+// Fingerprint of a tool_use input: sha1 over the full stringify, not a
+// truncated prefix. The old 200-char prefix collided distinct calls that
+// shared a long preamble — e.g. three `cat > /tmp/foo.md <<'EOF'` heredocs
+// with different bodies hashed to one fingerprint, manufacturing a fake
+// stuck loop. Hashing the whole input kills that class.
 const inputFingerprint = input => {
   try {
-    return JSON.stringify(input).slice(0, 200);
+    return createHash('sha1').update(JSON.stringify(input)).digest('hex');
   } catch {
     return '';
   }
@@ -307,6 +315,7 @@ for (const t of transcripts) {
       hasToolResultError: f.errorResults.length > 0,
       toolNames: f.toolNames,
       toolInputs: f.toolInputs,
+      toolUseIds: f.toolUseIds,
       toolResultIds
     });
   }
@@ -350,11 +359,24 @@ for (const t of transcripts) {
     if (hasSurprise) signals.surprises.push({...base, kind: 'surprise'});
   }
 
-  // Pass 2: stuck loops — same (toolName + input fingerprint) repeated ≥ 3×
+  // Pass 2: stuck loops — same (toolName + input fingerprint) repeated ≥ 3×,
+  // counting only repetitions whose tool_result came back is_error: true.
+  // The error gate kills the iterative-test-runs false-positive class: a
+  // refactor → `npm test` → fix → `npm test` cycle issues identical inputs
+  // many times, but those runs succeed (or fail differently) — they're
+  // progress, not a pathological retry. A genuine stuck loop is the same
+  // call erroring over and over.
+  const erroredIds = new Set();
+  for (const e of events) {
+    for (const err of e.errorResults) {
+      if (err.id) erroredIds.add(err.id);
+    }
+  }
   const loopBuckets = new Map();
   for (const e of events) {
     if (e.role !== 'assistant') continue;
     for (let j = 0; j < e.toolNames.length; j++) {
+      if (!erroredIds.has(e.toolUseIds[j])) continue;
       const name = e.toolNames[j];
       const fp = inputFingerprint(e.toolInputs[j]);
       const key = `${name}::${fp}`;
@@ -373,7 +395,7 @@ for (const t of transcripts) {
       ts: tsList[0],
       tool: name,
       repetitions: tsList.length,
-      excerpt: `[stuck loop] tool=${name} repeated ${tsList.length}× with same input fingerprint`
+      excerpt: `[stuck loop] tool=${name} repeated ${tsList.length}× with same input fingerprint, each erroring`
     });
   }
 
