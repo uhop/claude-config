@@ -59,6 +59,20 @@ follows the AGENTS.md / llms.txt convention.
    current entry to cliff-notes density and add the section footer link.
    Don't update only the README — readers who follow the "for more info"
    link land on a stale page if you do.
+
+   **Beyond the changelog — version-tied user docs default to docs-lead.** If
+   any change in this release inverts or contradicts a claim in *other*
+   version-tied user-facing docs (hosted wiki API/guide pages, migration
+   guides, perf claims), **update those ahead of the tag too** — don't wait
+   for the release. This is the fleet default: a claim that's now wrong about
+   the *direction* of a change (e.g. a perf caveat the fix reverses) misleads
+   worse than a merely-dated one. Avoid version-specific numbers if the bump
+   isn't final — describe behavior qualitatively. (In-repo source/architecture
+   docs from steps 1–4 describe HEAD and are corrected unconditionally anyway;
+   this is specifically about the *published-version-tied* docs.) Docs-follow —
+   leaving the claim until release — is the exception, taken only when the
+   release is uncertain/far-off or published-version users would be actively
+   misled by the lead. See [[topics/docs-lead-vs-follow-release]] in the vault.
 9. **Sweep dependencies to current — edit `package.json` directly.** Run
    `npm outdated` to identify what's behind, then **hand-edit `package.json`**
    to bump the version range for each reported line to the latest (e.g.,
