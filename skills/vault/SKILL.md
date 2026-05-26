@@ -56,6 +56,13 @@ response degrades to empty output instead of taking down the whole batch.
 Bare `vault-curl … -s` reads with no `jq` stage are already safe and need no
 guard.
 
+**`check-drift.sh` is also a *canceller*, not just a casualty.** It exits `1`
+whenever it detects drift — the common case, not an error. Co-batched as a
+parallel Bash sibling, that exit-1 cancels the *other* calls (reindex, lint,
+suggestions, agent-workflow reads). Run `check-drift.sh` in its **own** Bash
+invocation, sequentially, before the parallel read batch — never inside it.
+Read the drift report from stdout; the exit code is not the signal.
+
 ### Fallback: raw `curl`
 
 If `vault-curl` is unavailable, verify env vars explicitly:
@@ -247,9 +254,12 @@ calls; guard every `vault-curl … | jq …` pipe with `|| true` per § "Guard
 
 1. **Drift check first.** Run `~/.claude/skills/vault-check-drift/check-drift.sh`
    from the current project directory (see the `vault-check-drift` skill for
-   details). If drift is detected, surface the report at the top of the
-   resume output before reading logs — the vault's view of the project may
-   be stale, and the recorded logs reflect that stale view.
+   details) as its **own** Bash call — *not* inside the parallel batch in
+   steps 2–5. It exits `1` whenever it detects drift (the common case), which
+   would cancel co-batched siblings; read the report from stdout. If drift is
+   detected, surface it at the top of the resume output before reading logs —
+   the vault's view of the project may be stale, and the recorded logs reflect
+   that stale view.
 2. **Incremental reindex** — call `vault-curl /maintenance/incremental-reindex
    -X POST -s`. Brings the server's local DB in sync with the vault-data git
    tree if commits have landed since `last_indexed_commit` (typical case:
