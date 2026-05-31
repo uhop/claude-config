@@ -21,6 +21,10 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/git-commit-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/destructive-op-gate.sh"
           }
         ]
       }
