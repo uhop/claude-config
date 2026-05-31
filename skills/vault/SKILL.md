@@ -27,6 +27,8 @@ command -v vault-curl >/dev/null || { echo "vault-curl missing — falling back 
 
 `vault-curl` itself exits with a clear error if `VAULT_API_URL` or `VAULT_API_TOKEN` is unset, so no separate guard is required. Only fall back to raw `curl` if `vault-curl` isn't installed on the machine.
 
+**Never grep dotfiles for the credentials.** `vault-curl` resolves `VAULT_API_URL` / `VAULT_API_TOKEN` from the already-sourced env (`~/.env` via `.bashrc`). If a call fails for missing creds, report it — do **not** scan `~/.bashrc` / `~/.env` / other dotfiles to find them. The auto-mode classifier flags systematic dotfile credential-scanning as Credential Exploration and denies it (correctly).
+
 API endpoints (invoked via `vault-curl <path> [curl-options...]`):
 
 - **Read**: `vault-curl /vault/{path} -s`

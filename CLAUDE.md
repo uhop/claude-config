@@ -19,6 +19,7 @@ Many basics (`cp`, `mv`, `rm`, `ls`, `cat`, `grep`, `du`, `mkdir`, `cd`) are ali
 
 - **Re-Read after mutating Bash.** Any Bash that may rewrite a file (`prettier --write`, `npm run lint:fix`, a formatting/codemod script, a pre-commit hook) invalidates the harness's file-tracking. Read the file again before the next `Edit` on it. Otherwise `Edit` 400s with "File has been modified since read" and the retry hits the same error.
 - **Don't speculatively `Read` paths.** Before `Read`, if the path was inferred from a listing or another output, confirm the path actually appears in that output. `Read` is cheap but failed reads inflate context and signal sloppy exploration. Use `Bash test -f`, `Glob`, or the original listing's exact strings rather than guessing variants.
+- **Trust the foreground result; don't chase display lag.** A foreground `Bash` result is authoritative even when it renders late or looks empty — the value is already captured. Don't re-run it as a background task, don't spawn noop "flush"/"nudge" commands to force a redraw, and don't `Read` a background task's `tasks/<id>.output` before its `<task-notification>` arrives (the file doesn't exist yet — the `Read` errors). Each adds cancelled-sibling and failed-`Read` noise without recovering anything. Reserve `run_in_background: true` for genuinely long work (servers, watchers, multi-minute builds), not perceived lag.
 
 ## Fleet standards
 
