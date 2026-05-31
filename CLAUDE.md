@@ -4,6 +4,12 @@
 
 `git commit`, `git push`, `git tag`, `npm publish` — only on the **literal verb** in the current turn. Reject synonyms (`land`, `ship`, `go`, `proceed`). Stop at staged diff and wait. Full: [[topics/agent-stops-at-staged-diff]].
 
+No verb in the turn → act silently; never *offer* to commit/push/tag/publish or ask permission to do them — absence of the word is the answer, not an invitation. The user commits and pushes himself, after his own review.
+
+Asking is also useless because of the gate itself: `hooks/git-commit-gate.sh` blocks `git commit` unless `.claude/git-commit-allowed` exists at or above the cwd (a per-project opt-in marker — only a couple of repos carry it; `find ~/Open -path '*/.claude/git-commit-allowed'` answers *which*, don't hardcode the list). `push` / `tag` / `publish` are in `settings.json`'s absolute `permissions.deny` — a hook can't reopen a deny, so they're impossible **everywhere, on every repo, always**; `npm publish` also needs interactive 2FA the agent doesn't have. So: on the verb, in a marked repo, just commit; otherwise the action can't happen — don't narrate the gate, don't ask.
+
+Git is the system of record — don't keep a prose ledger of it. Run `git status` / `git log` the moment a decision needs the state, use the answer, discard it; never carry "N ahead/behind, commit X landed" across turns or re-confirm what git already tracks. A `/vault wrap`-style session log written once from `git log` is fine; a running tally babysat mid-session is not.
+
 Pushed history is immutable: no `--amend`, `rebase`, force-push, or moving published tags. Fix forward with a new commit.
 
 ## Shell
