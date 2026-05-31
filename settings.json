@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(vault-curl:*)"
+      "Bash(vault-curl:*)",
+      "Bash(git describe:*)",
+      "Bash(git for-each-ref:*)",
+      "Bash(git show-ref:*)"
     ],
     "deny": [
       "Bash(git push:*)",
