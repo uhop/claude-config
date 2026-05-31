@@ -17,16 +17,17 @@ follows the AGENTS.md / llms.txt convention.
    (run `/ai-docs-update` if not).
 5. Verify `package.json`:
    - `files` array **includes** the source artifact (e.g. `src`) plus the
-     consumer-facing AI-docs: `llms.txt`, `llms-full.txt`, `AGENTS.md`,
-     `ARCHITECTURE.md` (per the tarball AI-docs convention — these are
-     useful for AI tools in downstream projects discovering the package
-     through `npm install`, no network round-trip required). See
-     `[[topics/tarball-ai-docs-convention]]` in the vault.
-   - `files` array **does not** include authoring-tool-local files —
-     `CLAUDE.md` (pointer to AGENTS.md, redundant), `.cursorrules` /
-     `.windsurfrules` / `.clinerules` (byte-identical to AGENTS.md,
-     redundant), `.claude/`, `.windsurf/`, `.github/`, `CODEBASE.md`
-     (where present, redundant with ARCHITECTURE.md).
+     consumer-facing AI-docs `llms.txt` and `llms-full.txt` — the
+     machine-readable API reference an AI in a downstream project reads
+     straight from `node_modules`, no network round-trip required. See
+     `[[topics/tarball-ai-docs-convention]]` in the vault for the rationale.
+   - `files` array **does not** include authoring-side docs or
+     tool-local files — `AGENTS.md` / `ARCHITECTURE.md` (build/test/edit
+     instructions and internal layout; useful only while *editing* this
+     project, not while consuming it — no tool reads them from
+     `node_modules`), `CLAUDE.md` (pointer to AGENTS.md), `.cursorrules` /
+     `.windsurfrules` / `.clinerules` (byte-identical to AGENTS.md),
+     `.claude/`, `.windsurf/`, `.github/`, `CODEBASE.md`.
    - `exports` map is correct.
    - `description` and `keywords` are current.
 6. Check that the copyright year in `LICENSE` includes the current year.
