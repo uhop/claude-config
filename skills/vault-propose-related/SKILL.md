@@ -147,37 +147,52 @@ vault-curl "/vault/queries/$FILENAME" -X PUT \
 
 For each source with accepted proposals:
 
-1. **Read existing related list** (meta-only, body not needed for the merge logic):
+Stage all temp files under a per-invocation `mktemp -d` so co-resident
+sessions can't clobber each other's write bodies:
+
+```bash
+work=$(mktemp -d)
+```
+
+1. **Read the source's current frontmatter + body in ONE call** via the
+   raw-FM reader. Do **NOT** read `related` from `/sections/$RECORD_ID/meta`
+   — that projection only exposes record-table columns and has no `related`
+   key, so it returns `null` for every note. Merging against `null` (→ `[]`)
+   and then doing the wholesale `related:` replace below would **silently
+   delete every existing `related:` entry**. `/sections/$RECORD_ID/fm` reads
+   the file from disk and returns all FM verbatim:
    ```bash
-   existing=$(vault-curl "/sections/$RECORD_ID/meta" -s | jq '.related // []')
+   vault-curl "/sections/$RECORD_ID/fm" -s > "$work/fm.json"
+   existing=$(jq '.frontmatter.related // []' "$work/fm.json")
+   jq -j '.body' "$work/fm.json" > "$work/body.md"   # -j (NOT -r): no trailing
+   # newline. `/fm`.body carries no trailing newline and the writer appends one
+   # on save; `jq -r` would add a second, growing the body by a blank line per
+   # apply. `-j` keeps the round-trip byte-faithful.
    ```
 2. **Compute the new related list** — append accepted candidates as
    `"[[<target>]]"` strings, preserving existing entries:
    ```bash
    new_related=$(echo "$existing" | jq --argjson adds "$ACCEPTED_LINKS_JSON" '. + $adds | unique')
    ```
-3. **Read body once** (pass through unchanged):
-   ```bash
-   vault-curl "/vault/$FROM_PATH" -s | awk '/^---$/{c++; next} c>=2{print}' > /tmp/body.md
-   ```
-4. **Write back via the JSON path** — only `related` is updated; the
+3. **Write back via the JSON path** — only `related` is updated; the
    shallow FM merge preserves every other key on disk:
    ```bash
    jq --null-input \
-     --rawfile body /tmp/body.md \
+     --rawfile body "$work/body.md" \
      --argjson related "$new_related" \
      '{frontmatter: {related: $related}, body: $body}' \
-     > /tmp/payload.json
+     > "$work/payload.json"
 
    vault-curl "/vault/$FROM_PATH" -X PUT \
      -H 'Content-Type: application/json' \
-     --data-binary @/tmp/payload.json \
+     --data-binary @"$work/payload.json" \
      -o /dev/null -w "%{http_code}\n"
    ```
 
 The writer's shallow FM merge replaces `related:` wholesale, so include
-all existing entries plus your additions inside the new array. Body
-unchanged.
+all existing entries plus your additions inside the new array (step 1's
+`existing` is the source of truth for that — never an empty/`null` read).
+Body unchanged.
 
 Apply mode is faster but skips the human review step. Use it when:
 - The user has explicitly asked for `--apply`
