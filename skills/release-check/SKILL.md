@@ -59,6 +59,16 @@ internal-only = **no release**.
    - `exports` map is correct (no transforming wildcards; see
      [[topics/full-path-imports-for-runtime-portability]]).
    - `description` and `keywords` are current.
+   - **Executable `bin`.** If `package.json` has a `bin`, every bin target file
+     is executable — git mode `100755`, not `100644` (check with
+     `git ls-files -s <bin>`). npm preserves the working-tree mode on publish
+     and does **not** auto-chmod bins, so a `100644` bin ships as `0o644` and
+     `npx <pkg>` / global install fail with permission-denied — which npx
+     surfaces as the misleading "command not found" — even though `node <bin>`,
+     the test suite, and `npm pack --dry-run` (which doesn't display mode bits)
+     all pass. That blind spot is exactly how a broken bin reaches the registry.
+     Fix: `chmod +x <bin>` then `git update-index --chmod=+x <bin>`; confirm a
+     fresh `npm pack` lists the bin as `-rwxr-xr-x` (`tar tzvf <tgz>`).
 7. Check that the copyright year in `LICENSE` includes the current year
    (e.g. `2005-2024` → `2005-2026`).
 8. Bump `version` in `package.json` per the tier picked in step 0
