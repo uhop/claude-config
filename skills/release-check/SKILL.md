@@ -114,6 +114,16 @@ internal-only = **no release**.
    leaving the claim until release — is the exception, taken only when the
    release is uncertain/far-off or published-version users would be actively
    misled by the lead. See [[topics/docs-lead-vs-follow-release]] in the vault.
+
+   **Regenerate the wiki search index, if the wiki has one.** A
+   `wiki-search` index (a committed `wiki/search-index.json`, as the
+   stream-\* wikis carry) goes stale the moment you edit any wiki page
+   above. Regenerate it before the wiki submodule is committed: from the
+   wiki dir, `npx wiki-search-index --wiki . --repo OWNER/REPO` (the
+   `--repo` is required when the submodule's SSH origin lacks the `.git`
+   suffix the builder infers). The index is deterministic, so a
+   committed-index diff-gate, where one exists, stays honest. Skip when
+   the wiki has no `search-index.json`.
 10. **Sweep dependencies to current — edit `package.json` directly.** Run
     `npm outdated` to identify what's behind, then **hand-edit `package.json`**
     to bump the version range for each reported line to the latest (e.g.,
