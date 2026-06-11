@@ -48,4 +48,4 @@ Probing or sniffing an HTTP API uses safe verbs only — `GET`, `HEAD`, `OPTIONS
 
 ## Config repo
 
-This file + `~/.claude/{settings.json,commands,skills,hooks}` are symlinks from `~/Open/claude-config/` (repo `uhop/claude-config`) — edits via either path land in the repo. New artifacts go there; `node install.mjs --apply` wires new symlinks. Per-host overrides: `~/.claude/settings.local.json`. Fleet propagation: `claude-config-update` (in `playbash-{daily,weekly,clean}`).
+This file + `~/.claude/{settings.json,commands,skills,hooks}` are symlinks from `~/Open/claude-config/` (repo `uhop/claude-config`) — edits via either path land in the repo. Shell edits, that is — the harness's Edit/Write tools **refuse symlinked paths** ("Refusing to write through symlink"). For tool edits address the real file under `~/Open/claude-config/...` directly (`readlink -f` when unsure); treat `~/.claude/...` as read-only aliases. New artifacts go there; `node install.mjs --apply` wires new symlinks. Per-host overrides: `~/.claude/settings.local.json`. Fleet propagation: `claude-config-update` (in `playbash-{daily,weekly,clean}`).
