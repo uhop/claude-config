@@ -202,13 +202,13 @@ vault-curl "/vault/$FILE_PATH" -X PUT \
 
 Expect `204`.
 
-**Legacy markdown path** (only when the JSON path isn't available — e.g.,
-debugging via raw curl from a one-liner): construct the full
-`---\n<FM>\n---\n<body>` blob, double-quote `agent.summary` and any
-multi-line scalar containing `: `, double-quote `derived_from_hash`
-(YAML coerces unquoted all-digit strings to integers), and PUT with
-`Content-Type: text/markdown`. The JSON path eliminates all of those
-caller-side requirements.
+The JSON path is the only sanctioned way to write FM (2026-06-11
+decision). Never hand-author the `---\n<FM>\n---\n<body>` markdown
+blob for enrichment writes — `agent.summary` regularly contains
+colon-space prose and `derived_from_hash` is an all-digit-prone string,
+both classic YAML quoting traps the JSON path eliminates. The markdown
+PUT mode is reserved for the UI editor and verbatim round-trips of
+server-emitted files.
 
 ### 4. Report summary
 

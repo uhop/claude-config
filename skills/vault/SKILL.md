@@ -32,13 +32,12 @@ command -v vault-curl >/dev/null || { echo "vault-curl missing — falling back 
 API endpoints (invoked via `vault-curl <path> [curl-options...]`):
 
 - **Read**: `vault-curl /vault/{path} -s`
-- **Write (JSON, recommended for programmatic writes)**: `vault-curl /vault/{path} -X PUT -H 'Content-Type: application/json' --data-binary @payload.json`
-  - Body shape: `{"frontmatter": {...}, "body": "..."}` — the server takes the FM object directly, skips YAML parse, and serializes safely (auto-quoting colon-space, leading-special-char, hex/bool/date-shadow strings). Use this whenever you have FM as a JS/JSON object already (every skill on this machine does).
+- **Write (JSON — THE write path)**: `vault-curl /vault/{path} -X PUT -H 'Content-Type: application/json' --data-binary @payload.json`
+  - Body shape: `{"frontmatter": {...}, "body": "..."}` — the server takes the FM object directly, skips YAML parse, and serializes safely (auto-quoting colon-space, leading-special-char, hex/bool/date-shadow strings). Always use this when authoring or modifying frontmatter values.
   - Construct the payload with `jq` and `--rawfile` to safely embed a body that contains arbitrary characters: `jq --null-input --rawfile body /tmp/body.md '{frontmatter: {title: "X", ...}, body: $body}' > /tmp/payload.json`.
-  - Falls through the same downstream FM merge / closed-enum validation / auto-managed-key rejection / `created`-`updated` indexer-override as the markdown path.
-- **Write (markdown, legacy)**: `vault-curl /vault/{path} -X PUT -H 'Content-Type: text/markdown' --data-binary @file.md`
-  - Or with a heredoc: `vault-curl /vault/{path} -X PUT -H 'Content-Type: text/markdown' --data-binary @- <<'EOF' ... EOF`
-  - Caller is responsible for proper YAML quoting in the FM block. Use double-quoted scalars for any string containing `: `, leading `@`/`*`/`-`/`?`, hex-shadow (`0xfe`), bool-shadow (`true`/`null`), or date-shadow (`2026-05-03`). When in doubt, prefer the JSON path above.
+  - Same downstream FM merge / closed-enum validation / auto-managed-key rejection / `created`-`updated` indexer-override as the markdown mode.
+- **Write (markdown — round-trip only)**: `vault-curl /vault/{path} -X PUT -H 'Content-Type: text/markdown' --data-binary @file.md`
+  - **Never hand-author YAML through this mode** — that's the recurring quoting-trap failure class (colon-space, leading `@`/`*`/`-`/`?`, hex/bool/date shadows), and per the 2026-06-11 decision it is reserved for the UI editor and for verbatim round-trips: GET a server-emitted file, text-edit the *body only*, PUT it back. The YAML you re-send was machine-serialized, so it's safe. Any FM change → use the JSON path above.
   - Add `-o /dev/null -w "%{http_code}\n"` to confirm a 204 without flooding stdout (works for either Content-Type).
 - **List**: `vault-curl /vault/{path}/ -s` (trailing slash → `{"files": [...]}`)
 - **Delete**: `vault-curl /vault/{path} -X DELETE`

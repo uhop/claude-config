@@ -117,10 +117,10 @@ Expect `204`. The writer's shallow FM merge replaces the `edges` map
 wholesale, so include every entry you want preserved inside the new map
 (merge-and-replace semantics, key-by-key at the top level only).
 
-Legacy markdown path: read the file, hand-edit the FM block, PUT with
-`Content-Type: text/markdown`. Works fine for `edges:` since the values
-are simple type names, but the JSON path is more robust and is the
-default convention across the vault skills.
+The JSON path is the only sanctioned way to modify FM (2026-06-11
+decision). The markdown PUT mode still exists server-side but is
+reserved for the UI editor and verbatim round-trips — don't hand-edit
+YAML FM blocks, even for simple values like edge type names.
 
 Then mark the suggestion accepted:
 

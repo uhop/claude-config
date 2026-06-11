@@ -274,12 +274,20 @@ fi
 # ─── Persist baseline if --update ────────────────────────────────────────────
 
 if $UPDATE; then
+  # JSON write path (2026-06-11 convention): FM as a JSON object, body as
+  # text — the server serializes YAML itself, so no quoting concerns here.
+  # mktemp avoids clobbering between co-resident sessions sharing /tmp.
   body=$(printf 'Auto-maintained by the `vault-check-drift` skill. Refresh: run `/vault check --update`\nfrom the project directory, or re-run `/vault resume`.\n\n## Baseline snapshot\n\n```json\n%s\n```\n' "$(jq . <<<"$current_json")")
-  printf -- '---\ntitle: %s — state snapshot\ntype: state\ntags: [state, snapshot, %s]\nupdated: %s\n---\n\n%s' \
-    "$PROJECT" "$PROJECT" "${ts_now%T*}" "$body" > /tmp/vault-state-${PROJECT}.md
-  vault-curl "$vault_path" -X PUT -H 'Content-Type: text/markdown' \
-    --data-binary "@/tmp/vault-state-${PROJECT}.md" -o /dev/null -w "state: %{http_code}\n"
-  rm -f "/tmp/vault-state-${PROJECT}.md"
+  payload=$(mktemp /tmp/vault-state-XXXXXX.json)
+  jq --null-input \
+    --arg title "$PROJECT — state snapshot" \
+    --arg project "$PROJECT" \
+    --arg body "$body" \
+    '{frontmatter: {title: $title, type: "state", tags: ["state", "snapshot", $project]}, body: $body}' \
+    > "$payload"
+  vault-curl "$vault_path" -X PUT -H 'Content-Type: application/json' \
+    --data-binary "@$payload" -o /dev/null -w "state: %{http_code}\n"
+  rm -f "$payload"
 fi
 
 $any_drift && exit 1 || exit 0
