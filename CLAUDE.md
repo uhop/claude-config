@@ -23,6 +23,10 @@ Many basics (`cp`, `mv`, `rm`, `ls`, `cat`, `grep`, `du`, `mkdir`, `cd`) are ali
 - Prefer prefix `++i` / `--i` when the result is unused.
 - Measure perf with `nano-bench` (`~/Open/nano-bench/`). No ad-hoc timing.
 
+## Ambiguity
+
+When an instruction or referent is ambiguous — not just unknown jargon, but *what 'it' points at* or *how far a request reaches* (which file, which scope, how much to change) — ask rather than guess and run. A wrong guess on scope costs more round-trips than the question. Fixing an obvious typo silently is still fine; this is about genuine ambiguity of intent. (Origin: an "apply it to the post" instruction guessed as a narrow cross-link when it meant a whole thread; reflect 2026-06-09.)
+
 ## Tools
 
 - **Re-Read after mutating Bash.** Any Bash that may rewrite a file (`prettier --write`, `npm run lint:fix`, a formatting/codemod script, a pre-commit hook) invalidates the harness's file-tracking. Read the file again before the next `Edit` on it. Otherwise `Edit` 400s with "File has been modified since read" and the retry hits the same error.
