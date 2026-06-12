@@ -1,6 +1,6 @@
 ---
 name: vault-review-tags
-description: Triage pending tag-related suggestions — `new_tag` (an unknown tag is on FM, decide canonical/alias/typo) and `tag_suggestion` (agent thinks this record should also have tag X, decide accept/reject). Backed by `GET /suggestions?kind=new_tag|tag_suggestion`, `POST /tags/{taxonomy,aliases}`, and the server-side tag-membership primitives `POST /sections/{id}/tags` + `DELETE /sections/{id}/tags/{tag}`. Use when the user says /vault-review-tags, asks to clean up the tag taxonomy, or wants to chip away at either tag-review queue. Requires vault-storage (`:8123`).
+description: Triage pending tag-related suggestions — `new_tag` (an unknown tag is on FM, decide canonical/alias/typo) and `tag_suggestion` (agent thinks this record should also have tag X, decide accept/reject). Backed by `GET /suggestions?kind=new_tag|tag_suggestion`, `POST /tags/{taxonomy,aliases}`, the server-side tag-membership primitives `POST /sections/{id}/tags` + `DELETE /sections/{id}/tags/{tag}`, and `PATCH /sections/{id}/fm` for the reject-side `agent.tags_suggested` strip. Use when the user says /vault-review-tags, asks to clean up the tag taxonomy, or wants to chip away at either tag-review queue. Requires vault-storage (`:8123`).
 user_invocable: true
 ---
 
@@ -169,7 +169,7 @@ the question shifts to "is this tag canonical-worthy?" Use the same
 | Action | When to choose | Effect |
 |---|---|---|
 | **Accept** | The tag accurately describes the record's content and is consistent with how that tag is used elsewhere. | Add tag to FM `tags:`, PUT the file. Reimport auto-accepts the suggestion (`resolved_by='tag-realized'`). |
-| **Reject** | The tag is too tangential, redundant with an existing one on the record, or misframes the content. | `POST /suggestions/{id}/reject`. No FM change. |
+| **Reject** | The tag is too tangential, redundant with an existing one on the record, or misframes the content. | `POST /suggestions/{id}/reject`, then strip the candidate from `agent.tags_suggested` via `PATCH /sections/{id}/fm` (§ 4b). |
 | **Defer** | The tag would be valid but isn't yet in the taxonomy — and you don't want to commit to a canonical. | Skip; the suggestion stays pending. Optionally route through `/vault-review-tags --kind=new_tag` if the tag also appears on records. |
 
 **Bias toward accept.** The agent's `tags_suggested` block was produced
@@ -202,7 +202,24 @@ pending `tag_suggestion`.
 vault-curl "/suggestions/$SUG_ID/reject" -X POST -s -o /dev/null -w "%{http_code}\n"
 ```
 
-Expect `200`. No FM change.
+Expect `200`. Then strip the rejected candidate from the record's
+`agent.tags_suggested` — one atomic value-based membership op via the
+FM PATCH primitive (idempotent: `changed: false` when the tag isn't
+there; the no-op never touches disk):
+
+```bash
+vault-curl "/sections/$RECORD_ID/fm" -X PATCH \
+  -H 'Content-Type: application/json' \
+  --data-binary "$(jq --null-input --arg tag "$TAG" \
+    '{ops: [{op: "remove", path: "/agent/tags_suggested", value: $tag}]}')" -s
+```
+
+The reject itself is already durable server-side (`tag_suggestion`
+rejects block re-filing across all statuses), so the strip is hygiene,
+not race-prevention: `tags_suggested` stays an honest still-open-
+proposals list instead of accumulating settled rejects. Order matters
+— reject first, then strip, so the suggestion is settled even if the
+strip fails.
 
 ### 5. Report summary
 
