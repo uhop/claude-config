@@ -70,15 +70,7 @@ Don't force a type just to clear the queue.
 
 ### 3a. Promote to a specific type — write FM `edges:` entry
 
-Read the current source file:
-
-Read the existing on-disk frontmatter via the meta endpoint:
-
-```bash
-vault-curl "/sections/$RECORD_ID/meta" -s -o /tmp/meta.json
-```
-
-Then build a payload that **only** carries the `edges` key you want to
+Build a payload that **only** carries the `edges` key you want to
 update — the writer's shallow FM merge preserves every other top-level
 key on disk (title, tags, related, agent, etc.), so you don't need to
 re-send them.
@@ -90,32 +82,52 @@ keys aren't deduplicated.
 
 Use the **JSON write path** — sidesteps YAML quoting concerns for the
 wikilink-form keys (`[[…]]` and path-segments containing `/` are both
-edge-case-prone in YAML). Read the current body once so you can pass it
-through unchanged:
+edge-case-prone in YAML). One structured call serves both the current
+`edges` map and the pass-through body:
 
 ```bash
-vault-curl "/vault/$FROM_PATH" -s -o /tmp/src.md
-# Strip the FM block; keep just the body
-awk '/^---$/{c++; next} c>=2{print}' /tmp/src.md > /tmp/body.md
+# Per-invocation staging dir — never fixed /tmp names; co-resident
+# sessions share /tmp and clobber them.
+D=$(mktemp -d)
+
+vault-curl "/sections/$RECORD_ID/fm" -s > "$D/fm.json"
+
+# Body extraction MUST be byte-exact: use `jq -j`, never `jq -r` (which
+# appends a trailing newline) and never an awk/sed FM-strip. A body that
+# drifts by even one byte changes the record's body hash, knocks an
+# enriched note off its `agent.derived_from_hash`, and files a spurious
+# `agent_enrichment_stale` suggestion per touched note (bitten
+# 2026-06-11: three FM-only promotions, three stale filings).
+jq -j '.body' "$D/fm.json" > "$D/body.md"
+
+# Current edges map to merge your new entry into:
+jq -c '.frontmatter.edges // {}' "$D/fm.json"
 
 # Compose the merged edges map (existing edges + your new entry).
 # `EDGES_JSON` is the merged map you've assembled, e.g.:
 #   '{"some-target":"derived-from","other":"applies-to"}'
 jq --null-input \
-  --rawfile body /tmp/body.md \
+  --rawfile body "$D/body.md" \
   --argjson edges "$EDGES_JSON" \
   '{frontmatter: {edges: $edges}, body: $body}' \
-  > /tmp/payload.json
+  > "$D/payload.json"
 
 vault-curl "/vault/$FROM_PATH" -X PUT \
   -H 'Content-Type: application/json' \
-  --data-binary @/tmp/payload.json \
+  --data-binary @"$D/payload.json" \
   -o /dev/null -w "%{http_code}\n"
+
+command rm -rf "$D"
 ```
 
 Expect `204`. The writer's shallow FM merge replaces the `edges` map
 wholesale, so include every entry you want preserved inside the new map
 (merge-and-replace semantics, key-by-key at the top level only).
+
+If a stale-enrichment suggestion does get filed by a body drift,
+recovery is a byte-exact restore: re-PUT with the original body
+(`jq -j` it back out, strip the one added newline with
+`perl -0pe 's/\n\z//'`) — the filer auto-accepts on hash match.
 
 The JSON path is the only sanctioned way to modify FM (2026-06-11
 decision). The markdown PUT mode still exists server-side but is
