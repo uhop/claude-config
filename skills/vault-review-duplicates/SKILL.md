@@ -1,6 +1,6 @@
 ---
 name: vault-review-duplicates
-description: "Triage pending `duplicate` suggestions filed by vault-storage's pairwise vector-similarity scan. Decide per pair: confirm as duplicate (merge into one note, redirect wikilinks), accept as related-but-distinct (add `related:` entries on both notes), flag as contradiction (file a `contradiction_candidate`), or reject as a false positive. Backed by `GET /suggestions?kind=duplicate` + the standard frontmatter writer + `vault_delete_file`. Use when the user says /vault-review-duplicates, asks to triage near-duplicate notes, or wants to clean up the topical graph. Requires vault-storage (`:8123`)."
+description: "Triage pending `duplicate` suggestions filed by vault-storage's pairwise vector-similarity scan. Decide per pair: confirm as duplicate (merge into one note, archive the redundant with status: superseded + a supersedes edge, redirect wikilinks), accept as related-but-distinct (add `related:` entries on both notes), flag as contradiction (file a `contradiction_candidate`), or reject as a false positive. Backed by `GET /suggestions?kind=duplicate`, the standard frontmatter writer, and `POST /vault/move` archival retirement (delete reserved for zero-history junk). Use when the user says /vault-review-duplicates, asks to triage near-duplicate notes, or wants to clean up the topical graph. Requires vault-storage (`:8123`)."
 user_invocable: true
 ---
 
@@ -14,10 +14,12 @@ distinct-but-related (add `related:` and reject), might contradict each
 other (flag as `contradiction_candidate`), or might be a false positive
 of the embedding model (reject).
 
-The merge path is the only destructive one — it deletes one of the two
-notes after combining content. **Default to non-destructive resolutions**
-unless the agent has high confidence and the user has authorized direct
-merges.
+The merge path is the only content-altering one — the redundant note is
+**archived** (moved to `<dir>/archive/<YYYY>/` with `status: superseded`
+and a typed `supersedes` edge from the canonical), not deleted; outright
+deletion is reserved for zero-history-value junk. **Default to
+non-destructive resolutions** unless the agent has high confidence and
+the user has authorized direct merges.
 
 ## Invocation
 
@@ -83,7 +85,7 @@ Pay attention to:
 | **Reject (false positive)** | High cosine but actually distinct topics; vocabulary overlap; different lifecycles | Cheap — one POST |
 | **Add related-to** | Same topic, distinct enough that both should exist | Two FM writes (one per note's `related:` array) + accept |
 | **Flag as contradiction** | Both genuinely cover the same ground but reach different conclusions | One file_suggestion call (kind=`contradiction_candidate`) + reject the duplicate suggestion |
-| **Merge (destructive)** | True duplicate: one note is the canonical version, the other's content is redundant or fits cleanly into the canonical. **High agent confidence required.** | Read both, write merged content into the canonical, delete the redundant, update inbound wikilinks if any |
+| **Merge (destructive)** | True duplicate: one note is the canonical version, the other's content is redundant or fits cleanly into the canonical. **High agent confidence required.** | Read both, write merged content into the canonical (with a supersession footer), archive the redundant with `status: superseded`, update inbound wikilinks if any |
 
 Default bias: **reject or add-related**. Merging is irreversible without
 git restore; only do it when the redundancy is unambiguous.
@@ -167,16 +169,21 @@ agent-filed suggestions.)
    - More inbound wikilinks (run `vault-curl /sections/$ID/backlinks`) → more entrenched
    - More structured / well-titled / has wider tags → preferred home
    - When in doubt, prefer the older note (preserves history) and absorb the newer's unique content.
-2. **Write merged content**: combine the canonical's content with anything unique from the redundant note. Edit FM `tags:` to union both notes' tags. Increment-style update — don't lose anything from either note.
+2. **Write merged content**: combine the canonical's content with anything unique from the redundant note. Edit FM `tags:` to union both notes' tags. Increment-style update — don't lose anything from either note. End the merged body with a supersession footer pointing at the *archived* path from step 4 (extension-less):
+   `> Supersedes [[<dir>/archive/<YYYY>/<redundant-name>]].`
+   — the wikilink classifier types that phrasing `supersedes`, so the graph records canonical → archived succession. (The server-side `POST /vault/supersede` primitive can't be used here because the successor — the canonical — already exists; this recipe reproduces its effect for the merge-into-existing case.)
 3. **Update inbound wikilinks**: for each backlink to the redundant note, edit the source's body to point at the canonical. Run:
    ```bash
    vault-curl "/sections/$REDUNDANT_ID/backlinks" -s
    ```
    Then for each backlink source, read, search-replace the body, write back.
-4. **Delete the redundant note**:
+4. **Archive the redundant note** (record id preserved — its history, embeddings, and suggestion trail survive):
    ```bash
-   vault-curl "/vault/$REDUNDANT_PATH" -X DELETE -s -o /dev/null -w "%{http_code}\n"
+   YEAR=$(date +%Y)
+   vault-curl /vault/move -X POST -H 'Content-Type: application/json' \
+     --data-binary "{\"from\": \"$REDUNDANT_PATH\", \"to\": \"$(dirname "$REDUNDANT_PATH")/archive/$YEAR/$(basename "$REDUNDANT_PATH")\"}" -s -o /dev/null -w "%{http_code}\n"
    ```
+   Then stamp it superseded — GET the archived doc, body-only JSON PUT with `{frontmatter: {status: "superseded"}, body}` (the FM merge keeps everything else). Outright `DELETE` is reserved for true junk (an accidental double-paste with zero independent history).
 5. **Accept the suggestion**:
    ```bash
    vault-curl "/suggestions/$ID/accept" -X POST -s

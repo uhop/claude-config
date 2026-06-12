@@ -90,6 +90,15 @@ For each candidate that survives the distance cap and the dedup filter:
 - **Flag as ambiguous** if you can't decide quickly. Don't guess — flag for
   human review. The cost of a wrong "accept" is higher than a "skip" or
   "ambiguous."
+- **Flag as supersession candidate** when the pair isn't *related* but
+  *successive* — one note reads as a stale predecessor the other has
+  effectively replaced (same concept, one clearly newer/fuller, the older
+  unmaintained). Don't add `related:` (that cements the stale note into
+  the graph); list the pair in the review note's own "supersession
+  candidates" section recommending retirement via `POST /vault/supersede`
+  semantics (archive the predecessor, typed `supersedes` edge from the
+  survivor). Never execute the retirement in `--apply` mode — it's a
+  destructive judgment for the main session and the user.
 
 When the candidate's title alone is ambiguous, fetch the candidate's note
 briefly: `vault-curl "/vault/$CANDIDATE_PATH" -s | head -40`. Read sparingly —

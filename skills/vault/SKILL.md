@@ -40,8 +40,9 @@ API endpoints (invoked via `vault-curl <path> [curl-options...]`):
   - **Never hand-author YAML through this mode** — that's the recurring quoting-trap failure class (colon-space, leading `@`/`*`/`-`/`?`, hex/bool/date shadows), and per the 2026-06-11 decision it is reserved for the UI editor and for verbatim round-trips: GET a server-emitted file, text-edit the *body only*, PUT it back. The YAML you re-send was machine-serialized, so it's safe. Any FM change → use the JSON path above.
   - Add `-o /dev/null -w "%{http_code}\n"` to confirm a 204 without flooding stdout (works for either Content-Type).
 - **Conditional writes (`If-Match`, use for read-modify-write on shared docs)**: `GET /vault/{path}` returns an `ETag` header (sha256 of the served bytes); send it back as `-H 'If-Match: <etag>'` on the PUT (either Content-Type) and the write lands only if the document hasn't changed in between — otherwise **412** `precondition_failed` with `details.current_etag`, meaning another writer got there first: re-GET, re-apply your edit to the fresh copy, retry with the new tag. Adopt this for any flow that GETs a shared doc (queue.md, learnings.md, archives), modifies it, and PUTs it back — it converts silent last-writer-wins clobbering into a visible, retryable conflict. Capture the ETag with `-D-` or `-o /dev/null -D- | grep -i etag`; successful PUTs (204) return the new `ETag` so chained conditional edits don't need a re-GET. `If-Match` never creates files (412 on a missing path); plain unconditional PUT remains valid for docs only one session touches.
+- **Supersede (replace a note, archiving the old)**: `vault-curl /vault/supersede -X POST -H 'Content-Type: application/json' --data-binary @payload.json` with `{old_path, new_path?, frontmatter, body}` — the successor in the standard JSON write shape; `new_path` defaults to `old_path` (supersede-in-place: the successor takes over the path, so inbound wikilinks resolve to the replacement). Use this — never DELETE+PUT or a wholesale overwrite — whenever a write *replaces* a note rather than evolving it: the old note moves to `<dir>/archive/<YYYY>/<name>` with its record id intact (edges/embeddings/suggestions survive) and gets `status: superseded`; the successor's body is auto-appended a `> Supersedes [[<archived-path>]].` footer that backs the typed `supersedes` edge (don't add your own). Validation-first — a rejected request (bad FM, occupied `new_path`/archive slot) mutates nothing. Routine edits to an existing note stay plain PUTs; supersession is for replacement semantics.
 - **List**: `vault-curl /vault/{path}/ -s` (trailing slash → `{"files": [...]}`)
-- **Delete**: `vault-curl /vault/{path} -X DELETE`
+- **Delete**: `vault-curl /vault/{path} -X DELETE` — for junk with zero history value; a note retired *in favor of other content* should be superseded (or moved to an archive folder), not deleted.
 - **Search**: `vault-curl /search/simple/ -X POST -G --data-urlencode 'query=...'`
   - The Obsidian Local REST API expects `query` as a URL parameter on a POST; `-G --data-urlencode` produces the right form.
 
@@ -153,7 +154,12 @@ are skipped — the user is still iterating on them.
    `vault-curl /vault/{path} -s`.
 3. Extract concepts — create or update topic notes in `topics/`,
    project notes in `projects/<name>/`, or queue items in
-   `projects/<name>/queue.md` per the content's nature.
+   `projects/<name>/queue.md` per the content's nature. When a
+   compilation *replaces* an existing topic outright (the old note is
+   being retired, not extended), use `POST /vault/supersede` instead of
+   overwriting in place — the predecessor is archived with its record id
+   and a typed `supersedes` edge instead of silently vanishing into a
+   PUT.
 4. Add wikilinks, backlinks, and tags on the derived notes.
 5. **Enrich at capture.** When creating a new topic note (or materially
    rewriting an existing one), write the `agent:` block in the same PUT
@@ -193,7 +199,7 @@ Extract learnings from the current project/session.
 2. Read existing project notes if they exist (`projects/{name}/`)
 3. Analyze recent work: git log, changed files, decisions made
 4. Create or update `projects/{name}/learnings.md`, `decisions.md`, `stack.md`
-5. Extract cross-project patterns into `topics/` notes (e.g., "api-rate-limiting", "docker-networking"). When creating a new topic note here, enrich at capture per the `/vault ingest` step 5 procedure — write the `agent:` block in the same PUT.
+5. Extract cross-project patterns into `topics/` notes (e.g., "api-rate-limiting", "docker-networking"). Propose-then-write: before creating, check neighbours with `POST /vault/propose` (search-before-write); if an existing note already covers the concept, extend it, and if the new write would *replace* it wholesale, use `POST /vault/supersede` rather than minting a near-duplicate. When creating a new topic note here, enrich at capture per the `/vault ingest` step 5 procedure — write the `agent:` block in the same PUT.
 
 ### /vault query {question}
 
