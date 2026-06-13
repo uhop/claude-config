@@ -59,16 +59,18 @@ internal-only = **no release**.
    - `exports` map is correct (no transforming wildcards; see
      [[topics/full-path-imports-for-runtime-portability]]).
    - `description` and `keywords` are current.
-   - **Executable `bin`.** If `package.json` has a `bin`, every bin target file
-     is executable — git mode `100755`, not `100644` (check with
-     `git ls-files -s <bin>`). npm preserves the working-tree mode on publish
-     and does **not** auto-chmod bins, so a `100644` bin ships as `0o644` and
-     `npx <pkg>` / global install fail with permission-denied — which npx
-     surfaces as the misleading "command not found" — even though `node <bin>`,
-     the test suite, and `npm pack --dry-run` (which doesn't display mode bits)
-     all pass. That blind spot is exactly how a broken bin reaches the registry.
-     Fix: `chmod +x <bin>` then `git update-index --chmod=+x <bin>`; confirm a
-     fresh `npm pack` lists the bin as `-rwxr-xr-x` (`tar tzvf <tgz>`).
+   - **Executable `bin` (tidy, not load-bearing).** If `package.json` has a
+     `bin`, shipping each bin target as git mode `100755` rather than `100644`
+     is a small hygiene nicety (inspect with `git ls-files -s <bin>`; set with
+     `chmod +x <bin>` then `git update-index --chmod=+x <bin>`). It is **not** a
+     release blocker: npm sets the executable bit on bin targets when it
+     installs a package and links them into `.bin`, so a committed `100644` bin
+     still runs fine under `npx <pkg>` and global install. A `npx` "command not
+     found" is almost never a mode-bit problem — the usual real cause is running
+     `npx <pkg>@<version>` from **inside the package's own repo** at the version
+     matching the local `package.json`, which makes `npm exec` resolve to the
+     local, uninstalled package (no `.bin`) and exit 127. See
+     [[topics/npx-command-not-found-from-own-repo]].
 7. Check that the copyright year in `LICENSE` includes the current year
    (e.g. `2005-2024` → `2005-2026`).
 8. Bump `version` in `package.json` per the tier picked in step 0
