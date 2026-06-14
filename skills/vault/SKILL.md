@@ -200,6 +200,7 @@ Extract learnings from the current project/session.
 3. Analyze recent work: git log, changed files, decisions made
 4. Create or update `projects/{name}/learnings.md`, `decisions.md`, `stack.md`
 5. Extract cross-project patterns into `topics/` notes (e.g., "api-rate-limiting", "docker-networking"). Propose-then-write: before creating, check neighbours with `POST /vault/propose` (search-before-write); if an existing note already covers the concept, extend it, and if the new write would *replace* it wholesale, use `POST /vault/supersede` rather than minting a near-duplicate. When creating a new topic note here, enrich at capture per the `/vault ingest` step 5 procedure — write the `agent:` block in the same PUT.
+6. **Promote this session's new durable local memories into the vault.** During the session the agent's auto-memory writes land in *per-machine* local memory (`~/.claude/projects/<hash>/memory/`), which is not fleet-shared. For each `feedback_*.md` / `project_*.md` written or materially updated this session, route it by the `projects/agent-workflow/decisions` D1 table — feedback rules → `projects/<name>/feedback.md`, project facts / deferred options → `decisions.md` / `queue.md` Backlog — **deduped and propose-then-confirm**, never a blind copy. Most candidates are already captured elsewhere: verify against `decisions.md` / `learnings.md` / global `CLAUDE.md` / existing `topics/` first (per `topics/project-feedback-md-convention`). The vault is the durable source of truth; where a local memory is promoted, leave a thin local pointer rather than a duplicate fact (double-writing the same rule to both stores reintroduces drift). This makes the local→vault migration continuous so per-machine memories stop accumulating. This is the **write path** that pairs with `/vault resume`'s read of `feedback.md`.
 
 ### /vault query {question}
 
@@ -212,24 +213,40 @@ Research a question against the vault.
 
 ### /vault lint
 
-Run the `vault-lint` skill to surface hygiene findings across the whole vault.
+> **Not built yet.** The hygiene-lint skill described here was specced but never
+> implemented — there is no `~/.claude/skills/vault-lint/` on any fleet machine
+> (claude-config carries every fleet skill, so its absence there means it exists
+> nowhere). The categories below have **no automated check**: the thresholds
+> policy at `topics/vault-hygiene-policy.md` is written, but nothing reads it.
+> Tracked in `projects/agent-workflow/queue.md`.
+>
+> What *does* exist is a different tool — the server **integrity** lint:
+>
+> ```bash
+> vault-curl /system/lint -s   # integrity (embeddings/orphans/temporal/tag-aliases), NOT hygiene
+> ```
+>
+> It does not check broken wikilinks, frontmatter, density, currency, or
+> duplicate folders. For a broken-link check today, extract `[[...]]` targets
+> from the notes you touched and confirm each resolves (bare-name links resolve
+> by basename, e.g. `topics/<name>.md`).
+
+**Planned design** (for whoever builds it). A `vault-lint.sh` to surface hygiene
+findings across the whole vault:
 
 ```bash
 ~/.claude/skills/vault-lint/vault-lint.sh           # full report
 ~/.claude/skills/vault-lint/vault-lint.sh --quiet   # data lines only
 ```
 
-Categories reported: `FRONTMATTER` (required keys, date sanity), `WIKILINKS`
+Categories: `FRONTMATTER` (required keys, date sanity), `WIKILINKS`
 (broken targets), `DENSITY` (topic notes < 2 outbound; project notes orphaned),
 `CURRENCY` (per-type retention thresholds — logs/queries/raw/project/permanent),
-`DUPLICATES` (folders under `projects/` with confusingly-similar names).
+`DUPLICATES` (folders under `projects/` with confusingly-similar names). Exit
+`0` clean, `1` if any findings; `topics/vault-hygiene-policy.md` (in the vault)
+is the source of truth for thresholds.
 
-Exit `0` clean, `1` if any findings. The skill at
-`~/.claude/skills/vault-lint/SKILL.md` documents the rules; the policy lives
-at `topics/vault-hygiene-policy.md` (in the vault) and is the source of truth
-for thresholds.
-
-Findings are reported only — auto-fix is not implemented. After running, decide:
+Findings reported only — no auto-fix. On findings, decide:
 - Fix legitimate issues directly (frontmatter backfill, broken-link rewrites).
 - For per-type retention findings (e.g., logs > 90 days), move to
   `logs/archive/<YYYY>/` rather than delete; archival preserves content while
@@ -306,7 +323,14 @@ calls; guard every `vault-curl … | jq …` pipe with `|| true` per § "Guard
      either file → the agent-workflow project isn't scaffolded yet; omit
      silently (it's an opt-in surface, not a required one).
 6. Read the 3 most recent session logs in `logs/`.
-7. Read relevant project notes for the current working directory.
+7. Read relevant project notes for the current working directory — **explicitly
+   including `projects/<name>/feedback.md` if it exists**, and surface its rules
+   near the top of the resume output. This is the **read path** for fleet-shared
+   project feedback: the vault is pull-only and *not* auto-loaded the way local
+   per-machine memory is, so resume is what brings a repo's project-specific
+   working rules into the session. See `topics/project-feedback-md-convention`
+   (§ "How it's consulted") for the read/write bridge this forms with `/vault
+   wrap`.
 8. Summarize current state and what's left to do. If `check-drift` flagged
    new commits / tags / publishes that aren't reflected in `projects/<name>`
    notes, update those notes to match (or at minimum flag the divergence in

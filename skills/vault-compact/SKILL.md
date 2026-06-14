@@ -182,7 +182,7 @@ Compacted <folder>:
   archived: <count> pieces (<oldest-date> to <newest-archived-date>)
   summary written: <folder>/_summary-<period>.md
   pieces remaining in folder: <count>
-  inbound wikilinks broken: <count>  (run /vault-lint for details, or rewrite manually)
+  inbound wikilinks broken: <count>  (vault-lint is unbuilt — rewrite manually)
 ```
 
 ## Sub-agent mode (deferred)
