@@ -48,7 +48,13 @@ const resolveWindowStart = since => {
     if (existsSync(STATE_FILE)) {
       try {
         const s = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
-        if (typeof s.last_run_ms === 'number') return s.last_run_ms;
+        // Guard against a corrupt (far-future) cached value — e.g. a 19-digit
+        // <seconds><nanoseconds> blob from a bad `date +%s%3N` write. Allow up
+        // to a day of clock skew, else fall through to the 7d default rather
+        // than computing a future window that scans nothing.
+        if (typeof s.last_run_ms === 'number' && s.last_run_ms <= Date.now() + 86400e3) {
+          return s.last_run_ms;
+        }
       } catch {}
     }
     return Date.now() - 7 * 86400 * 1000;

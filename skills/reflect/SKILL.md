@@ -94,10 +94,10 @@ Read all three to dedupe; write only to vault + claude-config.
    | Surprise / discovery worth preserving | vault `topics/<topic-name>.md` (new note) or extend an existing topic |
    | Confirmation of non-obvious approach | same destinations as corrections — captures "do this" rather than "don't do that" |
 
-6. **Write the report.** Path: `projects/agent-workflow/reports/YYYY-MM-DD.md`. Use `vault-curl` JSON-PUT path (FM has dates and could shadow). Body shape:
+6. **Write the report.** Path: `projects/agent-workflow/reports/YYYY-MM-DD-<host>.md`, where `<host>` is the short hostname (`hostname -s`). The `-<host>` suffix disambiguates the per-machine runs done on each box — transcripts are local-only, so each host's run is distinct content, not a redundant overwrite. If that exact path already exists (a same-host re-run on the same day), append `-HHMM` → `YYYY-MM-DD-<host>-HHMM.md` rather than clobbering the earlier run. Use `vault-curl` JSON-PUT path (FM has dates and could shadow). Body shape:
 
    ```markdown
-   # Reflect — {date} (since {window_start_iso})
+   # Reflect — {date} · {host} (since {window_start_iso})
 
    ## Stats
    - Sessions scanned: N
@@ -127,7 +127,7 @@ Read all three to dedupe; write only to vault + claude-config.
 
    ```yaml
    ---
-   title: Reflect — YYYY-MM-DD
+   title: Reflect — YYYY-MM-DD (<host>)
    tags: [agent-workflow, reflect, report]
    type: query
    created: YYYY-MM-DD
@@ -176,7 +176,9 @@ Read all three to dedupe; write only to vault + claude-config.
    console output, the value comes back wrapped in ANSI escape codes
    that break `jq --argjson`.
 
-   Then PUT updated `projects/agent-workflow/state.md` with the new `last_run` JSON block (read it first, swap the JSON, PUT back). Local cache is what `--since=last-run` reads; vault state is the cross-machine source of truth.
+   Then update `projects/agent-workflow/state.md`'s `last_run` block, which is a **map keyed by short hostname** (`hostname -s`) — one entry per machine, so each host's progress stays independently visible and concurrent machines don't overwrite each other (`/reflect` runs per-box; transcripts are local-only). Read `state.md` first, set **only** the current host's key — `last_run[<host>] = {last_run_iso, last_run_ms}` — leave every other host's entry intact, and PUT it back. The per-machine local cache (`~/.cache/reflect/last-run.json`, a single block) is the functional authority `--since=last-run` actually reads on this host; the vault map is a cross-machine mirror for visibility, not the read path.
+
+   Legacy single-block `state.md` (a bare `last_run: {last_run_iso, last_run_ms}` from before this convention) → on first write under the new scheme, migrate it by moving the existing block under its originating host's key if known, otherwise drop it and start the map fresh with this host's entry.
 
 ## When NOT to run
 
