@@ -64,7 +64,8 @@ vault-curl "/sections?type=permanent&limit=$LIMIT&exclude=body" -s | \
 For each candidate, fetch the file:
 
 ```bash
-vault-curl "/vault/$FILE_PATH" -s -o /tmp/note.md
+WORK=$(mktemp -d)   # scratch dir; reuse this literal path across the steps below (CLAUDE.md § "Scratch files"), rm -rf "$WORK" when done
+vault-curl "/vault/$FILE_PATH" -s -o "$WORK/note.md"
 ```
 
 Parse the FM. If `agent.derived_from_hash` matches the record's current
@@ -84,7 +85,7 @@ follows the closing `---\n` of the FM block — preserve trailing newlines
 verbatim.
 
 ```bash
-BODY_HASH=$(awk '/^---$/{n++; next} n==2{print}' /tmp/note.md | sha256sum | cut -d' ' -f1)
+BODY_HASH=$(awk '/^---$/{n++; next} n==2{print}' "$WORK/note.md" | sha256sum | cut -d' ' -f1)
 # or in Python: hashlib.sha256(body.encode("utf-8")).hexdigest()
 ```
 
@@ -187,17 +188,18 @@ and special characters in `summary`):
 
 ```bash
 jq --null-input \
-  --rawfile body /tmp/note-body.md \
+  --rawfile body "$WORK/note-body.md" \
   --arg hash "$BODY_HASH" \
   --arg summary "$SUMMARY" \
   --arg derived_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{frontmatter: {agent: {derived_at: $derived_at, derived_from_hash: $hash, summary: $summary, key_concepts: ["..."], complexity: "prose"}}, body: $body}' \
-  > /tmp/payload.json
+  > "$WORK/payload.json"
 
 vault-curl "/vault/$FILE_PATH" -X PUT \
   -H 'Content-Type: application/json' \
-  --data-binary @/tmp/payload.json \
+  --data-binary @"$WORK/payload.json" \
   -o /dev/null -w "%{http_code}\n"
+rm -rf "$WORK"   # best-effort cleanup
 ```
 
 Expect `204`.

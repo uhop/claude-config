@@ -141,15 +141,17 @@ title/header and bullet lists, plus a YAML frontmatter object the
 server will format correctly):
 
 ```bash
-jq --null-input --rawfile body /tmp/proposals.md \
+# $WORK is the mktemp -d dir where you wrote proposals.md earlier; reuse its literal path (CLAUDE.md § "Scratch files")
+jq --null-input --rawfile body "$WORK/proposals.md" \
   --arg today "$(date -u +%Y-%m-%d)" \
   '{frontmatter: {title: "Related-link proposals", type: "query", status: "active", created: $today, updated: $today, tags: ["proposals","related"]}, body: $body}' \
-  > /tmp/payload.json
+  > "$WORK/payload.json"
 
 vault-curl "/vault/queries/$FILENAME" -X PUT \
   -H 'Content-Type: application/json' \
-  --data-binary @/tmp/payload.json \
+  --data-binary @"$WORK/payload.json" \
   -o /dev/null -w "%{http_code}\n"
+rm -rf "$WORK"   # best-effort
 ```
 
 ### 5b. Apply mode (`--apply`): write directly to source FM

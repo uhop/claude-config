@@ -47,11 +47,12 @@ Read all three to dedupe; write only to vault + claude-config.
 2. **Scan.** Run the scanner with the user's args:
 
    ```bash
-   mkdir -p /tmp/reflect && \
-     node ~/.claude/skills/reflect/reflect.mjs --out=/tmp/reflect/scan.json $ARGUMENTS
+   WORK=$(mktemp -d) && \
+     node ~/.claude/skills/reflect/reflect.mjs --out="$WORK/scan.json" $ARGUMENTS && \
+     echo "scan written: $WORK/scan.json"
    ```
 
-   The script writes JSON to stdout AND to the `--out` path. Use Read on `/tmp/reflect/scan.json` to consume. Output shape:
+   The script writes JSON to stdout AND to the `--out` path. `Read` that path — captured from the `scan written: …` line above (CLAUDE.md § "Scratch files": reuse the literal `mktemp -d` dir across calls, don't re-`mktemp`) — to consume. Output shape:
 
    ```json
    {

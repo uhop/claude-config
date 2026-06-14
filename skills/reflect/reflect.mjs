@@ -12,7 +12,7 @@
 //   reflect.mjs                              # default --since=last-run (falls back to 7d)
 //   reflect.mjs --since=24h|7d|14d|YYYY-MM-DD
 //   reflect.mjs --project=NAME               # filter by project dir basename
-//   reflect.mjs --out=/tmp/reflect-scan.json # write JSON to file (also stdout)
+//   reflect.mjs --out="$WORK/scan.json"     # write JSON to file (also stdout); $WORK from mktemp -d
 //   reflect.mjs --include-sidechain          # include sub-agent transcripts
 //   reflect.mjs --max-excerpt-chars N        # cap each excerpt (default 800)
 

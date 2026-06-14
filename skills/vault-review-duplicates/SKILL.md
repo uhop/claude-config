@@ -119,20 +119,22 @@ existing=$(vault-curl "/sections/$RECORD_ID/meta" -s | jq '.related // []')
 new_related=$(echo "$existing" | jq --arg link "[[$OTHER_PATH_NO_MD]]" 'if index($link) then . else . + [$link] end')
 
 # 3. Read body once, pass through unchanged.
-vault-curl "/vault/$NOTE_PATH" -s | awk '/^---$/{c++; next} c>=2{print}' > /tmp/body.md
+WORK=$(mktemp -d)   # scratch dir; rm -rf when done (CLAUDE.md § "Scratch files")
+vault-curl "/vault/$NOTE_PATH" -s | awk '/^---$/{c++; next} c>=2{print}' > "$WORK/body.md"
 
 # 4. Compose the JSON payload — only `related` is updated.
 jq --null-input \
-  --rawfile body /tmp/body.md \
+  --rawfile body "$WORK/body.md" \
   --argjson related "$new_related" \
   '{frontmatter: {related: $related}, body: $body}' \
-  > /tmp/payload.json
+  > "$WORK/payload.json"
 
 # 5. PUT.
 vault-curl "/vault/$NOTE_PATH" -X PUT \
   -H 'Content-Type: application/json' \
-  --data-binary @/tmp/payload.json \
+  --data-binary @"$WORK/payload.json" \
   -o /dev/null -w "%{http_code}\n"
+rm -rf "$WORK"
 ```
 
 Expect `204`. The double-FM-block hazard doesn't apply to the JSON path
