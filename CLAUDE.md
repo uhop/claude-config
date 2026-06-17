@@ -26,6 +26,7 @@ Don't hardcode `/tmp/<name>` for scratch — collides with stale files from prio
 
 - Prefer prefix `++i` / `--i` when the result is unused.
 - Measure perf with `nano-bench` (`~/Open/nano-bench/`). No ad-hoc timing.
+- **No comments that narrate the code.** Code isn't documentation — don't add a comment that restates *what* the code does. The only allowed comments, each as the **shortest possible marker** (a pointer, not an explanation): JSDoc when explicitly requested or required; a reference for a non-trivial algorithm (e.g. a Wikipedia/paper link); a non-trivial *decision* or constraint — *why* it's this way, footgun/ordering caveats included when there's a real reason (`// Hughes–Smith: see benchmarks`, `// must precede flush(): drains the queue`). The bar is *why*, never *what*. Anything longer belongs in `dev-docs/`, the project wiki, or a vault decision note — not the source. Applies to all new/edited code now; strip narrating comments opportunistically in files you already touch, no standalone cleanup PRs. Full: [[topics/no-narrating-comments]].
 
 ## Ambiguity
 
