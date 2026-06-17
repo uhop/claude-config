@@ -170,6 +170,16 @@ internal-only = **no release**.
 13. Dry-run publish to verify package contents: `npm pack --dry-run`. Confirm
     the file list matches step 6 (source + `llms*.txt` + `LICENSE` + `README.md`,
     nothing authoring-side).
-14. Stop and report — do **not** commit, tag, or publish without explicit
+14. **Project-specific release steps.** If the repo's `AGENTS.md` has a
+    "Releasing" section (or a `.claude/release-check.local.md` exists), perform
+    those too — they extend this generic checklist rather than replacing it, so
+    the project carries only its delta and this skill stays its single source
+    (no fork to drift). Example: a native-addon project that ships a tagged
+    GitHub release with CI-built binaries should verify the version tag
+    triggered the binary build, the release exists, and the binary matrix is
+    complete — recovering by re-running failed jobs (a transient/system
+    failure) or deleting the release and its tag, fixing, then re-tagging to
+    trigger a fresh build (a real failure).
+15. Stop and report — do **not** commit, tag, or publish without explicit
     confirmation from the user. The user commits, tags, and publishes after
     their own review.
