@@ -75,12 +75,13 @@ Read all three to dedupe; write only to vault + claude-config.
    - `~/.claude/projects/<hash>/memory/*.md` for the relevant project hash
    - The relevant project's vault `feedback.md`, `learnings.md`, `decisions.md` (if any)
    - `projects/agent-workflow/queue.md` (already-queued improvements)
+   - **Recent other-host reports** — list `projects/agent-workflow/reports/` and read those from the last ~60 days whose `-<host>` filename suffix is *not* this machine. This is the **cross-machine recurrence input** for step 4: transcripts are local-only, so another host's report is the only fleet-visible evidence that the same signal also fired there. (Dedupe / `already_covered` still comes from the rules stores above — a report only *proposes*; the rule isn't "covered" until it lands in `CLAUDE.md` / `feedback.md` / `decisions.md` / `queue.md`.)
 
    If the candidate's rule overlaps an existing entry, mark it `already_covered` — it goes in the report's "Already covered" section, not the proposals.
 
 4. **Classify by confidence.** For each non-covered candidate:
-   - **high** — recurrence ≥ 2 sessions (any machine) OR singular but with decisive language ("never", "always", "we don't do that"). Per [[projects/agent-workflow/decisions]] D2 + D3.
-   - **medium** — singular, plausible signal, language is neutral.
+   - **high** — recurrence, OR singular but with decisive language ("never", "always", "we don't do that"). Per [[projects/agent-workflow/decisions]] D2 + D3. Recurrence is met when **either** (a) the signal fired in ≥ 2 sessions in *this* scan, **or** (b) it fired once here and a matching signal appears in another host's recent report from step 3 — that cross-machine hit counts as the second occurrence. Without (b) a once-per-machine signal never crosses the bar on either host, since each run sees only local transcripts. Matching is semantic (same underlying rule / behaviour), not string-identical; when the match is uncertain, treat it as medium, not high.
+   - **medium** — singular, plausible signal, neutral language, no cross-machine corroboration.
    - **low / ambiguous** — multiple plausible interpretations, or possibly a one-off.
 
 5. **Route each high/medium candidate.** Pick the destination from the table below. Low/ambiguous items go to `clarify-queue.md` regardless.
@@ -190,7 +191,7 @@ Read all three to dedupe; write only to vault + claude-config.
 ## Limitations (first iteration)
 
 - **Regex-based classification.** False positives are normal — the agent's dedupe + judgment step in the procedure is what makes the output useful. A candidate that looks like a correction may turn out to be benign in context.
-- **No cross-machine transcript merging.** Each host sees only its own transcripts. Promotion to fleet store still happens; just based on single-host evidence.
+- **No cross-machine transcript *merging*.** Each host still scans only its own transcripts. Cross-machine *recurrence* is recovered indirectly: step 3 reads other hosts' recent reports and step 4 counts a match there as a second occurrence, so a once-per-machine signal can still reach high confidence. The catch: this only works if the other host has actually run `/reflect` and committed its report — an un-run host contributes no evidence — and the match is semantic, not exact.
 - **Tool-input fingerprint is JSON-serialize-and-truncate.** Catches identical retries, misses semantically-equivalent ones with different whitespace / arg order.
 
 These are deliberate first-cut tradeoffs; revisit once `/reflect` has produced enough output to know which are worth refining.

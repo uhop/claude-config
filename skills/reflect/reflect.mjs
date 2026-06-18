@@ -87,6 +87,19 @@ const NEGATION_PATTERNS = [
   /\bnot\s+(that|this)\s+(way|one|approach)\b/i,
 ];
 
+// Cue-less corrections: a steer phrased as an observation-of-a-better-way, with
+// none of the sharp NEGATION cues — the class that let the scratch-file/mktemp
+// correction fire zero signals across two /reflect runs. Recall-over-precision
+// by design (dedupe + agent judgment carry precision downstream); deliberately
+// excludes bare imperatives ("do it" / "continue"), which are task directions.
+const OBSERVATIONAL_CORRECTION_PATTERNS = [
+  /\bI(?:'ve| have)? noticed\b/i,
+  /\bthere(?:'s| is)\s+(?:a|an)\s+(better|doc|convention|skill|way|tool|helper|rule|pattern)\b/i,
+  /\binstead of\b/i,
+  /\brather than\b/i,
+  /\bwhy\s+(?:don'?t|not|are you|did you|would you|are we|did we)\b/i,
+];
+
 const CONFIRMATION_PATTERNS = [
   /\byes,?\s*(exactly|right|that'?s right|perfect|good|correct)\b/i,
   /\b(perfect|exactly right|nailed it|spot on)\b/i,
@@ -339,10 +352,11 @@ for (const t of transcripts) {
     const text = e.userText;
     const prevAssistant = i > 0 && events[i - 1].role === 'assistant';
     const hasNegation = NEGATION_PATTERNS.some(re => re.test(text));
+    const hasObservational = OBSERVATIONAL_CORRECTION_PATTERNS.some(re => re.test(text));
     const hasConfirmation = CONFIRMATION_PATTERNS.some(re => re.test(text));
     const hasSurprise = SURPRISE_PATTERNS.some(re => re.test(text));
 
-    if (!hasNegation && !hasConfirmation && !hasSurprise) continue;
+    if (!hasNegation && !hasObservational && !hasConfirmation && !hasSurprise) continue;
 
     const ctxStart = Math.max(0, i - 3);
     const ctxEnd = Math.min(events.length, i + 2);
@@ -360,7 +374,7 @@ for (const t of transcripts) {
       excerpt
     };
 
-    if (hasNegation && prevAssistant) signals.corrections.push({...base, kind: 'correction'});
+    if ((hasNegation || hasObservational) && prevAssistant) signals.corrections.push({...base, kind: 'correction'});
     if (hasConfirmation && prevAssistant) signals.confirmations.push({...base, kind: 'confirmation'});
     if (hasSurprise) signals.surprises.push({...base, kind: 'surprise'});
   }
