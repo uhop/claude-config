@@ -214,40 +214,29 @@ Research a question against the vault.
 
 ### /vault lint
 
-> **Not built yet.** The hygiene-lint skill described here was specced but never
-> implemented — there is no `~/.claude/skills/vault-lint/` on any fleet machine
-> (claude-config carries every fleet skill, so its absence there means it exists
-> nowhere). The categories below have **no automated check**: the thresholds
-> policy at `topics/vault-hygiene-policy.md` is written, but nothing reads it.
-> Tracked in `projects/agent-workflow/queue.md`.
->
-> What *does* exist is a different tool — the server **integrity** lint:
->
-> ```bash
-> vault-curl /system/lint -s   # integrity (embeddings/orphans/temporal/tag-aliases), NOT hygiene
-> ```
->
-> It does not check broken wikilinks, frontmatter, density, currency, or
-> duplicate folders. For a broken-link check today, extract `[[...]]` targets
-> from the notes you touched and confirm each resolves (bare-name links resolve
-> by basename, e.g. `topics/<name>.md`).
-
-**Planned design** (for whoever builds it). A `vault-lint.sh` to surface hygiene
-findings across the whole vault:
+The **hygiene** lint, implemented as its own skill — `/vault-lint`
+(`~/.claude/skills/vault-lint/vault-lint.mjs`). It reads every indexed record
+via `/sections` and reports five categories — `FRONTMATTER` (required keys, date
+sanity), `WIKILINKS` (broken body targets), `DENSITY` (topic notes < 2 outbound;
+isolated project notes), `CURRENCY` (per-type retention), `DUPLICATES`
+(near-identical folders / titles) — against the thresholds in
+`topics/vault-hygiene-policy.md`. Exit `0` clean, `1` on findings. Read-only:
+it reports, never fixes. Full docs + flags + v1 limitations:
+`~/.claude/skills/vault-lint/SKILL.md`.
 
 ```bash
-~/.claude/skills/vault-lint/vault-lint.sh           # full report
-~/.claude/skills/vault-lint/vault-lint.sh --quiet   # data lines only
+~/.claude/skills/vault-lint/vault-lint.mjs           # full report
+~/.claude/skills/vault-lint/vault-lint.mjs --quiet   # tab-separated data lines (pipe/grep)
 ```
 
-Categories: `FRONTMATTER` (required keys, date sanity), `WIKILINKS`
-(broken targets), `DENSITY` (topic notes < 2 outbound; project notes orphaned),
-`CURRENCY` (per-type retention thresholds — logs/queries/raw/project/permanent),
-`DUPLICATES` (folders under `projects/` with confusingly-similar names). Exit
-`0` clean, `1` if any findings; `topics/vault-hygiene-policy.md` (in the vault)
-is the source of truth for thresholds.
+Do not confuse it with the server-side **integrity** lint, which is a different
+tool (embeddings / orphans / temporal anomalies / tag aliases — *not* hygiene):
 
-Findings reported only — no auto-fix. On findings, decide:
+```bash
+vault-curl /system/lint -s   # integrity, NOT hygiene
+```
+
+On findings, decide (the linter won't):
 - Fix legitimate issues directly (frontmatter backfill, broken-link rewrites).
 - For per-type retention findings (e.g., logs > 90 days), move to
   `logs/archive/<YYYY>/` rather than delete; archival preserves content while
