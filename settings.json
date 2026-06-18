@@ -37,6 +37,7 @@
   },
   "effortLevel": "xhigh",
   "tui": "fullscreen",
+  "theme": "auto",
   "autoCompactEnabled": true,
   "skipAutoPermissionPrompt": true,
   "mcpServers": {
