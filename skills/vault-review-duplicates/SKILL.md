@@ -269,7 +269,7 @@ execute as actual merges with user confirmation.
 ## Backend requirement
 
 vault-storage on `:8123`. The maintenance scan and the duplicate-suggestion
-schema are server-side. Obsidian's REST API has no equivalent.
+schema are server-side.
 
 ## Dependencies
 

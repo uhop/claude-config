@@ -1,6 +1,6 @@
 ---
 name: vault-similar
-description: Find records semantically similar to a given vault note via embedding nearest-neighbours. Backed by `GET /sections/{record_id}/similar`. Use when the user says /vault-similar, asks "what other notes are like this one", or wants to discover related concepts beyond what's explicitly wikilinked. Returns ranked records by cosine similarity. Requires vault-storage (`:8123`) — Obsidian's REST API doesn't expose embeddings.
+description: Find records semantically similar to a given vault note via embedding nearest-neighbours. Backed by `GET /sections/{record_id}/similar`. Use when the user says /vault-similar, asks "what other notes are like this one", or wants to discover related concepts beyond what's explicitly wikilinked. Returns ranked records by cosine similarity. Requires vault-storage (`:8123`).
 user_invocable: true
 ---
 
@@ -56,7 +56,7 @@ Returns the top-K embedding-nearest-neighbour records to a given record. Cheap (
 
 ## Backend requirement
 
-Vault-storage on `:8123` only. Obsidian's `/search/simple/` doesn't have a per-record similarity endpoint. If `$VAULT_API_URL` points at `:8089`, the skill returns 404 — flag the cutover state to the user.
+Vault-storage on `:8123` only.
 
 ## Dependencies
 

@@ -223,9 +223,8 @@ sub-agent invocation, the prompt should specify:
 ## Backend requirement
 
 vault-storage on `:8123`. Path-based reads / writes / deletes are all REST
-calls. Obsidian's REST API supports the same path operations but lacks the
-record-level metadata queries (created dates, status, type) that the
-piece-selection step uses.
+calls, as are the record-level metadata queries (created dates, status, type)
+that the piece-selection step uses.
 
 ## Dependencies
 

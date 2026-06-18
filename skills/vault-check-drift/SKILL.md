@@ -118,6 +118,6 @@ Safe to re-run repeatedly: `state.md` is idempotent. Rate-limit: a separate `las
 - `git` — local repo operations.
 - `jq` — JSON parsing.
 - `npm` — registry query when a publishable package is detected.
-- `vault-curl` — Obsidian Local REST API access (reads + writes `state.md`).
+- `vault-curl` — vault REST API access (reads + writes `state.md`).
 
 Script exits 2 on missing deps or when invoked outside a git repo.

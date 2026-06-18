@@ -99,8 +99,8 @@ for (const r of all) {
   if (!byBase.has(b)) byBase.set(b, []);
   byBase.get(b).push(n);
 }
-// Path-qualified targets resolve by path; bare names by basename (Obsidian's
-// shortest-path rule, also the policy's stated behaviour).
+// Path-qualified targets resolve by path; bare names by basename (shortest-path
+// resolution, also the policy's stated behaviour).
 const resolves = t => (t.includes('/') ? pathSet.has(t) : byBase.has(t));
 
 // inbound link graph (body links only) — feeds project-isolation + query currency

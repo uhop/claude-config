@@ -1,6 +1,6 @@
 ---
 name: vault-search
-description: Search the vault for notes matching a query. Backed by `POST /search/simple/` — works against both the Obsidian Local REST API (lexical only) and vault-storage (lexical + semantic). Use when the user says /vault-search, asks to find notes matching a phrase, or wants to locate the right note to read before answering a question. Returns ranked hits with snippets.
+description: Search the vault for notes matching a query. Backed by `POST /search/simple/` — works against vault-storage (lexical + semantic). Use when the user says /vault-search, asks to find notes matching a phrase, or wants to locate the right note to read before answering a question. Returns ranked hits with snippets.
 user_invocable: true
 ---
 
@@ -63,21 +63,14 @@ Combinable: `/vault-search auth flow --semantic --limit=10`.
 
 ## Result interpretation
 
-- **Lexical scoring is ordinal, not absolute** — the two backends use different formulas. Obsidian Local REST API returns BM25-style scores (often negative; smaller magnitudes for better matches in some scoring variants). vault-storage returns `(body matches) + 3 × (title matches)`. Treat the order returned by the endpoint as authoritative; don't reason about the numeric score across backends.
+- **Lexical scoring is ordinal, not absolute** — vault-storage returns `(body matches) + 3 × (title matches)`. Treat the order returned by the endpoint as authoritative; don't reason about the absolute numeric score.
 - **Semantic scoring**: 1 = identical embedding; ~0.7+ = strong match; ~0.5 = topical neighbour; < 0.4 = noise. Don't filter on threshold by default — return whatever the endpoint ranked.
 
 When the user is researching a topic, the natural next step after a search is to read the top hit. Offer it: "Want me to read `<top-hit>`?" — don't auto-read unless the user clearly just wants the content (e.g. asked for "the note on X", not "find the note on X").
 
-## Backend compatibility
+## Backend
 
-| Backend                          | Lexical | Semantic           | Honors `limit` |
-| -------------------------------- | ------- | ------------------ | -------------- |
-| Obsidian Local REST API (`:8089`) | yes     | param ignored → lexical | **no** — returns all hits |
-| vault-storage (`:8123`)          | yes     | yes                | yes |
-
-The skill works against whichever URL `$VAULT_API_URL` points at. If `--semantic` is requested but the backend doesn't support it, results will silently fall back to lexical — acceptable for now; flag it to the user only if the result shape suggests a fallback occurred (lexical hits returned when the user wanted embedding similarity).
-
-**Truncate client-side.** Obsidian's `/search/simple/` ignores the `limit` query param and returns every hit. Always slice the JSON response to the requested limit before formatting — don't trust the server to do it. After cutover to `:8123` this becomes a no-op (server already truncates).
+vault-storage (`:8123`) is the only backend. It supports both lexical and semantic search and honors the `limit` param (the server truncates server-side).
 
 ## Dependencies
 

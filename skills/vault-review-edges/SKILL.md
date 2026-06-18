@@ -236,9 +236,7 @@ this.
 
 ## Backend requirement
 
-vault-storage on `:8123` only. Filing logic is server-side; Obsidian's
-backend has no notion of edge_type suggestions. If `$VAULT_API_URL` points
-at `:8089`, the listing endpoint returns 404 — flag the cutover state.
+vault-storage on `:8123` only. Filing logic is server-side.
 
 ## Dependencies
 

@@ -243,9 +243,8 @@ production run (limit=20 requested, 57 done — Haiku also overran) showed:
 - 4 aliases — `indexer-design → indexing` was wrong (loses specificity).
 - 8 rejects with FM tag-strip — **5 of 8 were wrong rejects of real
   concepts**, including the headline absurdity of stripping `cutover`
-  from logs literally about the Obsidian → vault-storage cutover.
-  Other wrong rejects: `obsidian` (real product name, the source
-  vault), `suggestions` (vault-storage feature), `design-pattern` (a
+  (a real concept tagging migration logs). Other wrong rejects:
+  `suggestions` (vault-storage feature), `design-pattern` (a
   meaningful category), `bug-fix`.
 - 11 of 15 records had tags wrongly stripped from FM (~73%
   destructive-bias error rate).

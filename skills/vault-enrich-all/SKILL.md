@@ -298,9 +298,9 @@ input — not just durable FM the indexer treats as inert.
 
 ## Backend requirement
 
-vault-storage on `:8123` is sufficient — Obsidian's REST API merges FM the
-same way, but lacks the structured suggestion / similar / record_id
-endpoints that the procedure relies on for candidate generation.
+vault-storage on `:8123` is sufficient — it provides the structured
+suggestion / similar / record_id endpoints that the procedure relies on for
+candidate generation.
 
 ## Dependencies
 

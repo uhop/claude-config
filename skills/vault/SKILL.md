@@ -1,18 +1,18 @@
 ---
 name: vault
-description: "Read and write to the Obsidian knowledge base vault. Use when the user says /vault, asks to remember/save knowledge, wants to recall/query stored knowledge, asks to extract learnings from a project, or wants to log a session. Also use proactively at session end to capture non-obvious learnings."
+description: "Read and write to the knowledge base vault. Use when the user says /vault, asks to remember/save knowledge, wants to recall/query stored knowledge, asks to extract learnings from a project, or wants to log a session. Also use proactively at session end to capture non-obvious learnings."
 user_invocable: true
 ---
 
-# Obsidian Knowledge Base
+# Knowledge Base
 
-Persistent knowledge base in an Obsidian vault, accessed via REST API. The LLM writes and maintains all content — the user views it in Obsidian.
+Persistent knowledge base, accessed via a REST API (vault-storage). The LLM writes and maintains all content.
 
 ## Connection
 
 Requires two environment variables (set in `~/.env`, which is sourced by `.bashrc`):
 
-- `VAULT_API_URL` — base URL of the Obsidian Local REST API (e.g., `http://host:8089`)
+- `VAULT_API_URL` — base URL of the vault REST API (vault-storage; e.g., `http://host:8123`)
 - `VAULT_API_TOKEN` — bearer token for authentication
 
 ### Use `vault-curl` — don't hand-roll `curl`
@@ -45,7 +45,7 @@ API endpoints (invoked via `vault-curl <path> [curl-options...]`):
 - **List**: `vault-curl /vault/{path}/ -s` (trailing slash → `{"files": [...]}`)
 - **Delete**: `vault-curl /vault/{path} -X DELETE` — for junk with zero history value; a note retired *in favor of other content* should be superseded (or moved to an archive folder), not deleted.
 - **Search**: `vault-curl /search/simple/ -X POST -G --data-urlencode 'query=...'`
-  - The Obsidian Local REST API expects `query` as a URL parameter on a POST; `-G --data-urlencode` produces the right form.
+  - The vault REST API expects `query` as a URL parameter on a POST; `-G --data-urlencode` produces the right form.
 
 ### Guard `jq` pipes in parallel Bash batches
 

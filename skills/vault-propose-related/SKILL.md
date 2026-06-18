@@ -271,8 +271,7 @@ authorized direct apply — this skips human review.
 ## Backend requirement
 
 vault-storage on `:8123`. The `/sections/{id}/similar` endpoint relies on
-the BGE embedding index, which Obsidian's REST API doesn't have. If
-`$VAULT_API_URL` points at `:8089`, similar lookups return 404.
+the BGE embedding index.
 
 ## Background
 

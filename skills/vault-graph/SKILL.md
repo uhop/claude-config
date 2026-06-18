@@ -98,7 +98,7 @@ Combinable. `--depth=2 --via=supersedes,revises` traces a chain of revisions two
 
 ## Backend requirement
 
-Vault-storage on `:8123` only. Obsidian's REST API doesn't expose typed edges. Returns 404 against `:8089`.
+Vault-storage on `:8123` only.
 
 ## Dependencies
 

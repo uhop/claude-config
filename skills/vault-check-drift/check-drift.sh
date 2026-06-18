@@ -14,7 +14,7 @@
 #   check-drift.sh [project-name] --update   # report AND refresh the baseline
 #
 # Project name defaults to the basename of the nearest git repo root. State
-# is read/written via the Obsidian Local REST API through `vault-curl`.
+# is read/written via the vault REST API through `vault-curl`.
 
 set -euo pipefail
 
