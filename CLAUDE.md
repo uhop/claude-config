@@ -25,12 +25,19 @@ Don't hardcode `/tmp/<name>` for scratch — collides with stale files from prio
 ## Code
 
 - Prefer prefix `++i` / `--i` when the result is unused.
+- Prefer `catch {` over `catch (e)` when the error binding is unused (optional catch binding, ES2019). Not a mechanical sweep — read each site, leave any binding that's rethrown / logged / inspected. Full: [[topics/no-mechanical-modernization]].
 - Measure perf with `nano-bench` (`~/Open/nano-bench/`). No ad-hoc timing.
 - **No comments that narrate the code.** Code isn't documentation — don't add a comment that restates *what* the code does. The only allowed comments, each as the **shortest possible marker** (a pointer, not an explanation): JSDoc when explicitly requested or required; a reference for a non-trivial algorithm (e.g. a Wikipedia/paper link); a non-trivial *decision* or constraint — *why* it's this way, footgun/ordering caveats included when there's a real reason (`// Hughes–Smith: see benchmarks`, `// must precede flush(): drains the queue`). The bar is *why*, never *what*. Anything longer belongs in `dev-docs/`, the project wiki, or a vault decision note — not the source. Applies to all new/edited code now; strip narrating comments opportunistically in files you already touch, no standalone cleanup PRs. Full: [[topics/no-narrating-comments]].
 
+## Preferences
+
+- Default OSS license: **BSD-3-Clause** for personal projects — apply to a per-package `LICENSE` / `package.json` `"license"` directly; ask before a repo-wide top-level `LICENSE` on a currently-`UNLICENSED` / TBD repo.
+- **Naked version tags — no `v` prefix.** `0.0.1`, not `v0.0.1`; a monorepo package tag is `<pkg>-0.0.1` (e.g. `mcp-0.0.1`). Applies to git tags, release names, and CLI `--version` surfaces; the `package.json` `version` field is already naked.
+- **Node version manager: `nvm`** — don't probe for `fnm` / `volta`.
+
 ## Ambiguity
 
-When an instruction or referent is ambiguous — not just unknown jargon, but *what 'it' points at* or *how far a request reaches* (which file, which scope, how much to change) — ask rather than guess and run. A wrong guess on scope costs more round-trips than the question. Fixing an obvious typo silently is still fine; this is about genuine ambiguity of intent. (Origin: an "apply it to the post" instruction guessed as a narrow cross-link when it meant a whole thread; reflect 2026-06-09.)
+When an instruction or referent is ambiguous — not just unknown jargon, but *what 'it' points at* or *how far a request reaches* (which file, which scope, how much to change) — ask rather than guess and run. A wrong guess on scope costs more round-trips than the question. Fixing an obvious typo silently is still fine; this is about genuine ambiguity of intent. (Origin: an "apply it to the post" instruction guessed as a narrow cross-link when it meant a whole thread; reflect 2026-06-09.) Two refinements: parse a compound rule **narrowly** — "no X transformations" means "no transformations of type X", not "no X *and* no transformations"; and **scope a multi-repo-capable operation to the named project** — don't sweep sibling repos unbidden.
 
 ## Tools
 

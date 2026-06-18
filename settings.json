@@ -52,5 +52,6 @@
         "VAULT_API_TOKEN": "${VAULT_API_TOKEN}"
       }
     }
-  }
+  },
+  "skipWorkflowUsageWarning": true
 }
