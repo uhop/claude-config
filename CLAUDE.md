@@ -39,6 +39,10 @@ Don't hardcode `/tmp/<name>` for scratch — collides with stale files from prio
 
 When an instruction or referent is ambiguous — not just unknown jargon, but *what 'it' points at* or *how far a request reaches* (which file, which scope, how much to change) — ask rather than guess and run. A wrong guess on scope costs more round-trips than the question. Fixing an obvious typo silently is still fine; this is about genuine ambiguity of intent. (Origin: an "apply it to the post" instruction guessed as a narrow cross-link when it meant a whole thread; reflect 2026-06-09.) Two refinements: parse a compound rule **narrowly** — "no X transformations" means "no transformations of type X", not "no X *and* no transformations"; and **scope a multi-repo-capable operation to the named project** — don't sweep sibling repos unbidden.
 
+## Diagnosis
+
+When asked *why* a system did something, get evidence before asserting a cause — read the logs, the git history, the actual stored value — and don't present a guess as a diagnosis. If you must reason before you can check, label it a hypothesis, not a finding, and say what would confirm it. A confident-but-wrong "here's why" costs more than a hedged "let me check": it sends the user chasing a phantom and burns trust in the next answer. (Origin: reflect 2026-06-19 — diagnosing a `modified_at` anomaly I asserted two speculative root causes, both wrong, and the user pushed back three times before git forensics on the actual data settled it; the real cause was a date-vs-timestamp comparison bug, findable only by looking.)
+
 ## Tools
 
 - **Re-Read after mutating Bash.** Any Bash that may rewrite a file (`prettier --write`, `npm run lint:fix`, a formatting/codemod script, a pre-commit hook) invalidates the harness's file-tracking. Read the file again before the next `Edit` on it. Otherwise `Edit` 400s with "File has been modified since read" and the retry hits the same error.
