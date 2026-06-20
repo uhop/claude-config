@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// vault-lint — vault hygiene linter. Surfaces FRONTMATTER / WIKILINKS /
+// vault-lint — vault hygiene linter. Surfaces FRONTMATTER / BODY / WIKILINKS /
 // DENSITY / CURRENCY / DUPLICATES findings against the policy at
 // topics/vault-hygiene-policy.md. Read-only: it reports, never fixes.
 // Exit 1 if any finding, 0 if clean, 2 on API error.
@@ -12,7 +12,7 @@
 // Usage:
 //   vault-lint.mjs                  full report
 //   vault-lint.mjs --quiet          tab-separated data lines only (greppable)
-//   vault-lint.mjs --category=a,b   subset of: frontmatter,wikilinks,density,currency,duplicates
+//   vault-lint.mjs --category=a,b   subset of: frontmatter,body,wikilinks,density,currency,duplicates
 //   vault-lint.mjs --max=N          per-category cap in the full report (default 40)
 //   vault-lint.mjs --no-fetch       skip the per-note raw fetch that confirms density (faster, may over-flag)
 
@@ -30,7 +30,7 @@ const flag = (name, fallback) => {
 const QUIET = flag('--quiet', false) === true;
 const NO_FETCH = flag('--no-fetch', false) === true;
 const MAX = Number(flag('--max', '40'));
-const ALL_CATS = ['frontmatter', 'wikilinks', 'density', 'currency', 'duplicates'];
+const ALL_CATS = ['frontmatter', 'body', 'wikilinks', 'density', 'currency', 'duplicates'];
 const catArg = flag('--category', null);
 const CATS = catArg ? catArg.split(',').map(s => s.trim()).filter(Boolean) : ALL_CATS;
 for (const c of CATS) {
@@ -139,7 +139,7 @@ const lev = (a, b) => {
 };
 
 // --- findings ------------------------------------------------------------
-const F = [], W = [], D = [], C = [], U = [];
+const F = [], B = [], W = [], D = [], C = [], U = [];
 const want = c => CATS.includes(c);
 
 // raw full-file link count (FM `related:` + body), bounded by FETCH_CAP
@@ -172,6 +172,18 @@ if (want('frontmatter')) {
     if (r.updated && !ud) probs.push(`unparseable updated '${r.updated}'`);
     if (cd && ud && cd.getTime() > ud.getTime()) probs.push(`created > updated (${r.created} > ${r.updated})`);
     if (probs.length) F.push({path: r.file_path, detail: probs.join('; ')});
+  }
+}
+
+if (want('body')) {
+  for (const r of active) {
+    if (r.type === 'state') continue; // machine-managed JSON snapshot, not prose
+    // A never-written body round-trips as the literal string `null` (JSON null
+    // serialized into the file); empty / whitespace-only is a stub. Either way
+    // the note has no content — and it's invisible to every other category
+    // (wikilinks/density read body links, of which an empty body has none).
+    const body = r.body == null ? '' : String(r.body).trim();
+    if (body === '' || body === 'null') B.push({path: r.file_path, detail: 'empty body (no content written)'});
   }
 }
 
@@ -259,8 +271,8 @@ if (want('duplicates')) {
 }
 
 // --- output --------------------------------------------------------------
-const CATEGORIES = [['FRONTMATTER', F], ['WIKILINKS', W], ['DENSITY', D], ['CURRENCY', C], ['DUPLICATES', U]];
-const ABBREV = {FRONTMATTER: 'fm', WIKILINKS: 'links', DENSITY: 'density', CURRENCY: 'currency', DUPLICATES: 'dups'};
+const CATEGORIES = [['FRONTMATTER', F], ['BODY', B], ['WIKILINKS', W], ['DENSITY', D], ['CURRENCY', C], ['DUPLICATES', U]];
+const ABBREV = {FRONTMATTER: 'fm', BODY: 'body', WIKILINKS: 'links', DENSITY: 'density', CURRENCY: 'currency', DUPLICATES: 'dups'};
 const selected = CATEGORIES.filter(([n]) => want(n.toLowerCase()));
 const totalFindings = selected.reduce((s, [, arr]) => s + arr.length, 0);
 

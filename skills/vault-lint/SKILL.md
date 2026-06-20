@@ -1,13 +1,13 @@
 ---
 name: vault-lint
-description: Lint the vault for hygiene problems — broken wikilinks, frontmatter integrity, topic-note density, per-type currency/retention, and duplicate folders/titles — against the thresholds in topics/vault-hygiene-policy.md. Read-only: reports findings, never fixes. Use when the user says /vault-lint, asks to check vault hygiene / health, find broken wikilinks, or audit frontmatter. Backed by `vault-lint.mjs` over vault-storage's `/sections`. Distinct from the server-side `/system/lint` integrity check.
+description: Lint the vault for hygiene problems — broken wikilinks, frontmatter integrity, empty/placeholder bodies, topic-note density, per-type currency/retention, and duplicate folders/titles — against the thresholds in topics/vault-hygiene-policy.md. Read-only: reports findings, never fixes. Use when the user says /vault-lint, asks to check vault hygiene / health, find broken wikilinks, or audit frontmatter. Backed by `vault-lint.mjs` over vault-storage's `/sections`. Distinct from the server-side `/system/lint` integrity check.
 user_invocable: true
 ---
 
 # /vault-lint — vault hygiene linter
 
 Scans every indexed vault record via vault-storage's `/sections` and reports
-hygiene findings across five categories. **Read-only** — it surfaces a working
+hygiene findings across six categories. **Read-only** — it surfaces a working
 list; it never edits the vault. Backed by `vault-lint.mjs`.
 
 This is the **hygiene** lint the policy note `topics/vault-hygiene-policy.md`
@@ -21,7 +21,7 @@ content well-kept".
 ```
 /vault-lint                       full human-readable report (exit 1 if findings)
 /vault-lint --quiet               tab-separated `category<TAB>path<TAB>detail` lines, no caps (pipe/grep)
-/vault-lint --category=a,b        subset of: frontmatter, wikilinks, density, currency, duplicates
+/vault-lint --category=a,b        subset of: frontmatter, body, wikilinks, density, currency, duplicates
 /vault-lint --max=N               per-category cap in the full report (default 40; --quiet is uncapped)
 /vault-lint --no-fetch            skip the per-note raw fetch that confirms density (faster, may over-flag)
 ```
@@ -40,6 +40,12 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
   `updated`; `created` parses and is ≤ `updated`. `_index.md` / `_about.md` are
   exempt from the `type` requirement; `type: state` notes are skipped entirely
   (managed by `/vault check`).
+- **BODY** — flags notes with no content: an empty / whitespace-only body, or
+  the literal string `null` (the serialization artifact of a never-written body —
+  JSON `null` round-tripped into the file). These pass every other category
+  silently (wikilinks/density scan body links, of which an empty body has none;
+  frontmatter checks only keys), so without this check a never-written note is
+  invisible. `type: state` notes are skipped (machine-managed JSON snapshots).
 - **WIKILINKS** — every body `[[target]]` resolves (path-qualified by path, bare
   by basename). Code fences and inline-code spans are stripped first, so literal
   `` `[[x]]` `` examples don't false-fire. Links to moved/archived logs surface
