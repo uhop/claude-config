@@ -422,14 +422,17 @@ the existing review/cleanup skills + endpoints; loops each queue with
 
 #### Safe set (default)
 
+Listed in execution order (see § Ordering constraints):
+
 | Source | Action |
 | --- | --- |
 | `lint.orphan_embeddings` + `lint.orphan_doc_embeddings` | `POST /maintenance/cleanup-lint` |
 | `lint.records_without_embeddings` + `lint.embedding_hash_drift` | `POST /maintenance/embed-pending` |
-| `suggestions.edge_type` | `/vault-review-edges --auto --limit=100` |
+| **coverage**: enrichable knowledge notes with **no `agent:` block** (from the `/vault-enrich-all` coverage scan — *not* a suggestion kind, so invisible to `/suggestions/summary`) | `/vault-enrich-all --auto --limit=100` (backfill missing) |
+| `suggestions.agent_enrichment_stale` | `/vault-enrich-all --auto --stale --limit=100` (refresh drifted) |
 | `suggestions.new_tag` | `/vault-review-tags --auto --limit=100` |
 | `suggestions.tag_suggestion` | `/vault-review-tags --auto --kind=tag_suggestion --limit=100` |
-| `suggestions.agent_enrichment_stale` | `/vault-enrich-all --auto --stale --limit=100` |
+| `suggestions.edge_type` | `/vault-review-edges --auto --limit=100` |
 
 #### Opt-in (`--include-destructive`)
 
@@ -451,6 +454,16 @@ the existing review/cleanup skills + endpoints; loops each queue with
 Some kinds mutate state that other kinds read. Process them in declared
 order; never dispatch two ordered kinds as parallel sub-agents.
 
+- **Enrichment before the tag and edge passes.** Both enrichment passes
+  (the missing-block backfill `/vault-enrich-all --auto --limit=100` and the
+  `--stale` refresh) write `agent:` blocks, and a freshly written block makes
+  the server file new `tag_suggestion` (from `agent.tags_suggested`),
+  sometimes `new_tag` (an unknown suggested tag), and can feed `edge_type`
+  (from `agent.edge_classifications`). Run **both enrichment passes first**,
+  then `new_tag` → `tag_suggestion` → `edge_type`, so the suggestions
+  enrichment generates drain in the *same* sweep instead of surfacing as
+  residue. (Before this ordering enrichment ran last, and the `tag_suggestion`
+  items it filed were always left for the next sweep — observed 2026-06-21.)
 - **`new_tag` before `tag_suggestion`.** `new_tag` mints canonical tags
   and aliases into the taxonomy; `tag_suggestion`'s accept/reject logic
   reads the canonical-taxonomy state at decision time. Parallel
@@ -469,7 +482,10 @@ attribution and the per-kind passes are already cheap.
 #### Procedure
 
 1. **Baseline.** Pull `vault-curl /system/lint -s`,
-   `vault-curl /suggestions/summary -s`, and (cheap) record counts.
+   `vault-curl /suggestions/summary -s`, the **enrichment-coverage count**
+   (enrichable knowledge notes lacking an `agent:` block — from the
+   `/vault-enrich-all` coverage scan; this is *not* a suggestion kind, so
+   `/suggestions/summary` never shows it), and (cheap) record counts.
    Compute the action set from the safe defaults plus
    `--include` / `--exclude` / `--include-destructive`.
 2. **Dry-run.** If `--dry-run`, print the planned action set with
@@ -478,18 +494,20 @@ attribution and the per-kind passes are already cheap.
    (in parallel, both POST). Each completes in seconds; together they
    tighten the lint baseline before the suggestion-driven passes
    touch records.
-4. **Per-kind drain loop.** Process suggestion kinds **sequentially**,
-   one kind fully drained before the next starts. Honor the declared
-   ordering in § Ordering constraints; otherwise any sequential order
-   is fine. Never dispatch two kinds as concurrent sub-agents — even
-   pairs with no declared ordering, since concurrent FM writes muddy
-   failure attribution. For each kind, for at most `--max-passes`
-   iterations (default 5):
-   - Dispatch the corresponding review skill with `--auto --limit=100`.
-   - Refetch `/suggestions/summary`; record the new count for that kind.
-   - Stop when count reaches 0, or when count didn't decrease since
-     the previous pass (stuck — sub-agent deferred, or items need
-     human judgment).
+4. **Per-kind drain loop.** Process the actions **sequentially**, one fully
+   drained before the next starts, in the order set by § Ordering constraints:
+   the two **enrichment passes first** (missing-block backfill, then
+   `--stale`), then `new_tag` → `tag_suggestion` → `edge_type`. Never dispatch
+   two kinds as concurrent sub-agents — even pairs with no declared ordering,
+   since concurrent FM writes muddy failure attribution. For each action, for
+   at most `--max-passes` iterations (default 5):
+   - Dispatch the corresponding skill with `--auto --limit=100`.
+   - Re-measure that action's backlog: `/suggestions/summary` for the
+     suggestion kinds; the coverage scan (notes lacking an `agent:` block)
+     for the missing-block backfill.
+   - Stop when the count reaches 0, or when it didn't decrease since the
+     previous pass (stuck — sub-agent deferred, or items need human
+     judgment).
 5. **Final summary.** Print before/after counts per kind, total time,
    and any kind that stopped above zero with a note about why
    (max-passes reached vs. stuck vs. skipped).
@@ -499,11 +517,11 @@ input, and the sub-agent's `--auto` mode is conservative on ambiguity.
 The summary surfaces the residue so the user can decide whether to
 hand-triage or leave it for the next sweep.
 
-The action set is computed once from the baseline at step 1. Kinds that
-emerge **during** the sweep (e.g., `agent_enrichment_stale` newly
-triggered by an FM write made by another sub-agent) are reported as
-residue, not chased. This keeps each invocation bounded; a second
-`/vault sweep` picks them up.
+The action set is computed once from the baseline at step 1. With enrichment
+now running first, its downstream tag/edge suggestions drain in the same
+sweep; any suggestion that still emerges **after its own pass has already
+run** is reported as residue, not chased. This keeps each invocation bounded;
+a second `/vault sweep` picks them up.
 
 ### /vault (no subcommand)
 
