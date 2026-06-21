@@ -13,8 +13,9 @@
 #   check-drift.sh [project-name]       # report-only; exit 1 on drift
 #   check-drift.sh [project-name] --update   # report AND refresh the baseline
 #
-# Project name defaults to the basename of the nearest git repo root. State
-# is read/written via the vault REST API through `vault-curl`.
+# Project name resolves as: explicit arg, else a `.claude/vault-project` file
+# at the repo root, else the basename of the nearest git repo root. State is
+# read/written via the vault REST API through `vault-curl`.
 
 set -euo pipefail
 
@@ -33,6 +34,10 @@ if ! REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null); then
   exit 2
 fi
 cd "$REPO_ROOT"
+# vault project name may differ from the repo dirname
+if [ -z "$PROJECT" ] && [ -f .claude/vault-project ]; then
+  PROJECT=$(tr -d '[:space:]' < .claude/vault-project)
+fi
 PROJECT="${PROJECT:-$(basename "$REPO_ROOT")}"
 
 command -v vault-curl >/dev/null || { echo "vault-curl missing" >&2; exit 2; }
