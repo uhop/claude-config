@@ -252,7 +252,19 @@ Save a session log.
 1. Create `logs/YYYY-MM-DD-{description}.md`
 2. Record: what was done, decisions made, pending items, key files touched
 3. Add wikilinks to relevant topic/project notes
-4. **Refresh the drift baseline.** Run
+4. **Enrich at capture.** Write the `agent:` block in the **same** PUT that
+   creates the log — born-enriched, so the log is searchable-sharp while it's
+   hot (the `agent.summary` becomes a HyDE prefix at embed time), with no later
+   backfill. Logs are append-only, so the block never re-stales. Use the JSON
+   write path (`{frontmatter: {agent: {...}}, body: "..."}`); set
+   `complexity: log-entry`; compute `derived_from_hash` locally as
+   `sha256(body)` over the bytes you're writing (you own them — no round-trip).
+   Field shape + quality guidance:
+   `~/.claude/skills/vault-enrich-all/SKILL.md`. **Don't backfill *old* logs** —
+   enrichment value is largest at capture: a log is already self-describing
+   (dated title + sections), so a retroactive summary adds little, and logs age
+   out to `logs/archive/` at 90d. Born-enrich the new one; leave the old ones.
+5. **Refresh the drift baseline.** Run
    `~/.claude/skills/vault-check-drift/check-drift.sh --update` from the project
    directory so the next `/vault resume` starts from a clean baseline (the
    session's commits / tags / `npm publish` are typically done by the time

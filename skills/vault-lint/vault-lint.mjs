@@ -44,6 +44,13 @@ for (const c of CATS) {
 const RETENTION_DAYS = {log: 90, query: 90, fleeting: 30, project: 180, permanent: 365};
 const REQUIRED_FM = ['title', 'type', 'status', 'created', 'updated'];
 const TYPE_EXEMPT_BASENAMES = new Set(['_index.md', '_about.md']);
+// Project running-files are scaffolded per project and legitimately empty until
+// there's something to record — an empty one is a valid placeholder, not a
+// never-written stub, so the BODY check skips them.
+const RUNNING_FILE_BASENAMES = new Set([
+  'decisions.md', 'learnings.md', 'stack.md', 'queue.md', 'queue-archive.md',
+  'feedback.md', 'clarify-queue.md', 'clarify-queue-archive.md'
+]);
 const DENSITY_SKIP_STATUS = new Set(['archived', 'archive', 'done']);
 const ARCHIVE_RE = /(^|\/)archive\//;
 const FETCH_CAP = NO_FETCH ? 0 : 300;
@@ -178,6 +185,8 @@ if (want('frontmatter')) {
 if (want('body')) {
   for (const r of active) {
     if (r.type === 'state') continue; // machine-managed JSON snapshot, not prose
+    // Empty project running-files are valid scaffolding, not stubs (see above).
+    if (r.type === 'project' && RUNNING_FILE_BASENAMES.has(r.file_path.split('/').pop())) continue;
     // A never-written body round-trips as the literal string `null` (JSON null
     // serialized into the file); empty / whitespace-only is a stub. Either way
     // the note has no content — and it's invisible to every other category

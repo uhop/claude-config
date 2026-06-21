@@ -45,7 +45,10 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
   JSON `null` round-tripped into the file). These pass every other category
   silently (wikilinks/density scan body links, of which an empty body has none;
   frontmatter checks only keys), so without this check a never-written note is
-  invisible. `type: state` notes are skipped (machine-managed JSON snapshots).
+  invisible. Skipped: `type: state` notes (machine-managed JSON snapshots) and
+  empty `type: project` **running-files** (`decisions`/`learnings`/`stack`/
+  `queue`/`queue-archive`/`feedback`/`clarify-queue*`) — those are scaffolded
+  per project and legitimately empty until there's something to record.
 - **WIKILINKS** — every body `[[target]]` resolves (path-qualified by path, bare
   by basename). Code fences and inline-code spans are stripped first, so literal
   `` `[[x]]` `` examples don't false-fire. Links to moved/archived logs surface
