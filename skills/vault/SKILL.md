@@ -47,6 +47,23 @@ API endpoints (invoked via `vault-curl <path> [curl-options...]`):
 - **Search**: `vault-curl /search/simple/ -X POST -G --data-urlencode 'query=...'`
   - The vault REST API expects `query` as a URL parameter on a POST; `-G --data-urlencode` produces the right form.
 
+### Pagination — page by `items.length`, never by your requested `limit`
+
+Paginated reads (`/sections`, `/suggestions`) return an envelope
+`{items, offset, limit, total}` that echoes the **effective** `offset`/`limit` —
+the server caps `limit` (currently ≤ 100) and reports the value it actually
+used, alongside `total`. So **advance by what you got, not what you asked
+for**: step `offset += items.length` each page and stop when
+`items.length === 0` (or `offset >= total`). Requesting `limit=200` returns
+only 100; stepping `offset` by 200 then silently skips records 100–199 of every
+page (the failure that under-counted a coverage scan 800/1513 and a suggestion
+fetch 235/435). Never guess the page size — read the envelope, or just use the
+returned array length. (Folder lists `/vault/{path}/` → `{files}` are **not**
+paginated; they return everything in one shot.) Envelope-design rationale —
+echo effective offset/limit, optional `total`, else a `last` flag or cursor:
+`~/Open/articles/design/web-apps-client-server-api-design.md` § "Lists and
+paging".
+
 ### Guard `jq` pipes in parallel Bash batches
 
 When you fire several calls as parallel Bash tool calls in one message — as
