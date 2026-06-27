@@ -34,6 +34,7 @@ Don't hardcode `/tmp/<name>` for scratch — collides with stale files from prio
 - Default OSS license: **BSD-3-Clause** for personal projects — apply to a per-package `LICENSE` / `package.json` `"license"` directly; ask before a repo-wide top-level `LICENSE` on a currently-`UNLICENSED` / TBD repo.
 - **Naked version tags — no `v` prefix.** `0.0.1`, not `v0.0.1`; a monorepo package tag is `<pkg>-0.0.1` (e.g. `mcp-0.0.1`). Applies to git tags, release names, and CLI `--version` surfaces; the `package.json` `version` field is already naked.
 - **Node version manager: `nvm`** — don't probe for `fnm` / `volta`.
+- **Dependency updates: all of them, to absolute latest, majors included.** Any "bump dep X" / "update the lockfile" task means bump *every* `dependencies` + `devDependencies` range to the latest published — **cross the `^`/major boundary** (e.g. `@types/node` `^25` → `^26`), never cherry-pick or pin back only the one that triggered the task. Staying in-range silently strands a dep on an EOL major that no longer gets security patches, so "nothing outdated *in range*" can still hide an unpatched CVE; consider majors *always*. Then regenerate the lockfile fully (`rm package-lock.json && npm install`) and run the test/lint/type-check matrix; report breakage from a major bump rather than avoiding it. Full: [[topics/dep-version-freshness]].
 
 ## Ambiguity
 
