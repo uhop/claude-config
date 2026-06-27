@@ -168,7 +168,7 @@ the question shifts to "is this tag canonical-worthy?" Use the same
 
 | Action | When to choose | Effect |
 |---|---|---|
-| **Accept** | The tag accurately describes the record's content and is consistent with how that tag is used elsewhere. | Add tag to FM `tags:`, PUT the file. Reimport auto-accepts the suggestion (`resolved_by='tag-realized'`). |
+| **Accept** | The tag accurately describes the record's content and is consistent with how that tag is used elsewhere. | Add tag to FM `tags:`, PUT the file. Reimport auto-accepts the suggestion (`resolved_by='tag-realized'`). If the tag is **already on the record**, the add is a no-op that resolves nothing — accept the suggestion directly via `POST /suggestions/{id}/accept` (§ 4a). |
 | **Reject** | The tag is too tangential, redundant with an existing one on the record, or misframes the content. | `POST /suggestions/{id}/reject`, then strip the candidate from `agent.tags_suggested` via `PATCH /sections/{id}/fm` (§ 4b). |
 | **Defer** | The tag would be valid but isn't yet in the taxonomy — and you don't want to commit to a canonical. | Skip; the suggestion stays pending. Optionally route through `/vault-review-tags --kind=new_tag` if the tag also appears on records. |
 
@@ -195,6 +195,26 @@ tag is unknown to the taxonomy, run `POST /tags/taxonomy {tag}` first
 otherwise the import will file a `new_tag` suggestion for it. The
 next import (triggered by the write) auto-accepts the matching
 pending `tag_suggestion`.
+
+**Already-realized tag → accept the suggestion directly.** When the
+tag is *already* on the record's FM, the `/sections/{id}/tags` add is
+a no-op that touches no disk, so no import fires and the pending
+`tag_suggestion` lingers as a bookkeeping artifact — the verdict was
+right, but nothing resolved it (the auto-resolve hook only runs on a
+real write). Close it without forcing a reimport by accepting the
+suggestion record itself:
+
+```bash
+vault-curl "/suggestions/$SUG_ID/accept" -X POST -s -o /dev/null -w "%{http_code}\n"
+```
+
+Expect `200` (status → `accepted`). This is the right resolution for
+the redundant-but-correct case — **don't `reject`** it (reject is for
+*wrong* tags and destructively strips the candidate). In `--auto`,
+prefer this over leaving the artifact pending: it's exactly the
+residue a `/vault sweep` would otherwise carry forward to the next
+run. (Confirmed 2026-06-27: two `tape-six-invariant` suggestions on
+already-tagged logs cleared cleanly via direct `/accept`.)
 
 ### 4b. Reject
 
