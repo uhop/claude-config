@@ -76,13 +76,15 @@ while :; do
     | .items[]
     | select((.agent_summary // "") == "")          # missing block (for --stale: .agent_derived_from_hash != .body_hash)
     | select(.type as $t | $enrich | index($t))      # type IS in the server allowlist
-    | select(.archived_at == null)                   # not archived
-    | select((.body | length) > 0)                   # non-empty (matches the server headline)
+    | select((.file_path // "") | test("/archive/") | not)   # not archived — server excludes by PATH; archived_at is null for path-archived notes, so do NOT use it
+    | select((.body | gsub("\\s";"") | length) > 0)          # non-empty — best-effort; the server's empty-stub rule is authoritative (cross-check below)
     | "\(.record_id)\t\(.type)\t\(.file_path)"'
   offset=$((offset + n))
 done
 # --type=X → keep only that type out of $TYPES;  --stale → flip the first select to the hash-mismatch test.
 ```
+
+**Cross-check the enumeration against the server count — they MUST agree.** The archive/empty filters above *reimplement* the server's own exclusions, so they can silently drift. They did, 2026-06-30: `archived_at` (null for path-archived notes) let 177 `/archive/` notes through, so the scan reported **179** to enrich while `coverage.enrichment.unenriched` was **0**. After enumerating, reconcile: if your count exceeds `echo "$COV" | jq .unenriched`, the filter has false positives — **trust the server, not the filter**, and don't enrich the excess. The durable fix is server-side: `vault-storage` should expose the unenriched *paths* (not just counts) from `coverage.enrichment`, so this skill consumes the authoritative list instead of reconstructing it. Until then, the server's `unenriched` count is the guard.
 
 For each candidate, fetch the file:
 
