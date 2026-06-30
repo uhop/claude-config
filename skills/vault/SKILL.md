@@ -428,7 +428,7 @@ Listed in execution order (see § Ordering constraints):
 | --- | --- |
 | `lint.orphan_embeddings` + `lint.orphan_doc_embeddings` | `POST /maintenance/cleanup-lint` |
 | `lint.records_without_embeddings` + `lint.embedding_hash_drift` | `POST /maintenance/embed-pending` |
-| **coverage**: enrichable knowledge notes with **no `agent:` block** (from the `/vault-enrich-all` coverage scan, whose **§ Enrichable set** is the canonical definition — excludes operational types `log`/`meta`/`queue-item`/`state`, archived notes, and stubs; spans `permanent`/`project`/`design`/`query`, **not just `permanent`**; *not* a suggestion kind, so invisible to `/suggestions/summary`) | `/vault-enrich-all --auto --limit=100` (backfill missing) |
+| **coverage**: enrichable knowledge notes with **no `agent:` block** — canonical source is `vault-storage`'s `GET /system/lint` → `coverage.enrichment` (`ENRICHABLE_TYPES` = `permanent`/`project`/`design`/`research`/`query`; the headline already excludes operational types, empty bodies, and archived). Read the count there; `/vault-enrich-all` § Enrichable set drives the enumeration. *Not* a suggestion kind, so invisible to `/suggestions/summary`. | `/vault-enrich-all --auto --limit=100` (backfill missing) |
 | `suggestions.agent_enrichment_stale` | `/vault-enrich-all --auto --stale --limit=100` (refresh drifted) |
 | `suggestions.new_tag` | `/vault-review-tags --auto --limit=100` |
 | `suggestions.tag_suggestion` | `/vault-review-tags --auto --kind=tag_suggestion --limit=100` |

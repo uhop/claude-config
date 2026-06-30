@@ -32,7 +32,7 @@ agent-driven-suggestions model.
 
 ### 1. Pick the batch of source notes
 
-Walk the **enrichable set** — the same canonical definition as `/vault-enrich-all` SKILL **§ Enrichable set** (*not* operational types `log`/`meta`/`queue-item`/`state`, *not* archived, *not* stubs; spans `permanent`/`project`/`design`/`query`/etc.) — preferring notes with a short or empty `related:` array. Topics are the densest linking value, but project/design/query notes benefit from `related:` densification too, so **don't narrow to `permanent`**. `/sections` has no enrichable filter, so scan broadly and filter client-side (reuse the `jq` filter in the enrich SKILL's § Enrichable set); `vault_list_pieces` enumerates per-type if you want to walk one type at a time.
+Walk the **enrichable set** — the same canonical definition as `/vault-enrich-all` (its **§ Enrichable set**), sourced from `vault-storage`'s `GET /system/lint` → `coverage.enrichment.enrichable_types` (currently `permanent`/`project`/`design`/`research`/`query`; operational types, empty bodies, and archived excluded) — preferring notes with a short or empty `related:` array. Topics are the densest linking value, but project/design/research/query notes benefit from `related:` densification too, so **don't narrow to `permanent`**. Reuse the enumeration in the enrich SKILL's § Enrichable set (read `enrichable_types` live; never hardcode); `vault_list_pieces` walks one type at a time if you prefer.
 
 Track which records have already been reviewed in prior batches by checking
 `queries/*-related-proposals*.md` files. Skip already-reviewed records.

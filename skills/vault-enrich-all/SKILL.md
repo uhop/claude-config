@@ -53,31 +53,35 @@ inside its `agent:` namespace.
 
 ### 1. Pick the batch
 
-**Enrichable set (canonical definition — MUST match everywhere it's referenced, incl. `/vault sweep`'s coverage row).** A note is *enrichable* iff ALL of:
-- its `type` is **not** operational — not one of `log`, `meta`, `queue-item`, `state`;
-- it is **not** archived — `file_path` has no `/archive/` segment, and `status` is not `archived`/`superseded`;
-- it is **not** an empty stub — body longer than a few bytes.
-
-That spans `permanent` (topics), `project`, `design`, `query`, and every other knowledge type — **not just `permanent`**. Topics are the densest value, but project/design/query notes need the HyDE prefix too; a `permanent`-only scan silently leaves them uncovered and makes coverage read falsely complete (the scope gap fixed 2026-06-30 — a `/vault sweep` reported "427/427 permanent" while 7 project/design/query notes sat unenriched). `--type=X` narrows to one type on purpose; the **default does not narrow**.
-
-`/sections` has no `enrichable`/`unenriched` filter and no all-types query, so scan broadly and filter client-side. `agent_summary` is exposed flat per record (empty ⇒ no `agent:` block); page by `items.length`, never the requested limit:
+**Enrichable set — the canonical definition lives in `vault-storage`, NOT here.** It is `ENRICHABLE_TYPES` in `vault-storage/src/server/handlers/lint.ts` (currently `permanent`, `project`, `design`, `research`, `query`), surfaced live by `GET /system/lint` → `coverage.enrichment`. **Read it from the server; do not hand-roll a second copy** — that duplication is exactly what caused the 2026-06-30 scope gap (a skill-side `type=permanent` scan diverged from the server, reporting "427/427" while 7 `project`/`design`/`query` notes sat unenriched). `--type=X` narrows to one type on purpose; the **default does not narrow**.
 
 ```bash
+# Source of truth — the headline backlog count AND the authoritative type allowlist:
+COV=$(vault-curl /system/lint -s | jq -c '.coverage.enrichment')
+echo "$COV" | jq -c '{total, enriched, unenriched, enrichable_types}'
+# The headline {total,enriched,unenriched} already excludes operational types
+# (log/meta/queue-item/state/index), empty-body stubs, and archived notes.
+```
+
+`coverage.enrichment` returns counts, not paths. To get the actual notes to enrich, enumerate `/sections` filtered to the server's `enrichable_types` (**read live, never hardcoded**) + non-empty body + not archived + missing `agent_summary` (exposed flat per record; empty ⇒ no `agent:` block). Page by `items.length`, never the requested limit:
+
+```bash
+TYPES=$(echo "$COV" | jq -r '.enrichable_types | join(" ")')
 offset=0
 while :; do
   page=$(vault-curl "/sections?limit=100&offset=$offset" -s)
   n=$(echo "$page" | jq '.items | length'); [ "${n:-0}" -eq 0 ] && break
-  echo "$page" | jq -r '
-    (["log","meta","queue-item","state"]) as $op
+  echo "$page" | jq -r --arg types "$TYPES" '
+    ($types | split(" ")) as $enrich
     | .items[]
-    | select((.agent_summary // "") == "")                       # no agent block (for --stale: .agent_derived_from_hash != .body_hash)
-    | select(.type as $t | ($op | index($t)) | not)              # not operational
-    | select((.file_path // "") | contains("/archive/") | not)   # not archived
-    | select((.body | length) > 64)                              # not a stub
+    | select((.agent_summary // "") == "")          # missing block (for --stale: .agent_derived_from_hash != .body_hash)
+    | select(.type as $t | $enrich | index($t))      # type IS in the server allowlist
+    | select(.archived_at == null)                   # not archived
+    | select((.body | length) > 0)                   # non-empty (matches the server headline)
     | "\(.record_id)\t\(.type)\t\(.file_path)"'
   offset=$((offset + n))
 done
-# --type=X → append `| select(.type == "X")`;  --stale → flip the first select to the hash-mismatch test.
+# --type=X → keep only that type out of $TYPES;  --stale → flip the first select to the hash-mismatch test.
 ```
 
 For each candidate, fetch the file:
