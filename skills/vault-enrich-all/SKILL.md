@@ -21,10 +21,10 @@ as a HyDE-style prefix at index time per
 ## Invocation
 
 ```
-/vault-enrich-all                       # default: review & enrich next 30 unenriched permanent notes
+/vault-enrich-all                       # default: review & enrich next 30 unenriched enrichable notes
 /vault-enrich-all --limit=N             # custom batch (1..200)
 /vault-enrich-all --stale               # refresh stale blocks (hash mismatch) instead of new
-/vault-enrich-all --type=log            # restrict to one record type (default: permanent)
+/vault-enrich-all --type=permanent      # restrict to ONE record type (default: the full enrichable set — see below)
 /vault-enrich-all --auto                # spawn a Sonnet sub-agent for bulk
 /vault-enrich-all --auto --limit=N      # bulk + cap
 ```
@@ -53,12 +53,31 @@ inside its `agent:` namespace.
 
 ### 1. Pick the batch
 
-Default: type=permanent (topic notes — densest expected enrichment value),
-ordered by absence of `agent:` block (or by stale-hash if `--stale`):
+**Enrichable set (canonical definition — MUST match everywhere it's referenced, incl. `/vault sweep`'s coverage row).** A note is *enrichable* iff ALL of:
+- its `type` is **not** operational — not one of `log`, `meta`, `queue-item`, `state`;
+- it is **not** archived — `file_path` has no `/archive/` segment, and `status` is not `archived`/`superseded`;
+- it is **not** an empty stub — body longer than a few bytes.
+
+That spans `permanent` (topics), `project`, `design`, `query`, and every other knowledge type — **not just `permanent`**. Topics are the densest value, but project/design/query notes need the HyDE prefix too; a `permanent`-only scan silently leaves them uncovered and makes coverage read falsely complete (the scope gap fixed 2026-06-30 — a `/vault sweep` reported "427/427 permanent" while 7 project/design/query notes sat unenriched). `--type=X` narrows to one type on purpose; the **default does not narrow**.
+
+`/sections` has no `enrichable`/`unenriched` filter and no all-types query, so scan broadly and filter client-side. `agent_summary` is exposed flat per record (empty ⇒ no `agent:` block); page by `items.length`, never the requested limit:
 
 ```bash
-vault-curl "/sections?type=permanent&limit=$LIMIT&exclude=body" -s | \
-  jq -r '.items[] | "\(.record_id)\t\(.file_path)"'
+offset=0
+while :; do
+  page=$(vault-curl "/sections?limit=100&offset=$offset" -s)
+  n=$(echo "$page" | jq '.items | length'); [ "${n:-0}" -eq 0 ] && break
+  echo "$page" | jq -r '
+    (["log","meta","queue-item","state"]) as $op
+    | .items[]
+    | select((.agent_summary // "") == "")                       # no agent block (for --stale: .agent_derived_from_hash != .body_hash)
+    | select(.type as $t | ($op | index($t)) | not)              # not operational
+    | select((.file_path // "") | contains("/archive/") | not)   # not archived
+    | select((.body | length) > 64)                              # not a stub
+    | "\(.record_id)\t\(.type)\t\(.file_path)"'
+  offset=$((offset + n))
+done
+# --type=X → append `| select(.type == "X")`;  --stale → flip the first select to the hash-mismatch test.
 ```
 
 For each candidate, fetch the file:
@@ -244,8 +263,9 @@ model: sonnet
 description: Enrich N vault notes with agent: blocks
 prompt: |
   Read ~/.claude/skills/vault-enrich-all/SKILL.md and follow the procedure
-  for the next $LIMIT notes (type=permanent preferred; skip notes with
-  fresh `agent:` blocks unless --stale was passed).
+  for the next $LIMIT notes (the full ENRICHABLE set per the SKILL's
+  canonical definition — NOT just permanent; skip notes with fresh
+  `agent:` blocks unless --stale was passed).
 
   Critical:
   - Use `body_hash` for `derived_from_hash`, NOT `content_hash`.
@@ -265,7 +285,7 @@ prompt: |
 ```
 
 Per-note cost (~1500 in / 300 out tokens at Sonnet rates) is a few cents
-cent. Backfilling all permanent notes is a few-dollar one-shot pass.
+cent. Backfilling all enrichable notes is a few-dollar one-shot pass.
 
 ## When this is the right tool
 

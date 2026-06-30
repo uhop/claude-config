@@ -32,9 +32,7 @@ agent-driven-suggestions model.
 
 ### 1. Pick the batch of source notes
 
-Walk records that are good candidates for densification: prefer `type: permanent`
-(topic notes — densest expected linking) with a short or empty `related:` array.
-Use `vault_list_pieces` or `/sections?type=permanent&sort=created` to enumerate.
+Walk the **enrichable set** — the same canonical definition as `/vault-enrich-all` SKILL **§ Enrichable set** (*not* operational types `log`/`meta`/`queue-item`/`state`, *not* archived, *not* stubs; spans `permanent`/`project`/`design`/`query`/etc.) — preferring notes with a short or empty `related:` array. Topics are the densest linking value, but project/design/query notes benefit from `related:` densification too, so **don't narrow to `permanent`**. `/sections` has no enrichable filter, so scan broadly and filter client-side (reuse the `jq` filter in the enrich SKILL's § Enrichable set); `vault_list_pieces` enumerates per-type if you want to walk one type at a time.
 
 Track which records have already been reviewed in prior batches by checking
 `queries/*-related-proposals*.md` files. Skip already-reviewed records.
@@ -234,7 +232,9 @@ model: haiku
 description: Propose related: entries for N source notes
 prompt: |
   Read ~/.claude/skills/vault-propose-related/SKILL.md and follow the
-  procedure for the next $LIMIT source notes (type=permanent preferred).
+  procedure for the next $LIMIT source notes (the full ENRICHABLE set per
+  the canonical definition in /vault-enrich-all SKILL § Enrichable set —
+  NOT just permanent).
   Default mode (write to queries note); be CONSERVATIVE on accepts —
   better to under-suggest. Flag anything you're <80% sure about as
   ambiguous rather than accepting.
