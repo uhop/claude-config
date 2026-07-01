@@ -29,6 +29,10 @@ Don't hardcode `/tmp/<name>` for scratch — collides with stale files from prio
 - Measure perf with `nano-bench` (`~/Open/nano-bench/`). No ad-hoc timing.
 - **No comments that narrate the code.** Code isn't documentation — don't add a comment that restates *what* the code does. The only allowed comments, each as the **shortest possible marker** (a pointer, not an explanation): JSDoc when explicitly requested or required; a reference for a non-trivial algorithm (e.g. a Wikipedia/paper link); a non-trivial *decision* or constraint — *why* it's this way, footgun/ordering caveats included when there's a real reason (`// Hughes–Smith: see benchmarks`, `// must precede flush(): drains the queue`). The bar is *why*, never *what*. Anything longer belongs in `dev-docs/`, the project wiki, or a vault decision note — not the source. Applies to all new/edited code now; strip narrating comments opportunistically in files you already touch, no standalone cleanup PRs. Full: [[topics/no-narrating-comments]].
 
+## Snippets vs files
+
+Code the user types in the terminal/chat is a **snippet** by default (~99%) — illustrative, meant to convey shape / DX / intent, not to run. Read it for the API surface and intent; don't flag missing imports, surrounding plumbing, or lifecycle, and don't turn a stray literal into an action item. Expect typos (missing/duplicated chars) — read past them, fix obvious ones silently. The user says when something is a complete program. Code in a real source **file** (`.js`/`.ts`, not `.md`/text) is the opposite: expect it complete, compilable, executable, held to full standards. Ask only when a fragment's completeness genuinely matters. (Origin: reflect 2026-07-01 — reviewed an illustrative DX snippet as if it were a complete program.)
+
 ## Preferences
 
 - Default OSS license: **BSD-3-Clause** for personal projects — apply to a per-package `LICENSE` / `package.json` `"license"` directly; ask before a repo-wide top-level `LICENSE` on a currently-`UNLICENSED` / TBD repo.
