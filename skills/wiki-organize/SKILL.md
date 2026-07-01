@@ -7,7 +7,7 @@ description: Organize a project's GitHub wiki — add a curated _Sidebar.md navi
 
 Replace GitHub's auto-generated "Pages" rail with a curated `_Sidebar.md`, and surface wiki search — preferably wiki-search (ranked, deep-linked index) with GitHub's scoped search as the fallback line. Either way search is a *link*: no in-page search box is possible (GitHub sanitizes wiki HTML, so Pagefind/Algolia/lunr can't run).
 
-This skill is the **organization** layer. Two sibling skills handle the rest: `wiki-conventions` (page *naming* — filenames the sidebar links to) and `document-wiki-page` (writing one *component page*). The *why/limits* behind every rule below live in the vault note `github-wiki-constraints`; the structural baseline (submodule, Home.md) is `project-wiki-convention`.
+This skill is the **organization** layer. Two sibling skills handle the rest: `wiki-conventions` (page *naming* — filenames the sidebar links to) and `document-wiki-page` (writing one *component page*). **The convention is authoritative in the vault — read `project-wiki-convention` first** (submodule + `Home.md` baseline; two naming tracks — module pages = source path lowercase, prose/concept pages = Title-case with a `Concepts:-` / `Cookbook:-` prefix; Markdown links — never `[[…]]`); the *why/limits* behind every rule below live in `github-wiki-constraints`.
 
 ## Detect context first
 

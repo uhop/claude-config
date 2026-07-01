@@ -9,6 +9,8 @@ Generate a comprehensive documentation page for the specified component, formatt
 
 This skill replaces the per-project `prompts/doc.md` files that historically lived in Eugene's repos (deprecated 2026-05-05). Project-specific conventions are detected at invocation time rather than hardcoded.
 
+> **Conventions are authoritative in the vault — read `topics/project-wiki-convention` first** (naming, the `wiki/` submodule, link style). The wiki is a submodule; edit in `wiki/` and let the user push. Never create a sibling `<repo>.wiki` clone.
+
 ## Detect project context first
 
 Before writing, gather these values from the current working directory:
@@ -19,7 +21,7 @@ Before writing, gather these values from the current working directory:
 | Repo URL (https form) | `jq -r .repository.url package.json` — strip leading `git+` and trailing `.git` to get the GitHub URL |
 | Default branch | `git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null \| sed 's@^origin/@@'` — fall back to reading `git branch -r` or assuming `main` |
 | Public import style | Read `README.md` and `AGENTS.md` for canonical `import` statements; mirror exactly |
-| Wiki naming | Apply `wiki-conventions` skill when picking the new page's filename |
+| Wiki naming | Two tracks (see `wiki-conventions` / the vault `project-wiki-convention`): a **module** page is its source path lowercase (`utils/date.js` → `utils-date.md`, dash→U+2010 for literal dashes); a **prose/concept** page is Title-case with a `Concepts:-` / `Cookbook:-` prefix |
 
 These four values drive every link in the output. Don't assume `main` — `tape-six` and `tape-six-proc` use `master`.
 
@@ -91,7 +93,7 @@ Substitute `<org>/<repo>` and `<default-branch>` with the values detected above.
 
 ### URL-encoding for special filenames
 
-GitHub wiki filenames can contain colons (`:`), Unicode hyphens (`U+2010`), and other special characters. When linking to such a page, URL-encode the colon as `%3A`. Unicode hyphens render fine in URLs without encoding. Examples:
+Module pages are lowercase and colon-free; **prose/concept pages use a `Category:-` prefix** whose colon must be URL-encoded as `%3A` in links. Unicode hyphens (`U+2010`, in dashed module names like `code‐forward`) render fine unencoded. Examples:
 
 - `Adapter:-CRUD-methods.md` → `https://github.com/<org>/<repo>/wiki/Adapter%3A-CRUD-methods`.
 - `Utility-‐-tape6‐proc.md` (U+2010 hyphens) → `https://github.com/uhop/tape-six-proc/wiki/Utility-‐-tape6‐proc`.

@@ -1,49 +1,41 @@
 ---
 name: wiki-conventions
-description: Apply wiki page naming conventions when creating, renaming, or reviewing wiki pages. Use when working with wiki documentation.
+description: Apply wiki page naming/link conventions when creating, renaming, or reviewing wiki pages. Two tracks — programmatic module names vs Title-case prose. Defers to the vault as source of truth.
 ---
 
-# Wiki Page Naming Conventions
+# Wiki page conventions
 
-Apply consistent naming to wiki pages. See `dev-docs/wiki-conventions.md` in any project for the full rationale.
+> **The authoritative convention lives in the vault — read it first.** This skill summarizes; the vault
+> is the source of truth:
+>
+> - `topics/project-wiki-convention` — folder/layout, filenames (both tracks below), the `wiki/` submodule.
+> - `github-wiki-no-wikilinks` — Markdown links + colon (`%3A`) encoding.
+> - `github-wiki-constraints` — the why/limits.
 
-## Naming rules
+## Two naming tracks
 
-### Modules
+**1. Module / component pages — the source path, verbatim, so a programmer finds it by the name they
+import.** Lowercase. `/` and the dropped `.js` become spaces, i.e. an **ASCII dash** `-`
+(`utils/math/add.js` → `utils-math-add.md` = "utils math add"). A **literal dash** in a name becomes a
+**Unicode hyphen U+2010** (`‐`) so GitHub renders a real dash (`code-forward.js` → `code‐forward.md`).
+The path prefix clusters modules alphabetically. **Never poeticize a module page** — "Date utilities"
+is unfindable; a programmer searches "date". The **main imported module** (`index.js` / `main.js`,
+which users never name — they just `import x from 'pkg'`) is the exception: give it an anonymous,
+descriptive Title-case name such as `Core-API.md`.
 
-- **Named modules**: wiki page matches the export name sans extension (e.g., `parser.js` → `parser.md`).
-- **Subdirectory modules**: replace `/` separators with **ASCII dashes** (`-`) so GitHub wiki renders them as spaces: `a/b/abc.js` → `a-b-abc.md`.
-- **Literal dashes inside a name**: use Unicode hyphen U+2010 (`‐`) instead of ASCII dash so the wiki renders an actual dash, not a space. This applies to **both file and folder names** (e.g., `abc-def.js` → `abc‐def.md`, `utils/with-parser.js` → `utils-with‐parser.md`, `my-utils/parser.js` → `my‐utils-parser.md`).
-- **Unnamed modules** (`index.js`): use a descriptive name (e.g., `Main-module.md`).
-- **Unnamed modules in folders**: use the folder name: `utils/index.js` → `utils.md`.
+**2. Prose / concept pages (not tied to a module) — Title-case, poetic OK.** First word capitalized,
+not All-Words-Capitalized. Cluster with a category prefix + colon: `Concepts:-code-forward.md`
+("Concepts: code forward"), `Cookbook:-caching.md`. In **links**, encode the colon:
+`[…](Concepts%3A-code-forward)`.
 
-### Components
+## Always
 
-- Use the exported name as-is: `ClassName.md`, `CONSTANT_NAME.md`.
-- For functions, add trailing parens: `functionName().md`.
+- **Links are Markdown `[display](Page-Name)` — NEVER `[[…]]`** (GitHub renders wikilinks as plain text).
+- The wiki is a **`wiki/` git submodule** (chezmoi: `external_wiki/`); edit there, the user pushes.
+  **Never create or adopt a sibling `<repo>.wiki` clone** — surface a stray one, don't use it.
+- Pages are top-level `.md`; `Home.md` is the landing; `_Sidebar.md` / `_Footer.md` are chrome.
+- Each page: at least one import + usage example. Brevity, clarity.
 
-### Previous versions
+## Companion skills
 
-- Old version docs are renamed with a version prefix: `V1-`, `V2-`, etc.
-- Update all internal and external references when renaming.
-- These conventions do not apply to prefixed legacy pages.
-
-### Other pages
-
-- Technical (`Home.md`) and descriptive pages (`Performance.md`, `Migrating-from-v1-to-v2.md`) use descriptive names.
-
-## Content rules
-
-- Every module page documents all its exports.
-- Compact components are documented in the module that exports them.
-- Each page should have at least one import + usage example.
-- Goals: brevity, clarity, simplicity.
-
-## Steps
-
-1. Identify which wiki pages need to be created, renamed, or reviewed.
-2. Check each page name against the naming rules above.
-3. If existing pages violate conventions, **ask the user once** whether to fix them — legacy pages may need to stay.
-4. Apply conventions automatically to **new pages** or when **explicitly asked**.
-5. When renaming, update all references in other wiki pages and `README.md`.
-6. Verify all cross-references are consistent after changes.
+`document-wiki-page` (author one page) · `wiki-organize` (sidebar + search).
