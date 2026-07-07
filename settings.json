@@ -37,6 +37,7 @@
   },
   "effortLevel": "xhigh",
   "tui": "fullscreen",
+  "skipWorkflowUsageWarning": true,
   "theme": "auto",
   "autoCompactEnabled": true,
   "skipAutoPermissionPrompt": true,
@@ -52,6 +53,5 @@
         "VAULT_API_TOKEN": "${VAULT_API_TOKEN}"
       }
     }
-  },
-  "skipWorkflowUsageWarning": true
+  }
 }
