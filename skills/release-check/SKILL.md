@@ -1,6 +1,6 @@
 ---
 name: release-check
-description: Pre-release verification checklist for AI-doc-style projects (the AGENTS.md / llms.txt convention) across the fleet. Use before publishing a new version, when the user invokes /release-check, or asks whether a project is ready to ship. Covers the release-or-not decision, docs sync, package.json + tarball hygiene, dependency sweep, lockfile regen, cross-runtime tests, and the version-tier choice. Companion to /ai-docs-update and /sync-ai-rules.
+description: Pre-release verification checklist for AI-doc-style projects (the AGENTS.md / llms.txt convention) across the fleet. Use before publishing a new version, when the user invokes /release-check, or asks whether a project is ready to ship. Covers the release-or-not decision, docs sync, package.json + tarball hygiene, dependency sweep, lockfile regen, cross-runtime tests, and the version-tier choice. Companion to /ai-docs-update.
 ---
 
 # Release Check
@@ -38,8 +38,11 @@ internal-only = **no release**.
    TS-source or single-file projects.
 2. Check that `ARCHITECTURE.md` reflects any structural changes (if present).
 3. Check that `AGENTS.md` is up to date with any rule or workflow changes.
-4. Check that `.windsurfrules`, `.clinerules`, `.cursorrules` are byte-identical
-   to the condensed rules in `AGENTS.md` (run `/sync-ai-rules` if not).
+4. Check that the retired mirror files (`.windsurfrules`, `.clinerules`,
+   `.cursorrules`) are **absent** — remove them if found; never recreate them
+   (mirrors retired fleet-wide 2026-07-04, `AGENTS.md` is the single
+   cross-tool source). Same for an uppercase `.github/COPILOT-INSTRUCTIONS.md`
+   (the lowercase `copilot-instructions.md` pointer is the read path).
 5. Check that `llms.txt` and `llms-full.txt` are up to date with any API changes
    (run `/ai-docs-update` if not). If the project has a wiki, confirm
    `wiki/Home.md` links to all relevant wiki pages.
