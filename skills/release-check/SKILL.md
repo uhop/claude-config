@@ -11,6 +11,13 @@ it never commits, tags, or publishes on its own (see the final step).
 
 ## Step 0 — Decide whether to release at all
 
+**Precondition: the user explicitly asked for a release (or invoked
+/release-check themselves).** An unreleased changeset on `main` is never, by
+itself, a reason to start release prep — the release decision (and its timing)
+is the user's; he may deliberately batch more work before cutting a version.
+If the ask isn't explicit, stop here and surface the unreleased state as
+information instead.
+
 A release at any tier — even patch — needs **something the user can observe as
 a benefit**: a bugfix, a perf improvement, new functionality, or a corrected
 behavior. Pure internal changes (CI updates, repackaging, dev-dep bumps,
