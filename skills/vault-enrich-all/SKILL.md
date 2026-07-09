@@ -63,7 +63,16 @@ echo "$COV" | jq -c '{total, enriched, unenriched, enrichable_types}'
 # (log/meta/queue-item/state/index), empty-body stubs, and archived notes.
 ```
 
-`coverage.enrichment` returns counts, not paths. To get the actual notes to enrich, enumerate `/sections` filtered to the server's `enrichable_types` (**read live, never hardcoded**) + non-empty body + not archived + missing `agent_summary` (exposed flat per record; empty ⇒ no `agent:` block). Page by `items.length`, never the requested limit:
+**Since 2026-07-09 the server returns the worklist itself**: `coverage.enrichment.unenriched_records` — `[{record_id, file_path, type}]`, path-ordered, capped at 500 (compare its length with `unenriched` to detect truncation), computed with exactly the headline's exclusions (enrichable types, non-empty body, non-archived). **Use it directly** — it is the authoritative list this skill used to reconstruct client-side (and got wrong twice, 2026-06-30):
+
+```bash
+echo "$COV" | jq -r '.unenriched_records[] | "\(.record_id)\t\(.type)\t\(.file_path)"'
+# --type=X → add: select(.type == "X")
+```
+
+`--stale` is a different set (existing blocks whose `derived_from_hash` drifted) — enumerate it from the suggestions queue instead: `vault-curl '/suggestions?kind=agent_enrichment_stale&status=pending&limit=100' -s` (page by `items.length`).
+
+**Fallback (older server, `unenriched_records` absent from the response):** enumerate `/sections` filtered to the server's `enrichable_types` (**read live, never hardcoded**) + non-empty body + not archived + missing `agent_summary` (exposed flat per record; empty ⇒ no `agent:` block). Page by `items.length`, never the requested limit:
 
 ```bash
 TYPES=$(echo "$COV" | jq -r '.enrichable_types | join(" ")')
@@ -84,7 +93,7 @@ done
 # --type=X → keep only that type out of $TYPES;  --stale → flip the first select to the hash-mismatch test.
 ```
 
-**Cross-check the enumeration against the server count — they MUST agree.** The archive/empty filters above *reimplement* the server's own exclusions, so they can silently drift. They did, 2026-06-30: `archived_at` (null for path-archived notes) let 177 `/archive/` notes through, so the scan reported **179** to enrich while `coverage.enrichment.unenriched` was **0**. After enumerating, reconcile: if your count exceeds `echo "$COV" | jq .unenriched`, the filter has false positives — **trust the server, not the filter**, and don't enrich the excess. The durable fix is server-side: `vault-storage` should expose the unenriched *paths* (not just counts) from `coverage.enrichment`, so this skill consumes the authoritative list instead of reconstructing it. Until then, the server's `unenriched` count is the guard.
+**Cross-check the fallback enumeration against the server count — they MUST agree.** The archive/empty filters above *reimplement* the server's own exclusions, so they can silently drift. They did, 2026-06-30: `archived_at` (null for path-archived notes) let 177 `/archive/` notes through, so the scan reported **179** to enrich while `coverage.enrichment.unenriched` was **0**. After enumerating, reconcile: if your count exceeds `echo "$COV" | jq .unenriched`, the filter has false positives — **trust the server, not the filter**, and don't enrich the excess. This applies to the fallback path only — `unenriched_records` (2026-07-09) *is* the authoritative list; no reconciliation needed there.
 
 **Empty bodies are reported, never enriched.** A note whose body is empty, whitespace-only, or the literal string `null` (the BODY-lint categories — `topics/vault-hygiene-policy` § Body integrity) is excluded by the jq filter above. Don't "fix" such a note by summarizing nothing — the 2026-06-20 campaign wrote meaningless blocks on 7 stubs and every one had to be stripped. Collect the excluded paths and surface them in the final report as `needs a body`; whether to write content or leave the scaffold empty is the user's call. This applies to **every** invocation shape — the default set, `--type=X`, and `--stale` all share the filter.
 
