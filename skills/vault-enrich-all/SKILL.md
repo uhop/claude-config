@@ -77,7 +77,7 @@ while :; do
     | select((.agent_summary // "") == "")          # missing block (for --stale: .agent_derived_from_hash != .body_hash)
     | select(.type as $t | $enrich | index($t))      # type IS in the server allowlist
     | select((.file_path // "") | test("/archive/") | not)   # not archived — server excludes by PATH; archived_at is null for path-archived notes, so do NOT use it
-    | select((.body | gsub("\\s";"") | length) > 0)          # non-empty — best-effort; the server's empty-stub rule is authoritative (cross-check below)
+    | select((.body | gsub("\\s";"") | ascii_downcase) | (length > 0 and . != "null"))   # body integrity: empty / whitespace-only / literal "null" bodies are never enrichable
     | "\(.record_id)\t\(.type)\t\(.file_path)"'
   offset=$((offset + n))
 done
@@ -85,6 +85,8 @@ done
 ```
 
 **Cross-check the enumeration against the server count — they MUST agree.** The archive/empty filters above *reimplement* the server's own exclusions, so they can silently drift. They did, 2026-06-30: `archived_at` (null for path-archived notes) let 177 `/archive/` notes through, so the scan reported **179** to enrich while `coverage.enrichment.unenriched` was **0**. After enumerating, reconcile: if your count exceeds `echo "$COV" | jq .unenriched`, the filter has false positives — **trust the server, not the filter**, and don't enrich the excess. The durable fix is server-side: `vault-storage` should expose the unenriched *paths* (not just counts) from `coverage.enrichment`, so this skill consumes the authoritative list instead of reconstructing it. Until then, the server's `unenriched` count is the guard.
+
+**Empty bodies are reported, never enriched.** A note whose body is empty, whitespace-only, or the literal string `null` (the BODY-lint categories — `topics/vault-hygiene-policy` § Body integrity) is excluded by the jq filter above. Don't "fix" such a note by summarizing nothing — the 2026-06-20 campaign wrote meaningless blocks on 7 stubs and every one had to be stripped. Collect the excluded paths and surface them in the final report as `needs a body`; whether to write content or leave the scaffold empty is the user's call. This applies to **every** invocation shape — the default set, `--type=X`, and `--stale` all share the filter.
 
 For each candidate, fetch the file:
 
@@ -244,6 +246,7 @@ Enriched N notes:
   new blocks:           <count>
   refreshed (stale):    <count>
   skipped (fresh):      <count>
+  needs a body:         <count> — <paths, not enriched>
   errors:               <count>
 <remaining> still needing enrichment — re-run /vault-enrich-all for the next batch.
 ```
@@ -278,6 +281,8 @@ prompt: |
   - Always double-quote the hash value in the YAML.
   - Use block-style YAML for lists (`-` prefix, one per line). Inline
     flow style (`[a, b, c]`) breaks on values containing commas/colons.
+  - Never enrich an empty body (empty / whitespace-only / literal
+    "null") — exclude it and report its path under `needs_a_body`.
 
   Quality bar:
   - summary: lead with the claim, not the title rephrased
@@ -287,7 +292,7 @@ prompt: |
   - related_proposed: distance ≤ 0.30 only; conservative on ambiguous
   - edge_classifications: only when keyword cues are present; skip otherwise
 
-  Return: {enriched: N, skipped_fresh: M, errors: K, summary: "..."}
+  Return: {enriched: N, skipped_fresh: M, needs_a_body: [paths], errors: K, summary: "..."}
 ```
 
 Per-note cost (~1500 in / 300 out tokens at Sonnet rates) is a few cents
