@@ -32,7 +32,8 @@ user edits FM manually.
 ### 1. List pending suggestions
 
 ```bash
-vault-curl "/suggestions?kind=edge_type&status=pending&limit=$LIMIT" -s
+vault-curl "/suggestions?kind=edge_type&status=pending&limit=$LIMIT&expand=context" -s
+# expand=context (2026-07-09+) inlines context.records — briefs (title/type/status/agent.summary) for every payload-referenced record, null for deleted ones — and context.tag taxonomy info on tag kinds. Fetch full bodies only when a brief is not enough; drop the param on older servers.
 ```
 
 Response: `{items: [{id, subject_id, payload: {from_record, from_path, to_record, to_path, classifier_type, context}}, ...], total, ...}`.

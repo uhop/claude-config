@@ -40,7 +40,8 @@ When `--kind` is omitted, `new_tag` is the default (older, larger queue).
 ### 1. List pending new_tag suggestions
 
 ```bash
-vault-curl "/suggestions?kind=new_tag&status=pending&limit=100" -s
+vault-curl "/suggestions?kind=new_tag&status=pending&limit=100&expand=context" -s
+# expand=context (2026-07-09+) inlines context.records — briefs (title/type/status/agent.summary) for every payload-referenced record, null for deleted ones — and context.tag taxonomy info on tag kinds. Fetch full bodies only when a brief is not enough; drop the param on older servers.
 ```
 
 Each item's `payload` is `{tag, record_id, file_path}`. **Group by `tag`** —
@@ -142,7 +143,8 @@ Reviewed N unique tags across M records:
 ### 1. List pending tag_suggestion entries
 
 ```bash
-vault-curl "/suggestions?kind=tag_suggestion&status=pending&limit=$LIMIT" -s
+vault-curl "/suggestions?kind=tag_suggestion&status=pending&limit=$LIMIT&expand=context" -s
+# expand=context (2026-07-09+) inlines context.records — briefs (title/type/status/agent.summary) for every payload-referenced record, null for deleted ones — and context.tag taxonomy info on tag kinds. Fetch full bodies only when a brief is not enough; drop the param on older servers.
 ```
 
 Each item's `payload` is `{tag, record_id, file_path}`. Decisions are

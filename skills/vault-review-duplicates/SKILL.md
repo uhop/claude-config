@@ -48,7 +48,8 @@ looks stale.
 ### 1. List pending duplicate suggestions
 
 ```bash
-vault-curl "/suggestions?kind=duplicate&status=pending&limit=$LIMIT" -s
+vault-curl "/suggestions?kind=duplicate&status=pending&limit=$LIMIT&expand=context" -s
+# expand=context (2026-07-09+) inlines context.records — briefs (title/type/status/agent.summary) for every payload-referenced record, null for deleted ones — and context.tag taxonomy info on tag kinds. Fetch full bodies only when a brief is not enough; drop the param on older servers.
 ```
 
 Each item's payload: `{a_record, a_path, b_record, b_path, distance}`.
