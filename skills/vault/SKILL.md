@@ -304,57 +304,50 @@ calls; guard every `vault-curl … | jq …` pipe with `|| true` per § "Guard
    detected, surface it at the top of the resume output before reading logs —
    the vault's view of the project may be stale, and the recorded logs reflect
    that stale view.
-2. **Incremental reindex** — call `vault-curl /maintenance/incremental-reindex
-   -X POST -s`. Brings the server's local DB in sync with the vault-data git
-   tree if commits have landed since `last_indexed_commit` (typical case:
-   another machine pushed and the local host pulled, or auto-commit ran
-   while the watcher was off). The endpoint is fast and quiet on a
-   no-op (`changedFiles: 0`); only surface output when something
-   actually got reindexed, e.g.
-   `Reindexed: 12 imported, 1 deleted, 0 renamed (a3525b1..be691da)`.
-   On `fellBack: true`, mention the full-reindex path was taken (history
-   loss or first run). Lint and suggestion-summary that follow this
-   step now run against the up-to-date DB.
-3. **Integrity lint** — call `vault_lint` (or `vault-curl /system/lint -s`).
-   Cheap (~50ms). If `ok=false`, surface the non-zero check categories at
-   the top of the resume output (with counts and the first sample id per
-   category). These are bug indicators in the data — embedding drift,
-   missing embeddings, orphaned chunks, temporal anomalies, dangling tag
-   aliases. Do not auto-fix; report and let the user decide. If `ok=true`,
-   omit lint from the output entirely.
-4. **Review-queue summary** — call `vault_suggestions_summary` (or
-   `vault-curl /suggestions/summary -s`). One-shot per-kind pending counts.
-   If `total > 0`, surface a one-line summary like
-   `Pending suggestions: 1290 edge_type, 50 duplicate, 44 new_tag (total 1384)`
-   so the agent can decide whether to spend a triage block this session.
-   If `total == 0`, omit. Don't auto-triage; the dedicated review skills
-   (`/vault-review-edges`, `/vault-review-duplicates`, `/vault-review-tags`)
-   handle decisions.
-5. **Agent-workflow surface** — peek at the cross-machine workflow queue
-   and clarification backlog. Two reads in parallel:
-   - `vault-curl /vault/projects/agent-workflow/queue.md -s` — extract the
-     `## Active` section. If non-empty (not `(empty)`), surface those items
-     verbatim under a `Workflow:` heading. `## Backlog` stays quiet to avoid
-     noise.
-   - `vault-curl /vault/projects/agent-workflow/clarify-queue.md -s` — count
-     `### Q-` headings under `## Pending`. If `> 0`, surface one line like
-     `Clarify queue: 8 pending (/clarify to drain)`. If 0, omit. 404 on
-     either file → the agent-workflow project isn't scaffolded yet; omit
-     silently (it's an opt-in surface, not a required one).
-6. Read the 3 most recent session logs in `logs/`.
-7. Read relevant project notes for the current working directory — **explicitly
-   including `projects/<name>/feedback.md` if it exists**, and surface its rules
-   near the top of the resume output. This is the **read path** for fleet-shared
-   project feedback: the vault is pull-only and *not* auto-loaded the way local
-   per-machine memory is, so resume is what brings a repo's project-specific
-   working rules into the session. See `topics/project-feedback-md-convention`
-   (§ "How it's consulted") for the read/write bridge this forms with `/vault
-   wrap`.
-8. Summarize current state and what's left to do. If `check-drift` flagged
+2. **One-shot bundle** — call
+   `vault-curl "/system/resume-bundle?project=<name>&logs=3" -X POST -s`
+   with `<name>` = the current project (from git remote or directory
+   name). The server runs the incremental reindex first, then packages
+   what used to be five separate reads. Surface each block per the old
+   rules:
+   - `reindex` — quiet on a no-op (`changedFiles: 0`); report counts when
+     something got reindexed; mention `fellBack: true` (the full-reindex
+     path — history loss or first run).
+   - `lint` — pre-filtered to non-zero checks. If `ok=false`, surface the
+     categories with counts and first samples at the top of the resume
+     output. These are bug indicators — report, don't auto-fix.
+   - `suggestions` — `{total, by_kind}` of pendings. If `total > 0`, one
+     summary line; the dedicated review skills handle decisions.
+   - `workflow` — `active` is the agent-workflow Active section: surface
+     verbatim under a `Workflow:` heading when non-null. If
+     `clarify_pending > 0`, one line like
+     `Clarify queue: N pending (/clarify to drain)`. Nulls mean the
+     surface isn't scaffolded — omit silently.
+   - `logs` — the most recent session logs as their `agent.summary`
+     lines. Skim the summaries; fetch a full body
+     (`vault-curl /vault/{path} -s`) only when a summary is missing or
+     the session directly continues that log's work.
+   - `project` — `feedback.md` arrives with its full body: surface its
+     rules near the top of the resume output (this is the read path for
+     fleet-shared project feedback — the vault is pull-only, not
+     auto-loaded like local memory; see
+     `topics/project-feedback-md-convention`). The other files
+     (queue/decisions/learnings/stack) come as `summary` + `body_bytes`;
+     fetch bodies only as needed.
+3. **Fallback (pre-bundle server).** A 404 from the bundle endpoint means
+   an older server — run the individual calls instead: `POST
+   /maintenance/incremental-reindex`, `GET /system/lint`,
+   `GET /suggestions/summary`, the two agent-workflow file reads
+   (`projects/agent-workflow/queue.md` § Active,
+   `clarify-queue.md` pending count), the 3 most recent `logs/` entries,
+   and the project's notes including `feedback.md` — guarding every
+   `vault-curl … | jq …` pipe with `|| true` per § "Guard `jq` pipes in
+   parallel Bash batches".
+4. Summarize current state and what's left to do. If `check-drift` flagged
    new commits / tags / publishes that aren't reflected in `projects/<name>`
    notes, update those notes to match (or at minimum flag the divergence in
    the summary).
-9. After syncing, run `check-drift --update` so the baseline captures the
+5. After syncing, run `check-drift --update` so the baseline captures the
    refreshed view and the next resume starts from a clean slate.
 
 ### /vault wrap [optional log slug]
