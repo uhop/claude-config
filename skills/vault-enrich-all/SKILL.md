@@ -207,7 +207,11 @@ when you omit them. **The `agent` map itself is replaced wholesale on each
 write**, though, so include all the fields you want preserved inside
 `agent`.
 
-Look up `body_hash` via `/sections/{id}` (or `vault_read_meta`) to populate
+**Preferred (2026-07-09+): set `derived_from_hash: "auto"`** — the server
+replaces the sentinel with the hash of the body it is writing and stamps
+`derived_at`; nothing to look up, and the wrong-hash class dies at the
+source. On an older server, look up `body_hash` via `/sections/{id}` (or
+`vault_read_meta`) to populate
 `derived_from_hash` — **not `content_hash`**. The two diverge once a
 summary is set: `content_hash` becomes `embedInputHash(body, summary)`,
 while `body_hash` stays at `sha256(body)`. Using `content_hash` from a
@@ -286,7 +290,8 @@ prompt: |
   `agent:` blocks unless --stale was passed).
 
   Critical:
-  - Use `body_hash` for `derived_from_hash`, NOT `content_hash`.
+  - Set `derived_from_hash: "auto"` (the server stamps the right hash).
+    On an older server: use `body_hash`, NOT `content_hash`.
   - Always double-quote the hash value in the YAML.
   - Use block-style YAML for lists (`-` prefix, one per line). Inline
     flow style (`[a, b, c]`) breaks on values containing commas/colons.
