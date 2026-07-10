@@ -20,6 +20,8 @@ Pushed history is immutable: no `--amend`, `rebase`, force-push, or moving publi
 
 Many basics (`cp`, `mv`, `rm`, `ls`, `cat`, `grep`, `du`, `mkdir`, `cd`) are aliased on this machine — bypass with `command cmd`. Full table: skill `shell-env`.
 
+**PyYAML is installed** — on the **system** python (`/usr/bin/python3`, Debian dist-packages), not on brew's `python3` that shadows it on `$PATH`. A brew-python `ModuleNotFoundError: No module named 'yaml'` does NOT mean PyYAML is missing; use `/usr/bin/python3` for `import yaml` work.
+
 ## Scratch files
 
 Don't hardcode `/tmp/<name>` for scratch — collides with stale files from prior/parallel sessions (`Write` refuses a stale same-name file: "File has not been read yet"; `Read` hits another session's leftover). `WORK=$(mktemp -d)` once, use `$WORK/<name>`. Shell state doesn't persist between Bash calls — capture the printed dir and reuse its **literal** path across calls, don't re-`mktemp` (or keep the whole read-modify-write in one Bash call). **Never `cd` into `$WORK`** — the trailing `rm -rf "$WORK"` then deletes the shell's own cwd: the command exits 1 with `getcwd` noise despite full success, and the dead cwd poisons the *next* Bash call too. Absolute paths only; if something must run inside, subshell it: `(cd "$WORK" && …)`. (Origin: reflect 2026-07-04 — 3× in one double-meh session.) Best-effort `rm -rf "$WORK"` when done (uniqueness prevents collisions; cleanup is hygiene, not correctness — don't fail the task on it). Reference impl: `skills/vault-check-drift/check-drift.sh`. Full: [[topics/scratch-file-mktemp-not-hardcoded-tmp]].
