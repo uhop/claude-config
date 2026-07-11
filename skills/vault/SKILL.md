@@ -15,6 +15,37 @@ Requires two environment variables (set in `~/.env`, which is sourced by `.bashr
 - `VAULT_API_URL` — base URL of the vault REST API (vault-storage; e.g., `http://host:8123`)
 - `VAULT_API_TOKEN` — bearer token for authentication
 
+### Prefer `vault-put` for document writes
+
+`~/.claude/skills/vault/vault-put.mjs` replaces the hand-rolled jq/python
+payload-assembly blocks (which failed 4× in one session — reflect 2026-07-10;
+report [[projects/agent-workflow/reports/2026-07-10-nuke]]). Three modes, all
+printing the HTTP status + new ETag:
+
+```bash
+vault-put.mjs PATH --fm FM.json --body BODY.md    # full JSON write (create/replace); FM authored as JSON, body verbatim
+vault-put.mjs PATH --append FRAGMENT.md           # GET → append to body, FM verbatim → round-trip PUT with automatic If-Match
+vault-put.mjs PATH --replace OLD NEW [--all]      # GET → asserted body edits → round-trip PUT with automatic If-Match
+                                                  # (--replace-file OLD.txt NEW.txt for multiline pairs)
+```
+
+Rules baked in, keep honoring them when a raw `vault-curl` write is still
+needed:
+
+- **Assert every string replacement.** `--replace` fails (exit 3, nothing
+  written) when the target is missing or ambiguous — the curly-vs-straight
+  apostrophe class of bug makes an unasserted `replace` a silent no-op.
+- **Never let scratch cleanup follow fallible steps unguarded** — chain
+  `rm -rf "$WORK"` with `&&` (CLAUDE.md § Scratch files).
+- Round-trip modes send `If-Match` from their own GET: a concurrent write
+  surfaces as a clean 412 (exit 2), never a silent clobber. FM changes still
+  require the JSON mode; `--append`/`--replace` keep the server-emitted YAML
+  verbatim (the safe round-trip per the 2026-06-11 decision), and the
+  indexer/enrichment pipeline handles `updated`/staleness downstream.
+
+Reach for raw `vault-curl` (below) for reads, endpoints other than
+`/vault/{path}` document writes, and anything `vault-put` doesn't cover.
+
 ### Use `vault-curl` — don't hand-roll `curl`
 
 There is a `vault-curl` wrapper on `$PATH` (installed under `~/.local/bin/vault-curl`). **Prefer it over raw `curl`** — it prepends `$VAULT_API_URL` and the `Authorization: Bearer $VAULT_API_TOKEN` header, checks the env vars, and forwards every remaining flag straight to `curl`.
