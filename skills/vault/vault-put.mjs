@@ -136,7 +136,8 @@ if (fmFile) {
     const count = edited.split(old).length - 1;
     if (count === 0) fail(3, `replace assert failed — not found:\n${old.slice(0, 200)}`);
     if (count > 1 && !all) fail(3, `replace assert failed — ${count} occurrences (use --all):\n${old.slice(0, 200)}`);
-    edited = all ? edited.split(old).join(replacement) : edited.replace(old, replacement);
+    // function replacer: a string replacement would interpret $-patterns ($`, $$, $&)
+    edited = all ? edited.split(old).join(replacement) : edited.replace(old, () => replacement);
   }
   await put('text/markdown', head + edited, etag);
 }
