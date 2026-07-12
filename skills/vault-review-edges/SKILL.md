@@ -244,3 +244,16 @@ vault-storage on `:8123` only. Filing logic is server-side.
 - `vault-curl` on `$PATH`.
 - `jq` for response parsing.
 - The standard FM writer (`PUT /vault/{path}`) — handles merge semantics.
+
+## Caution — stale paths resurrect records (2026-07-12)
+
+A suggestion's `payload.file_path` is captured at filing time. If the record
+was **moved or archived since** (consolidations, supersessions), a
+`PUT /vault/<old-path>` silently **creates a new record at the dead path** —
+observed 2026-07-12: an edge write to pre-consolidation
+`projects/chezmoi/stack.md` resurrected a ghost that then surfaced as an
+unenriched record and re-filed suggestions. Before any FM write, resolve the
+record's **current** path (`GET /sections/{record_id}` or verify the GET on
+the payload path returns the same `record_id`); if the record moved, apply
+the edit at the current path and resolve the suggestion against it — never
+write to the payload path unverified.
