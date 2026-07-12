@@ -513,10 +513,20 @@ attribution and the per-kind passes are already cheap.
 
 1. **Baseline.** Pull `vault-curl /system/lint -s`,
    `vault-curl /suggestions/summary -s`, the **enrichment-coverage count**
-   (enrichable knowledge notes lacking an `agent:` block — from the
-   `/vault-enrich-all` coverage scan; this is *not* a suggestion kind, so
-   `/suggestions/summary` never shows it), and (cheap) record counts.
-   Compute the action set from the safe defaults plus
+   (enrichable knowledge notes lacking an `agent:` block; this is *not* a
+   suggestion kind, so `/suggestions/summary` never shows it), and (cheap)
+   record counts. The coverage read is MANDATORY, LIVE, and comes from
+   exactly this key — the field is nested (`.coverage.enrichment`, NOT a
+   flat `coverage_enrichment`), and the server also returns the worklist:
+
+   ```bash
+   vault-curl /system/lint -s | jq -c '.coverage.enrichment | {total, enriched, unenriched}, .unenriched_records' || true
+   ```
+
+   Never substitute a remembered/earlier count — a mid-sweep write can mint
+   an unenriched record (observed 2026-07-12: a ghost resurrected at a
+   stale path sat invisible through a second sweep because both baselines
+   skipped this read). Compute the action set from the safe defaults plus
    `--include` / `--exclude` / `--include-destructive`.
 2. **Dry-run.** If `--dry-run`, print the planned action set with
    per-kind counts and stop.
