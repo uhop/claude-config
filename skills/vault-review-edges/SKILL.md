@@ -1,6 +1,6 @@
 ---
 name: vault-review-edges
-description: Triage pending `edge_type` suggestions in the vault — promote default `cites` body wikilinks to a more specific edge type (derived-from, applies-to, supersedes, etc.) by editing the source record's frontmatter `edges:` map, or confirm `cites` is correct and reject the suggestion. Backed by `GET /suggestions?kind=edge_type&status=pending` and the standard frontmatter writer. Use when the user says /vault-review-edges, asks to triage / clean up the typed-edge graph, or wants to chip away at the classifier's review queue. Requires vault-storage (`:8123`) — the suggestion-filing logic is server-side.
+description: Triage pending `edge_type` suggestions in the vault — promote default `cites` body wikilinks to a more specific edge type (derived-from, applies-to, supersedes, etc.) by editing the source record's frontmatter `edges:` map, or confirm `cites` is correct and reject the suggestion. Backed by `GET /suggestions?kind=edge_type&status=pending` (or `POST /suggestions/claim` when running concurrently) and `POST /suggestions/resolve-batch`, which writes the FM `edges:` override server-side. Use when the user says /vault-review-edges, asks to triage / clean up the typed-edge graph, or wants to chip away at the classifier's review queue. Requires vault-storage (`:8123`) — the suggestion-filing logic is server-side.
 user_invocable: true
 ---
 
@@ -36,6 +36,17 @@ vault-curl "/suggestions?kind=edge_type&status=pending&limit=$LIMIT&expand=conte
 # expand=context (2026-07-09+) inlines context.records — briefs (title/type/status/agent.summary) for every payload-referenced record, null for deleted ones — and context.tag taxonomy info on tag kinds. Fetch full bodies only when a brief is not enough; drop the param on older servers.
 ```
 
+**Concurrent / sharded runs claim instead of listing** (2026-07-13+) — the
+batch flips `pending → claimed` for your holder with a TTL, so parallel
+same-kind agents and overlapping sweeps never triage the same items:
+
+```bash
+vault-curl "/suggestions/claim?expand=context" -X POST -H 'Content-Type: application/json' \
+  --data-binary '{"kind": "edge_type", "holder": "'"$HOLDER"'", "limit": '"$LIMIT"'}' -s
+# Same items shape + remaining_pending. Pass the SAME $HOLDER as resolved_by
+# when resolving; expired claims lazily revert to pending (default TTL 30 min).
+```
+
 Response: `{items: [{id, subject_id, payload: {from_record, from_path, to_record, to_path, classifier_type, context}}, ...], total, ...}`.
 
 If `items` is empty, report "no pending edge_type suggestions" and stop.
@@ -69,90 +80,46 @@ The 10 valid edge types (from `EDGE_TYPES` in the codebase):
 Default-cites that fit nothing else: keep as cites (reject the suggestion).
 Don't force a type just to clear the queue.
 
-### 3a. Promote to a specific type — write FM `edges:` entry
+### 3. Resolve the whole batch — one call
 
-Build a payload that **only** carries the `edges` key you want to
-update — the writer's shallow FM merge preserves every other top-level
-key on disk (title, tags, related, agent, etc.), so you don't need to
-re-send them.
-
-The target key inside `edges` must match the wikilink as written in the
-body (slug or path form — `[[foo]]` → `foo`, `[[topics/foo]]` →
-`topics/foo`). The resolver collapses both to the same record, but FM
-keys aren't deduplicated.
-
-Use the **JSON write path** — sidesteps YAML quoting concerns for the
-wikilink-form keys (`[[…]]` and path-segments containing `/` are both
-edge-case-prone in YAML). One structured call serves both the current
-`edges` map and the pass-through body:
+`POST /suggestions/resolve-batch` (2026-07-13+) applies the decisions and
+their FM side effects server-side. An accept **requires** `edge_type` (any
+typed value — "cites is correct" is a reject); the server pins the source
+record's FM `edges:` override itself (key = target path sans `.md`, resolver-
+matched regardless of the body's slug form, existing entries preserved) and
+the scoped edge pass settles the row as `resolved_by='fm-override'`. Rejects
+flip status only. No body round-trip, so the byte-exact-body hazard class
+(the 2026-06-11 stale-enrichment filings) is gone by construction.
 
 ```bash
-# Per-invocation staging dir — never fixed /tmp names; co-resident
-# sessions share /tmp and clobber them.
 D=$(mktemp -d)
-
-vault-curl "/sections/$RECORD_ID/fm" -s > "$D/fm.json"
-
-# Body extraction MUST be byte-exact: use `jq -j`, never `jq -r` (which
-# appends a trailing newline) and never an awk/sed FM-strip. A body that
-# drifts by even one byte changes the record's body hash, knocks an
-# enriched note off its `agent.derived_from_hash`, and files a spurious
-# `agent_enrichment_stale` suggestion per touched note (bitten
-# 2026-06-11: three FM-only promotions, three stale filings).
-jq -j '.body' "$D/fm.json" > "$D/body.md"
-
-# Current edges map to merge your new entry into:
-jq -c '.frontmatter.edges // {}' "$D/fm.json"
-
-# Compose the merged edges map (existing edges + your new entry).
-# `EDGES_JSON` is the merged map you've assembled, e.g.:
-#   '{"some-target":"derived-from","other":"applies-to"}'
-jq --null-input \
-  --rawfile body "$D/body.md" \
-  --argjson edges "$EDGES_JSON" \
-  '{frontmatter: {edges: $edges}, body: $body}' \
-  > "$D/payload.json"
-
-vault-curl "/vault/$FROM_PATH" -X PUT \
-  -H 'Content-Type: application/json' \
-  --data-binary @"$D/payload.json" \
-  -o /dev/null -w "%{http_code}\n"
-
-command rm -rf "$D"
+cat > "$D/batch.json" <<'JSON'
+{
+  "resolved_by": "$HOLDER-or-review-label",
+  "items": [
+    {"id": "<id-1>", "decision": "accept", "edge_type": "derived-from"},
+    {"id": "<id-2>", "decision": "accept", "edge_type": "applies-to"},
+    {"id": "<id-3>", "decision": "reject"}
+  ]
+}
+JSON
+vault-curl "/suggestions/resolve-batch" -X POST -H 'Content-Type: application/json' \
+  --data-binary @"$D/batch.json" -s | jq -c '{accepted, rejected, failed}' \
+  && rm -rf "$D"
 ```
 
-Expect `204`. The writer's shallow FM merge replaces the `edges` map
-wholesale, so include every entry you want preserved inside the new map
-(merge-and-replace semantics, key-by-key at the top level only).
+≤ 100 items per call; always 200 — per-item failures land in
+`results[].error` (`already_resolved`, `claimed_by_other`,
+`record_not_found`, `invalid_edge_type`, …) and never abort the batch.
+Report any `failed > 0` items in the summary. If you claimed the batch,
+`resolved_by` must equal the claim's holder. Rejected rows sit in `rejected`
+forever; the filer's idempotency check skips re-filing on the next reindex.
 
-If a stale-enrichment suggestion does get filed by a body drift,
-recovery is a byte-exact restore: re-PUT with the original body
-(`jq -j` it back out, strip the one added newline with
-`perl -0pe 's/\n\z//'`) — the filer auto-accepts on hash match.
-
-The JSON path is the only sanctioned way to modify FM (2026-06-11
-decision). The markdown PUT mode still exists server-side but is
-reserved for the UI editor and verbatim round-trips — don't hand-edit
-YAML FM blocks, even for simple values like edge type names.
-
-Then mark the suggestion accepted:
-
-```bash
-vault-curl "/suggestions/$ID/accept" -X POST -s -o /dev/null -w "%{http_code}\n"
-```
-
-(The indexer's auto-accept-on-fm-override usually fires on the next reindex
-anyway, but explicit accept ensures the queue clears immediately.)
-
-### 3b. Confirm cites is correct — reject without FM edit
-
-```bash
-vault-curl "/suggestions/$ID/reject" -X POST -s -o /dev/null -w "%{http_code}\n"
-```
-
-No FM edit. The suggestion sits in `rejected` state forever; the filer's
-idempotency check skips re-filing on next reindex. (Tradeoff: a full DB
-rebuild from .md will re-suggest the pair. Acceptable for the volume.)
+**Fallback (pre-2026-07-13 server, 404 on the endpoint):** per-id
+`POST /suggestions/{id}/accept|reject` plus a client-side FM `edges:` write
+through the JSON PUT path — the full ceremony (byte-exact `jq -j` body
+round-trip, merged edges map) lives in this file's git history before the
+resolve-batch adoption.
 
 ### 4. Report summary
 
@@ -205,20 +172,25 @@ description: Triage N edge_type suggestions
 prompt: |
   You are running /vault-review-edges in autonomous mode. Read
   ~/.claude/skills/vault-review-edges/SKILL.md and follow the procedure for
-  the next $LIMIT pending suggestions. Default to `cites` (reject) when in
-  doubt — don't force a more specific type without solid evidence in the
-  payload context.
+  the next $LIMIT pending suggestions. Claim your batch with holder
+  "$HOLDER" (procedure step 1), judge every item, then resolve them in ONE
+  /suggestions/resolve-batch call with resolved_by "$HOLDER" (step 3) —
+  never per-id accept/reject loops on a 2026-07-13+ server. Default to
+  `cites` (reject) when in doubt — don't force a more specific type without
+  solid evidence in the payload context. Release skipped/ambiguous items
+  with POST /suggestions/{id}/reopen so they return to the pending pool.
 
-  Return: {accepted: N, rejected: M, skipped: K, summary: "<one paragraph>"}
+  Return: {accepted: N, rejected: M, skipped: K, failed: F, summary: "<one paragraph>"}
 ```
 
-Sub-agent uses the cheap model; main session sees only the summary. This
-keeps token costs proportional to the *judgment* work, not the *paperwork*.
+The sub-agent runs on Sonnet (not the session model); the main session sees
+only the summary. This keeps token costs proportional to the *judgment*
+work, not the *paperwork*.
 
-For obvious-cites links (the majority), Haiku will reject without further
-context. For genuine candidates, Haiku may surface them as `skipped` for the
-main session to decide — pass `skip_uncertain: true` in the prompt to enable
-this.
+For obvious-cites links (the majority), the sub-agent rejects without
+further context. Genuine candidates it isn't sure about surface as
+`skipped` for the main session to decide — pass `skip_uncertain: true` in
+the prompt to enable this.
 
 ## When this is the right tool
 

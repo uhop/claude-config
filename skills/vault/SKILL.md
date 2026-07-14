@@ -537,12 +537,20 @@ The resulting stage DAG:
    race the compactor's multi-step move, hence duplicate before
    compaction, not parallel.
 
-**Never run two same-kind triage agents concurrently**: each `--auto`
-agent pulls the head of the same pending queue, so a pair duplicates
-(or contradicts) each other's decisions. The one sanctioned
-within-kind fan-out is the enrichment backfill, sharded by explicit
-disjoint worklist chunks (§ Procedure step 4). Label every concurrent
-dispatch with its kind so a failed pass attributes cleanly.
+**Same-kind triage agents run concurrently only via claims**
+(2026-07-13+ server): each agent reserves its own batch with
+`POST /suggestions/claim` under a unique holder (e.g.
+`sweep-<date>-<kind>-<n>`) and resolves through
+`POST /suggestions/resolve-batch` with `resolved_by` = that holder —
+the reservation makes the batches disjoint by construction, and it
+also de-conflicts overlapping sweeps from separate sessions. Skipped
+items are released with `reopen` (or lapse at the claim TTL, default
+30 min). On a pre-claim server the old rule stands: never two
+same-kind triage agents — they pull the same queue head and duplicate
+or contradict each other's decisions. Enrichment backfill shards by
+explicit worklist chunks instead (§ Procedure step 4) — coverage is
+not a suggestion kind, so there is nothing to claim. Label every
+concurrent dispatch with its kind so a failed pass attributes cleanly.
 
 #### Procedure
 
@@ -585,13 +593,16 @@ dispatch with its kind so a failed pass attributes cleanly.
      previous pass (stuck — sub-agent deferred, or items need human
      judgment).
 
-   **Sharding (enrichment backfill only).** When the baseline's
+   **Sharding.** *Enrichment backfill*: when the baseline's
    `unenriched_records` worklist exceeds ~100 records, split it into
    disjoint chunks of ~50 and dispatch up to 4 enrich agents in
    parallel, each given its explicit chunk (see `/vault-enrich-all`
    § Sub-agent mode, sharded dispatch); re-pull the worklist between
-   passes. Never shard the triage kinds — their `--auto` agents pull
-   the same queue head.
+   passes. *Triage kinds* (2026-07-13+ server): shard by claims — up
+   to 4 same-kind agents, each claiming its own batch under a unique
+   holder and batch-resolving as that holder (§ Ordering constraints).
+   Worth it above ~100 pending of one kind; below that, one agent per
+   kind suffices.
 5. **Convergence rounds.** One staged drain rarely ends at zero:
    stage-3 accepts and stage-4 merges/compactions trigger reindexes
    that file fresh suggestions *after* their kind's stage already ran
