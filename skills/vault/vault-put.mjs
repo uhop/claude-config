@@ -7,8 +7,10 @@
 //   vault-put PATH --append FRAGMENT.md             # round-trip body append, FM verbatim
 //   vault-put PATH --replace OLD NEW [...]          # asserted round-trip body edits
 // Round-trip modes GET first and send If-Match automatically; a concurrent
-// write surfaces as 412 (exit 2). Replace asserts exactly one occurrence
-// unless --all (missing or ambiguous → exit 3, nothing written).
+// write surfaces as 412 (exit 2), and a composed folder view (weak ETag /
+// X-Vault-Composed — no on-disk file) is refused up front instead of
+// materializing a shadowing flat file. Replace asserts exactly one
+// occurrence unless --all (missing or ambiguous → exit 3, nothing written).
 
 import {readFileSync} from 'node:fs';
 import process from 'node:process';
@@ -102,7 +104,16 @@ const put = async (contentType, payload, etag) => {
     body: payload
   });
   if (response.status === 412) {
-    fail(2, `412 precondition failed — the document changed since it was read; re-run to retry on the fresh copy`);
+    // Surface the server's own diagnostic — a 412 is not always a concurrent
+    // write (e.g. a composed-view target), and masking the message sent the
+    // 2026-07-14 blog session chasing a phantom concurrency bug.
+    let detail = 'the document changed since it was read; re-run to retry on the fresh copy';
+    try {
+      const err = JSON.parse(await response.text());
+      if (err.error) detail = err.error;
+      if (err.details?.current_etag) detail += ` (current etag "${err.details.current_etag}")`;
+    } catch {}
+    fail(2, `412 precondition failed — ${detail}`);
   }
   if (!response.ok) {
     fail(1, `${response.status} ${response.statusText} — ${(await response.text()).slice(0, 500)}`);
@@ -115,6 +126,12 @@ const getDoc = async () => {
   if (!response.ok) fail(1, `GET ${path}: ${response.status} ${response.statusText}`);
   const text = await response.text(),
     etag = response.headers.get('etag');
+  if (response.headers.get('x-vault-composed') === 'true' || etag?.startsWith('W/')) {
+    fail(
+      1,
+      `GET ${path}: composed view of the atomized folder ${path.replace(/\.md$/, '')}/ — no single file exists, and a round-trip write would create a shadowing flat file. Edit the folder's pieces instead.`
+    );
+  }
   if (!text.startsWith('---\n')) fail(1, `GET ${path}: no frontmatter block — refusing a round-trip edit`);
   const end = text.indexOf('\n---\n', 4);
   if (end < 0) fail(1, `GET ${path}: unterminated frontmatter block`);

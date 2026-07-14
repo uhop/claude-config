@@ -42,6 +42,14 @@ needed:
   require the JSON mode; `--append`/`--replace` keep the server-emitted YAML
   verbatim (the safe round-trip per the 2026-06-11 decision), and the
   indexer/enrichment pipeline handles `updated`/staleness downstream.
+- **Composed folder views can't be round-trip-edited.** A GET of `X.md`
+  where only the atomized folder `X/` exists returns a *composed* document
+  (weak ETag `W/"…"` + `X-Vault-Composed: true`); vault-put refuses it up
+  front, and the server 412s conditional / 409s (`shadow_conflict`)
+  unconditional PUTs against it — a flat file there would shadow the
+  folder (the 2026-07-14 blog incident). Edit the folder's *pieces*
+  (`GET /vault/X/` lists them) instead; `?shadow=allow` exists for a
+  deliberate de-atomization only.
 
 Reach for raw `vault-curl` (below) for reads, endpoints other than
 `/vault/{path}` document writes, and anything `vault-put` doesn't cover.
