@@ -437,16 +437,19 @@ quiet.
 
 ### /vault sweep [options]
 
-Drain every safely-automatable maintenance queue in one pass. Orchestrates
-the existing review/cleanup skills + endpoints; loops each queue with
-`--auto --limit=100` until the count hits zero or stops dropping.
+Drain every safely-automatable maintenance queue. Orchestrates the
+existing review/cleanup skills + endpoints; loops each queue with
+`--auto --limit=100` until the count hits zero or stops dropping, then
+repeats the whole pass — up to `--max-rounds` — while residue remains
+that another round can actually drain (§ Procedure step 5).
 
 ```
 /vault sweep                         # full default set (incl. duplicate review + compaction)
 /vault sweep --dry-run               # report what would run; no writes
 /vault sweep --include=edge_type,new_tag
 /vault sweep --exclude=duplicate,compaction_candidate   # cautious run: FM-only triage
-/vault sweep --max-passes=N          # loop cap per kind (default 5)
+/vault sweep --max-passes=N          # loop cap per kind within a round (default 5)
+/vault sweep --max-rounds=N          # cap on whole-pass convergence rounds (default 5)
 ```
 
 `--include-destructive` is retired (2026-07-13): its two kinds are in the
@@ -455,7 +458,7 @@ duplicate triage is safe rejections, and neither pass can lose data
 (merges supersede-archive with record id intact; compaction archives
 originals; vault-data is git-backed). Accept and ignore the flag if the
 user still types it; the pre-commitment gate is replaced by itemized
-post-hoc reporting (§ Procedure step 5) and the `--exclude` opt-out.
+post-hoc reporting (§ Procedure step 6) and the `--exclude` opt-out.
 
 #### Default set
 
@@ -589,24 +592,45 @@ dispatch with its kind so a failed pass attributes cleanly.
    § Sub-agent mode, sharded dispatch); re-pull the worklist between
    passes. Never shard the triage kinds — their `--auto` agents pull
    the same queue head.
-5. **Final summary.** Print before/after counts per kind, total time,
-   and any kind that stopped above zero with a note about why
-   (max-passes reached vs. stuck vs. skipped). **Itemize every
-   structural mutation individually** — each merge as
-   `archived path → survivor`, each compacted folder by name — never
-   as bare counts: this post-hoc review glance is what replaced the
-   retired `--include-destructive` pre-commitment gate.
+5. **Convergence rounds.** One staged drain rarely ends at zero:
+   stage-3 accepts and stage-4 merges/compactions trigger reindexes
+   that file fresh suggestions *after* their kind's stage already ran
+   (and compaction summaries mint new enrichable notes). The old
+   answer was "re-run `/vault sweep` by hand"; instead, converge:
+   after stage 4, re-pull the step 1 baseline (fresh live reads,
+   never remembered counts) and compute the **drainable residue** —
+   every action whose backlog is > 0, *excluding* a kind whose count
+   equals the **stuck floor** its last drain loop ended at (record
+   that floor whenever a kind stops without reaching zero; an
+   unchanged floor means the remainder needs human judgment, and
+   re-dispatching only re-defers it — a count *above* the floor means
+   new items arrived and the kind is drainable again). While drainable
+   residue exists and fewer than `--max-rounds` (default 5) rounds
+   have run, run steps 3–4 again over just the drainable actions.
+   Stop early when a round changes no count. Two rounds is the normal
+   fixpoint; 5 is a runaway cap, not a target.
+6. **Final summary.** Print before/after counts per kind **per round**
+   (the convergence trail), total time, and any kind that stopped
+   above zero with a note about why (max-rounds/max-passes reached vs.
+   stuck vs. skipped). **Itemize every structural mutation
+   individually** — each merge as `archived path → survivor`, each
+   compacted folder by name — never as bare counts: this post-hoc
+   review glance is what replaced the retired `--include-destructive`
+   pre-commitment gate.
 
 A stuck kind isn't a failure — some suggestions legitimately need user
 input, and the sub-agent's `--auto` mode is conservative on ambiguity.
 The summary surfaces the residue so the user can decide whether to
 hand-triage or leave it for the next sweep.
 
-The action set is computed once from the baseline at step 1. With enrichment
-now running first, its downstream tag/edge suggestions drain in the same
-sweep; any suggestion that still emerges **after its own pass has already
-run** is reported as residue, not chased. This keeps each invocation bounded;
-a second `/vault sweep` picks them up.
+The action set is recomputed from a fresh baseline at each round, so
+suggestions minted mid-sweep (stage-3/4 reindex cascades, compaction
+summaries becoming enrichable notes) drain in the next round instead of
+waiting for the next manual sweep. The invocation stays bounded by two
+independent caps (`--max-passes` within a kind, `--max-rounds` across
+the whole pass) plus the stuck-floor exclusion — what legitimately
+survives the loop is residue the `--auto` agents deferred for human
+judgment, and the summary surfaces exactly that.
 
 ### /vault (no subcommand)
 
