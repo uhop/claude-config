@@ -312,6 +312,20 @@ prompt: |
 Per-note cost (~1500 in / 300 out tokens at Sonnet rates) is a few cents
 cent. Backfilling all enrichable notes is a few-dollar one-shot pass.
 
+### Sharded dispatch (used by `/vault sweep`)
+
+For large backfills the orchestrator may run several sub-agents
+concurrently — the server is safe under concurrent writers (atomic
+synchronous writes + `If-Match`, 2026-06-11) and each note is an
+independent PUT. Split the server's `unenriched_records` worklist into
+**disjoint** chunks (~50 records each, ≤4 agents), and in each agent's
+prompt replace the "next $LIMIT notes" line with the chunk's explicit
+`file_path` list plus: "Enrich exactly these records; do not enumerate
+the worklist yourself." Disjointness is what makes this safe — never
+let two agents self-enumerate the same worklist. `--stale` refresh
+stays a single agent (its worklist comes from the shared suggestions
+queue head).
+
 ## When this is the right tool
 
 - Backfilling enrichment after vault-storage deploy (one-shot).

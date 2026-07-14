@@ -442,17 +442,25 @@ the existing review/cleanup skills + endpoints; loops each queue with
 `--auto --limit=100` until the count hits zero or stops dropping.
 
 ```
-/vault sweep                         # safe defaults
+/vault sweep                         # full default set (incl. duplicate review + compaction)
 /vault sweep --dry-run               # report what would run; no writes
 /vault sweep --include=edge_type,new_tag
-/vault sweep --exclude=tag_suggestion
-/vault sweep --include-destructive   # also runs duplicate review + compaction
+/vault sweep --exclude=duplicate,compaction_candidate   # cautious run: FM-only triage
 /vault sweep --max-passes=N          # loop cap per kind (default 5)
 ```
 
-#### Safe set (default)
+`--include-destructive` is retired (2026-07-13): its two kinds are in the
+default set now — every recorded sweep had passed the flag anyway, 91% of
+duplicate triage is safe rejections, and neither pass can lose data
+(merges supersede-archive with record id intact; compaction archives
+originals; vault-data is git-backed). Accept and ignore the flag if the
+user still types it; the pre-commitment gate is replaced by itemized
+post-hoc reporting (§ Procedure step 5) and the `--exclude` opt-out.
 
-Listed in execution order (see § Ordering constraints):
+#### Default set
+
+Listed in dependency order (see § Ordering constraints — kinds in the
+same stage run as parallel sub-agents):
 
 | Source | Action |
 | --- | --- |
@@ -463,13 +471,8 @@ Listed in execution order (see § Ordering constraints):
 | `suggestions.new_tag` | `/vault-review-tags --auto --limit=100` |
 | `suggestions.tag_suggestion` | `/vault-review-tags --auto --kind=tag_suggestion --limit=100` |
 | `suggestions.edge_type` | `/vault-review-edges --auto --limit=100` |
-
-#### Opt-in (`--include-destructive`)
-
-| Source | Action |
-| --- | --- |
-| `suggestions.duplicate` | `/vault-review-duplicates --auto --limit=100` (merge can delete) |
-| `suggestions.compaction_candidate` | `/vault-compact <folder>` per candidate |
+| `suggestions.duplicate` | `/vault-review-duplicates --auto --limit=100` (merges via supersede — archival, never delete) |
+| `suggestions.compaction_candidate` | `/vault-compact <folder>` per candidate (originals archived) |
 
 #### Always skipped
 
@@ -490,7 +493,7 @@ order; never dispatch two ordered kinds as parallel sub-agents.
   the server file new `tag_suggestion` (from `agent.tags_suggested`),
   sometimes `new_tag` (an unknown suggested tag), and can feed `edge_type`
   (from `agent.edge_classifications`). Run **both enrichment passes first**,
-  then `new_tag` → `tag_suggestion` → `edge_type`, so the suggestions
+  then `new_tag`, then `tag_suggestion` ∥ `edge_type`, so the suggestions
   enrichment generates drain in the *same* sweep instead of surfacing as
   residue. (Before this ordering enrichment ran last, and the `tag_suggestion`
   items it filed were always left for the next sweep — observed 2026-06-21.)
@@ -504,10 +507,39 @@ order; never dispatch two ordered kinds as parallel sub-agents.
   already on the record's FM, so the rejection didn't drop intent),
   but the failure mode generalizes.
 
-Kinds with no declared ordering have no inter-kind dependency; they
-may run sequentially in arbitrary order. Default to sequential
-per-kind processing — concurrent sub-agents complicate failure
-attribution and the per-kind passes are already cheap.
+Kinds with no declared ordering have no inter-kind dependency and
+**may run as concurrent sub-agents**. Storage is not the constraint:
+since 2026-06-11 the server supports concurrent writers — every
+write/patch is an atomic synchronous read-merge-write inside one
+event-loop turn (no torn writes; the DB import is sync `node:sqlite`),
+and cross-call read-modify-write is guarded by `If-Match` (clean 412,
+never a silent clobber). The orderings above are *data-flow*
+constraints — enrichment feeds the queues; `tag_suggestion` reads the
+taxonomy `new_tag` mutates — and stand regardless of writer safety.
+The resulting stage DAG:
+
+1. enrichment backfill ∥ `--stale` refresh (disjoint sets by
+   definition: no `agent:` block vs drifted block)
+2. `new_tag` alone (two concurrent minters could canonicalize
+   conflicting tags/aliases)
+3. `tag_suggestion` ∥ `edge_type` (independent queues; when both hit
+   the same record they write different FM surfaces —
+   tags/`agent.tags_suggested` vs `edges:` — and the server's atomic
+   top-level-key merge preserves both)
+4. `duplicate`, then `compaction_candidate` — the structural stage,
+   last and sequential within itself. Merges rewrite inbound wikilinks
+   across many records and archive the loser, so running them after
+   the FM-triage stages means no tag/edge agent ever patches a record
+   mid-archival; a merge landing inside a folder being compacted would
+   race the compactor's multi-step move, hence duplicate before
+   compaction, not parallel.
+
+**Never run two same-kind triage agents concurrently**: each `--auto`
+agent pulls the head of the same pending queue, so a pair duplicates
+(or contradicts) each other's decisions. The one sanctioned
+within-kind fan-out is the enrichment backfill, sharded by explicit
+disjoint worklist chunks (§ Procedure step 4). Label every concurrent
+dispatch with its kind so a failed pass attributes cleanly.
 
 #### Procedure
 
@@ -526,31 +558,44 @@ attribution and the per-kind passes are already cheap.
    Never substitute a remembered/earlier count — a mid-sweep write can mint
    an unenriched record (observed 2026-07-12: a ghost resurrected at a
    stale path sat invisible through a second sweep because both baselines
-   skipped this read). Compute the action set from the safe defaults plus
-   `--include` / `--exclude` / `--include-destructive`.
+   skipped this read). Compute the action set from the default set plus
+   `--include` / `--exclude`.
 2. **Dry-run.** If `--dry-run`, print the planned action set with
    per-kind counts and stop.
 3. **One-shot endpoints first.** Run `cleanup-lint` and `embed-pending`
    (in parallel, both POST). Each completes in seconds; together they
    tighten the lint baseline before the suggestion-driven passes
    touch records.
-4. **Per-kind drain loop.** Process the actions **sequentially**, one fully
-   drained before the next starts, in the order set by § Ordering constraints:
-   the two **enrichment passes first** (missing-block backfill, then
-   `--stale`), then `new_tag` → `tag_suggestion` → `edge_type`. Never dispatch
-   two kinds as concurrent sub-agents — even pairs with no declared ordering,
-   since concurrent FM writes muddy failure attribution. For each action, for
-   at most `--max-passes` iterations (default 5):
-   - Dispatch the corresponding skill with `--auto --limit=100`.
-   - Re-measure that action's backlog: `/suggestions/summary` for the
+4. **Staged drain.** Walk the § Ordering constraints stage DAG in
+   order; **within a stage, dispatch the kinds as parallel sub-agents**
+   (one Agent call per kind, labeled with the kind, fired in the same
+   message). A stage completes when every kind in it finishes; kinds in
+   a stage drain independently — one finishing early doesn't wait for
+   its sibling. Per kind, for at most `--max-passes` iterations
+   (default 5):
+   - Dispatch the corresponding skill with `--auto --limit=100`
+     (`/vault-compact <folder>` per candidate for `compaction_candidate`).
+   - Re-measure that kind's backlog: `/suggestions/summary` for the
      suggestion kinds; the coverage scan (notes lacking an `agent:` block)
      for the missing-block backfill.
    - Stop when the count reaches 0, or when it didn't decrease since the
      previous pass (stuck — sub-agent deferred, or items need human
      judgment).
+
+   **Sharding (enrichment backfill only).** When the baseline's
+   `unenriched_records` worklist exceeds ~100 records, split it into
+   disjoint chunks of ~50 and dispatch up to 4 enrich agents in
+   parallel, each given its explicit chunk (see `/vault-enrich-all`
+   § Sub-agent mode, sharded dispatch); re-pull the worklist between
+   passes. Never shard the triage kinds — their `--auto` agents pull
+   the same queue head.
 5. **Final summary.** Print before/after counts per kind, total time,
    and any kind that stopped above zero with a note about why
-   (max-passes reached vs. stuck vs. skipped).
+   (max-passes reached vs. stuck vs. skipped). **Itemize every
+   structural mutation individually** — each merge as
+   `archived path → survivor`, each compacted folder by name — never
+   as bare counts: this post-hoc review glance is what replaced the
+   retired `--include-destructive` pre-commitment gate.
 
 A stuck kind isn't a failure — some suggestions legitimately need user
 input, and the sub-agent's `--auto` mode is conservative on ambiguity.
