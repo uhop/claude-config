@@ -198,19 +198,20 @@ fi
 reconcile_lines=()
 if [ -n "$npm_name" ] && [ "$npm_versions_json" != "[]" ]; then
   # Only reconcile the recent window — historical mismatches from a project's
-  # pre-tagging era aren't actionable and would flood the report.
-  recent_tags=$(jq -c 'sort | reverse | .[0:10]' <<<"$git_tags_json")
-  recent_versions=$(jq -c 'sort | reverse | .[0:10]' <<<"$npm_versions_json")
-
-  unpublished=$(jq -r --argjson v "$recent_versions" '.[] | select([.] - $v | length > 0)' <<<"$recent_tags")
-  while IFS= read -r t; do
-    [ -n "$t" ] && reconcile_lines+=("tag $t: no matching npm publish")
-  done <<<"$unpublished"
-
-  untagged=$(jq -r --argjson t "$recent_tags" '.[] | select([.] - $t | length > 0)' <<<"$recent_versions")
-  while IFS= read -r v; do
-    [ -n "$v" ] && reconcile_lines+=("npm $v: no matching git tag")
-  done <<<"$untagged"
+  # pre-tagging era aren't actionable and would flood the report. One window
+  # over the tag∪npm union, semver-sorted: two independently truncated lists
+  # misalign when one side has gaps and yield false "no matching" hits.
+  mismatches=$(jq -r --argjson npm "$npm_versions_json" '
+    def key: split(".") | map(tonumber? // -1);
+    map(select(test("^[0-9]+\\.[0-9]+\\.[0-9]+"))) as $tags
+    | ($tags + $npm | unique | sort_by(key) | reverse | .[0:10])[]
+    | if IN($npm[]) | not then "tag \(.): no matching npm publish"
+      elif IN($tags[]) | not then "npm \(.): no matching git tag"
+      else empty end
+  ' <<<"$git_tags_json")
+  while IFS= read -r line; do
+    [ -n "$line" ] && reconcile_lines+=("$line")
+  done <<<"$mismatches"
 
   # Cap total reconcile output.
   if [ "${#reconcile_lines[@]}" -gt 6 ]; then
