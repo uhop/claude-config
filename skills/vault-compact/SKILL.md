@@ -1,232 +1,94 @@
 ---
 name: vault-compact
-description: "Compact an atomized folder of vault pieces by summarizing the oldest entries into a single summary file and archiving the originals to `<folder>/archive/`. Use when the user says /vault-compact <folder>, asks to summarize a verbose project's logs/decisions, wants to bound a running file's size per the vault's hygiene policy, or wants to triage pending `compaction_candidate` suggestions filed by the server-side scan. Originals are preserved (move not delete). Requires vault-storage (`:8123`)."
+description: "Compact an atomized folder of vault pieces by summarizing the oldest entries into a single summary file and archiving the originals to `<folder>/archive/<YYYY>/`. Mechanical work (inventory, selection, body + backlink gathering, the summary-note write, the record-id-preserving move loop) runs through the bundled `compact-batch.mjs`; the skill is the judgment layer — the summary prose. Use when the user says /vault-compact <folder>, asks to summarize a verbose project's logs/decisions, or wants to triage pending `compaction_candidate` suggestions. Originals are preserved (move not delete). Requires vault-storage (`:8123`)."
 user_invocable: true
 ---
 
 # Vault — compact a folder of pieces
 
 Some folders accumulate pieces that no longer pull their weight individually
-but still carry value as compressed history. `logs/` is the obvious case:
-each session log was useful at the time of writing, but reading 12 months
-of session logs at session-start is wasteful — a compacted summary
-("here's what happened January through March") preserves the signal at
-1/20th the token cost.
-
-This skill reads N oldest pieces in a folder, writes a single summary
-file, and moves the originals to `<folder>/archive/<YYYY>/`. Originals
-are reachable via direct read; default `/vault resume` doesn't descend
-into `archive/`. Per design constraint C7 (bounded running-file size).
+but still carry value as compressed history — `logs/` is the obvious case. A
+compaction reads the oldest pieces, distills them into one summary file, and
+moves the originals to `<folder>/archive/<YYYY>/` (by each piece's own
+year). Originals stay reachable by direct read; default `/vault resume`
+doesn't descend into `archive/`. Per design constraint C7.
 
 ## Surfacing candidates
 
-The server-side scan files `compaction_candidate` suggestions for
-folders whose piece count crosses the threshold (default 30 — picked
-from the 2026-05-01 vault distribution: catches `logs/` plus the six
-largest atomized project folders, leaves smaller running-files alone).
-
-```bash
-vault-curl /maintenance/find-compaction-candidates -X POST -s
-# or with a custom threshold:
-vault-curl "/maintenance/find-compaction-candidates?min_piece_count=50" -X POST -s
-```
-
-Returns `{scanned, qualifying, filed, autoResolved, durationMs}`. Skips
-`topics/` (concept notes, not running-files) and any path containing
-`/archive/` or `/sync/` segments. Auto-resolves prior pendings whose
-folder no longer qualifies (e.g., post-compaction sweep dropped the
-count back below threshold).
-
-Triage the queue:
-
-```bash
-vault-curl "/suggestions?kind=compaction_candidate&status=pending" -s | \
-  jq -r '.items[] | "\(.payload.folder_path): \(.payload.piece_count) pieces, \(.payload.oldest_created) → \(.payload.newest_created)"'
-```
-
-For each candidate, pick invocation flags below. After running the
-compaction the next scan auto-resolves the suggestion. If you want to
-reject without compacting (e.g., the folder's count is intentionally
-high), call `POST /suggestions/{id}/reject`.
+The server files `compaction_candidate` suggestions for folders past the
+piece-count threshold (`POST /maintenance/find-compaction-candidates`
+refreshes; `/vault sweep`'s plan lists pending payloads). To decline one
+(the folder's count is intentionally high): `POST /suggestions/{id}/reject`.
+A completed compaction auto-resolves its suggestion on the next scan.
 
 ## Invocation
 
 ```
-/vault-compact <folder>                        # summarize oldest 50% of pieces
-/vault-compact <folder> --keep=N               # keep newest N pieces; archive the rest
-/vault-compact <folder> --before=YYYY-MM-DD    # archive everything older than a date
-/vault-compact <folder> --dry-run              # report what would change without writing
+/vault-compact <folder>                        # summarize oldest 50% (≤ 20/pass)
+/vault-compact <folder> --keep=N               # keep newest N; archive the rest
+/vault-compact <folder> --before=YYYY-MM-DD    # archive everything created earlier
+/vault-compact <folder> --dry-run              # plan + execute --dry-run
 ```
 
-The folder argument is vault-relative, e.g. `logs`, `projects/foo/decisions`.
-
-## Procedure
-
-### 1. Inventory the folder
+## Workflow
 
 ```bash
-vault-curl "/vault/$FOLDER/" -s | jq -r '.files[]'
+C=~/.claude/skills/vault-compact/compact-batch.mjs
+W=$(mktemp -d)
+"$C" plan <folder> [--keep=N | --before=DATE] --out="$W/plan.json"
+# write the summary prose (§ Summary quality) to $W/summary.md; then:
+"$C" execute --plan="$W/plan.json" --summary="$W/summary.md" [--related='[[a]],[[b]]'] [--dry-run]
 ```
 
-For each file (skip subdirectories — those are deeper sub-folders, not
-pieces). Read the frontmatter via `/sections?file_prefix=$FOLDER` to get
-`created` / `updated` / `type` per piece without pulling bodies.
+`plan` inventories the folder (paginated, excludes `archive/` subpaths,
+prior `_summary-*` files, `status: archived/superseded`, `type: state`),
+selects per the mode (default oldest-50%, hard cap 20 per pass — repeated
+passes beat one mega-summary; the plan flags truncation), fetches each
+selected piece's body, gathers **external** inbound backlinks (linkers not
+themselves being archived), suggests period groups (~5–10 pieces per
+section: month → quarter → year), and names the summary path. `execute`
+PUTs the summary note (FM built by the script; pass 1–2 current source
+notes via `--related`) and moves each original via `POST /vault/move` —
+**record_id preserved**, so edges, tags, embeddings, and the `agent:`
+block survive; the old read+PUT+DELETE identity-loss pattern is dead. The
+report itemizes every move (`from → to`) — feed that itemization into the
+sweep/final summary verbatim, never bare counts. Exit 0 ok · 1 partial
+failures · 3 rejected pre-write; run solo or `|| true` in parallel batches.
 
-```bash
-vault-curl "/sections?file_prefix=$FOLDER&limit=200&exclude=body&sort=created" -s
-```
+## Summary quality (the judgment)
 
-### 2. Decide what to archive
+One section per suggested group. Distill each group's pieces into a
+cohesive paragraph or tight bullets. Surface: **what was done / decided /
+discovered**; cross-references that still matter (link to *current* notes,
+not archived ones); **concrete identifiers** — dates, commit shas, names,
+numbers — the recall hooks; unresolved surprises (often the most valuable
+trace in a noisy log). Drop: conversation paraphrase, progress narration,
+context available elsewhere. The bar: a reader 6 months out learns each
+archived piece's *outcome* without opening it.
 
-Three modes per the invocation flags:
-
-- **Default** (no flag): archive the oldest 50% of pieces. Cap at archiving
-  no more than N=20 in a single pass — better to call repeatedly for
-  large folders than to write a single mega-summary.
-- **`--keep=N`**: archive everything except the newest N pieces (by `created` date).
-- **`--before=DATE`**: archive every piece with `created < DATE`.
-
-Pieces with `status: archived` are already moved out — exclude from this list.
-Pieces of type `state` are managed by `/vault check` — exclude.
-
-### 3. Read the pieces to archive
-
-```bash
-for FILE in $TO_ARCHIVE; do
-  vault-curl "/vault/$FILE" -s
-done
-```
-
-Group by sub-period. For `logs/`, group by month. For `projects/foo/decisions/`,
-group by quarter or year. Pick whatever granularity gives ~5-10 pieces per
-summary section so the resulting summary has structure.
-
-### 4. Write the summary file
-
-Save to `<folder>/_summary-<period>.md`:
-
-```yaml
----
-title: <Folder> — summary <YYYY-MM-DD to YYYY-MM-DD>
-tags: [summary, <folder-tag>, archived-history]
-created: <today>
-updated: <today>
-status: active
-type: meta
-related: ["[[<one-or-two-current-source-notes>]]"]
----
-```
-
-Body: one section per sub-period. For each section, distill the pieces
-into a cohesive paragraph or bulleted list. Surface:
-
-- **What was done / decided / discovered** (the core signal of each piece)
-- **Cross-references** that still matter (link to current notes, not archived ones)
-- **Concrete identifiers**: dates, commit shas, names, numbers — these are
-  the recall hooks
-- **Surprises and unknowns** that didn't get resolved — sometimes the most
-  valuable trace from a noisy log
-
-What to **drop**: conversation-style paraphrasing ("the user asked X, I
-replied Y"); progress narration ("first I tried this, then..."); general
-context that's available elsewhere.
-
-The goal: someone reading the summary 6 months from now should learn the
-*outcome* of each archived piece without needing to open it. They can
-still open it if they want — it's preserved, not deleted.
-
-### 5. Move originals to archive
-
-For each archived piece, use the **`POST /vault/move`** endpoint to rename
-the file into `<folder>/archive/<YYYY>/<basename>`:
-
-```bash
-vault-curl /vault/move -X POST \
-  -H 'Content-Type: application/json' \
-  --data-binary "{\"from\": \"$ORIGINAL_PATH\", \"to\": \"$FOLDER/archive/$YEAR/$BASENAME\"}" \
-  -o /dev/null -w '%{http_code}\n'
-```
-
-Expect `204`. The endpoint atomically renames the file on disk and updates
-`records.file_path` on the existing row, **preserving the `record_id`**.
-Edges, tags, suggestions, embeddings, and the `agent.summary` block all
-reference `record_id` and survive untouched — no reclassification, no wasted
-re-embed, no edge_type queue churn. (The earlier "read + PUT new + DELETE
-old" pattern lost identity continuity and refiled every body wikilink as a
-fresh `cites` suggestion against the new path's `record_id`.)
-
-Wikilinks pointing at archived pieces will become unresolved on the next
-reindex. That's by design (per [[topics/vault-hygiene-policy]]) — the
-breakage is the signal that someone should either rewrite the link, archive
-the linker, or accept the break.
-
-### 6. Update inbound wikilinks (optional, per pass)
-
-Run:
-
-```bash
-for ARCHIVED_ID in $ARCHIVED_RECORD_IDS; do
-  vault-curl "/sections/$ARCHIVED_ID/backlinks" -s
-done
-```
-
-For each backlink that's NOT itself being archived in this pass, decide:
-update the link to point at the summary file, or leave it broken
-(triggers a hygiene-lint flag for later cleanup). Default to leave-broken
-unless the user has explicitly asked to rewrite.
-
-### 7. Report
-
-```
-Compacted <folder>:
-  archived: <count> pieces (<oldest-date> to <newest-archived-date>)
-  summary written: <folder>/_summary-<period>.md
-  pieces remaining in folder: <count>
-  inbound wikilinks broken: <count>  (run /vault-lint --category=wikilinks to find them)
-```
+Inbound wikilinks to archived pieces break on the next reindex — by design
+([[topics/vault-hygiene-policy]]): the break is the signal to rewrite the
+link, archive the linker, or accept it. The plan's `inbound_backlinks`
+lists exactly which links will break; default to leave-broken unless the
+user asked to rewrite.
 
 ## Sub-agent mode (deferred)
 
-**Future model: Sonnet.** Per
-[[topics/sub-agent-model-selection-by-task-shape]] — output is prose
-summary at quality (paragraph-per-period, concrete identifiers preserved)
-with careful wikilink preservation; cost-of-one-bad-output is high
-(a botched compaction archives originals out of the resume reading
-set, and a sloppy summary degrades long-term recall). Haiku has been
-shown to drop nuance and break wikilinks under similar load — not the
-right tier here.
+**Future model: Sonnet** — prose quality with concrete-identifier
+preservation; cost-of-one-bad-output is high (a botched pass archives
+originals out of the resume reading set). Currently main-session. A future
+prompt must carry: the § Summary quality bar verbatim; conservative cut
+(when in doubt, keep — re-run later beats over-compacting); don't rewrite
+wikilinks unless authorized.
 
-The skill currently runs in the main session. When volume justifies
-sub-agent invocation, the prompt should specify:
-- **Summary quality bar**: paragraph-per-period; concrete identifiers
-  preserved; outcomes named explicitly
-- **Conservative cut**: when in doubt about archiving, keep — better to
-  re-run later with looser thresholds than to over-compact early
-- **Don't rewrite wikilinks** unless explicitly authorized
+## When this is the right tool / not
 
-## When this is the right tool
-
-- A folder has accumulated many pieces and is past the C7 size threshold.
-- A `/vault resume` reads waste tokens on stale logs.
-- The user wants to "summarize and archive" old session logs / project
-  history.
-
-## When NOT to use
-
-- The folder is deliberately preserved as-is (e.g., `topics/` — every
-  topic note stands on its own; compacting topics destroys the
-  source-of-truth shape).
-- The folder is small enough that compaction is premature.
-- The user wants to *delete* old pieces (compaction is move-not-delete by
-  design — different intent).
+Right: a folder past the C7 threshold; resume wasting tokens on stale
+logs; "summarize and archive" asks. Not: `topics/` (every note stands
+alone — compacting destroys the source-of-truth shape); folders too small
+to bother; *deletion* intent (compaction is move-not-delete).
 
 ## Backend requirement
 
-vault-storage on `:8123`. Path-based reads / writes / deletes are all REST
-calls, as are the record-level metadata queries (created dates, status, type)
-that the piece-selection step uses.
-
-## Dependencies
-
-- `vault-curl` on `$PATH`.
-- `jq` for response parsing.
+vault-storage on `:8123` (`VAULT_API_URL`/`VAULT_API_TOKEN` in `~/.env`);
+`POST /vault/move` does the identity-preserving renames.

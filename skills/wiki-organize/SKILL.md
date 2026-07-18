@@ -15,8 +15,7 @@ Gather these from the current working directory before writing:
 
 | Value | How to find it |
 | --- | --- |
-| `OWNER/REPO` | `jq -r .repository.url package.json` — strip leading `git+` and trailing `.git`; or `git remote get-url origin`. **Never hardcode `uhop/...`.** |
-| Wiki folder | Usually `wiki/` (a git submodule); chezmoi dotfiles use `external_wiki/`. List the repo root to confirm. |
+| `OWNER/REPO` + wiki folder | `~/.claude/skills/fleet-fix/repo-facts.mjs --context` (the shared detector — normalizes `git+`/`.git`/SSH forms, finds `wiki/` vs `external_wiki/`). **Never hardcode `uhop/...`.** |
 | Existing pages | `ls <wiki>/*.md` — these are the link targets. |
 | Home grouping | Read `<wiki>/Home.md`'s `# Documentation` section — the sidebar **mirrors** it so nav and landing page never drift. **If Home has no `# Documentation` hub, create it first** (a grouped, *annotated* catalog — each entry says when to read it) per the vault note `wiki-home-and-hub-pages`, then mirror it. |
 | Version doc-sets | Any `vN/` subfolder with a separate doc set? Decides one sidebar vs. many (see §1). |

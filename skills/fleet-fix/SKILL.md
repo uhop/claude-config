@@ -41,12 +41,25 @@ would drift from the bundle the first time the bundle changes.
    PUT back with `If-Match`); verify each substitution pattern matches
    exactly once before applying.
 4. **Inventory** the repo against the bundle's compliance checklist, in its
-   order, every applicable item. When an entry enumerates removable artifacts,
-   probe each named file or directory individually and act on every hit — the
-   recorded failure mode is pattern-matching an entry's headline artifacts and
+   order, every applicable item. **Collect the facts first**:
+
+   ```bash
+   ~/.claude/skills/fleet-fix/repo-facts.mjs   # one JSON fact sheet, read-only, no verdicts
+   ```
+
+   The sheet carries facts only — file inventory, retired-artifact hits
+   (probed per-item), package.json surfaces, sidecar pairing, tags,
+   submodule URLs, workflow permissions, dependabot shape, README/wiki
+   surfaces, LICENSE lines — deliberately **without** compliance statuses:
+   the bundle is the only checklist, and judging facts against it is this
+   audit's job. The sheet is an accelerator, not the checklist — any bundle
+   item it doesn't cover still gets probed by hand (new slices will trail
+   the collector; that gap never excuses skipping the item). When an entry
+   enumerates removable artifacts, act on every listed hit — the recorded
+   failure mode is pattern-matching an entry's headline artifacts and
    skipping the rest (list-toolkit 2026-07-17: mirror files removed, the
    adjacent `.windsurf/` directory and uppercase COPILOT file missed).
-   Batch the read-only probes in parallel Bash
+   Batch any remaining read-only probes in parallel Bash
    calls, but guard every fallible sibling with `|| true` — `gh api` 404s
    (code scanning not enabled, no license) and `grep` misses cancel co-batched
    calls otherwise. `gh` reads are fine; `gh` mutations are gated and are not

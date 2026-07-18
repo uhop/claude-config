@@ -23,27 +23,19 @@ Manual cadence — no scheduling. Run when there's 10–15 minutes of focus avai
 
 ## Procedure
 
-1. **Read the queue.** Fetch via vault-curl:
+1. **List pending items** via the bundled helper:
 
    ```bash
-   vault-curl /vault/projects/agent-workflow/clarify-queue.md -s
+   ~/.claude/skills/clarify/clarify-queue.mjs list   # {pending, items: [{id, body}]}
    ```
 
-   404 → the agent-workflow scaffolding is missing. Stop and tell the user. Don't auto-create.
+   Each item's body carries Created / Source / Question / Candidates lines.
+   A GET 404 on the queue → the agent-workflow scaffolding is missing:
+   stop and tell the user, don't auto-create. Iterate top-to-bottom
+   (oldest first); `--id=Q-XXX` jumps to one; stop after `--limit=N`
+   (default 5) unless `--all`.
 
-2. **Parse pending items.** Each item under `## Pending` has the shape:
-
-   ```markdown
-   ### Q-YYYY-MM-DD-NNN
-   - **Created:** YYYY-MM-DD
-   - **Source:** {transcript ref}
-   - **Question:** {the open question}
-   - **Candidates:** a) ..., b) ..., c) ...
-   ```
-
-   Iterate top-to-bottom (oldest first). If `--id=Q-XXX`, jump to that one. Stop after `--limit=N` items (default 5) unless `--all`.
-
-3. **Walk each item interactively.** For each item:
+2. **Walk each item interactively.** For each item:
 
    a. Surface the question, source ref, and any transcript excerpt the source ref points to (use Read or vault-curl as needed).
 
@@ -72,7 +64,7 @@ Manual cadence — no scheduling. Run when there's 10–15 minutes of focus avai
       | Defer | Skip — leave in `## Pending`. |
       | Other (free-form) | Treat the user's text as the authoritative interpretation; ask a follow-up if needed for routing; then promote + archive. |
 
-4. **Routing table** (same as `/reflect`):
+3. **Routing table** (same as `/reflect`):
 
    | Promoted as | Destination |
    | --- | --- |
@@ -82,43 +74,20 @@ Manual cadence — no scheduling. Run when there's 10–15 minutes of focus avai
    | Vault topic note | vault `topics/<slug>.md` (new note, born-enriched per `/vault ingest` step 5) |
    | Code fix in a real project | that project's vault `queue.md` Backlog |
 
-5. **Archive resolved items.** After promotion (or rejection), move the Q-item from `## Pending` in `clarify-queue.md` to `## Resolved` in `clarify-queue-archive.md`. Append an annotation:
+4. **Archive resolved items** — one helper call per settled item:
 
-   ```markdown
-   ### Q-YYYY-MM-DD-NNN
-   - **Resolved:** YYYY-MM-DD via /clarify
-   - **Outcome:** {Promoted to <path> | Rejected: <reason>}
-   - **Question:** {original question}
+   ```bash
+   ~/.claude/skills/clarify/clarify-queue.mjs archive Q-YYYY-MM-DD-NNN \
+     --resolution="Promoted to <path> — <one line>"        # add --rejected for false positives
    ```
 
-   Workflow:
-   - Read `clarify-queue.md`.
-   - Remove the item block.
-   - PUT updated `clarify-queue.md`.
-   - Read `clarify-queue-archive.md` (or initialize if not present — see step 6).
-   - Append the annotated block under `## Resolved`.
-   - PUT updated `clarify-queue-archive.md`.
+   The helper moves the block from `## Pending` to the archive's
+   `## Resolved` with a dated annotation, initializes
+   `clarify-queue-archive.md` on first use, writes archive-first (a
+   mid-move failure duplicates, never loses), rides `If-Match` on both
+   files (412 → re-run), and leaves `(empty)` when the last item goes.
 
-   Batch all moves to one PUT per file if multiple items are resolved in the same session.
-
-6. **Initialize `clarify-queue-archive.md` on first archive.** If the file doesn't exist:
-
-   ```yaml
-   ---
-   title: agent-workflow — Clarification queue archive
-   tags: [agent, workflow, claude-code, clarify, archive]
-   created: YYYY-MM-DD
-   updated: YYYY-MM-DD
-   status: archive
-   type: project
-   related:
-     - "[[projects/agent-workflow/clarify-queue]]"
-   ---
-   ```
-
-   Body starts with `## Resolved` and grows append-only.
-
-7. **Summarize at the end.** Single block:
+5. **Summarize at the end.** Single block:
 
    ```
    Clarify session — YYYY-MM-DD

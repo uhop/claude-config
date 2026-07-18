@@ -160,27 +160,21 @@ Read all three to dedupe; write only to vault + claude-config.
 
    On "Apply as proposed" → execute the write (vault-curl PUT for vault paths, Edit for claude-config paths). On "Edit then apply" → present the proposed body, ask for tweaks, then write. On "Skip" → no-op. On "Move to clarify-queue" → file a Q-entry.
 
-9. **Update state.** After the report writes successfully, update both the local state cache AND the vault state file:
+9. **Update state.** After the report writes successfully:
 
    ```bash
-   mkdir -p ~/.cache/reflect && \
-   jq --null-input --arg now "$(date -Is)" \
-     '{last_run_iso: $now, last_run_ms: (now * 1000 | floor)}' \
-     > ~/.cache/reflect/last-run.json
+   ~/.claude/skills/reflect/reflect-state.mjs --sessions=N --signals="<one line>" --report="[[projects/agent-workflow/reports/<name>]]"
    ```
 
-   Uses `jq`'s built-in `now` (UTC seconds, decimal) and converts to ms.
-   Don't use `date +%s%3N` — GNU date's `%3` truncation directive is
-   widely ignored, yielding `<seconds><nanoseconds>` (19 digits) which
-   `new Date(...)` interprets as a far-future timestamp and crashes
-   `reflect.mjs`'s window resolution. Also don't use
-   `node -e 'console.log(Date.now())'` — on machines with colorized
-   console output, the value comes back wrapped in ANSI escape codes
-   that break `jq --argjson`.
-
-   Then update `projects/agent-workflow/state.md`'s `last_run` block, which is a **map keyed by short hostname** (`hostname -s`) — one entry per machine, so each host's progress stays independently visible and concurrent machines don't overwrite each other (`/reflect` runs per-box; transcripts are local-only). Read `state.md` first, set **only** the current host's key — `last_run[<host>] = {last_run_iso, last_run_ms}` — leave every other host's entry intact, and PUT it back. The per-machine local cache (`~/.cache/reflect/last-run.json`, a single block) is the functional authority `--since=last-run` actually reads on this host; the vault map is a cross-machine mirror for visibility, not the read path.
-
-   Legacy single-block `state.md` (a bare `last_run: {last_run_iso, last_run_ms}` from before this convention) → on first write under the new scheme, migrate it by moving the existing block under its originating host's key if known, otherwise drop it and start the map fresh with this host's entry.
+   One in-process run writes both stores: the local cache
+   `~/.cache/reflect/last-run.json` (the functional authority
+   `--since=last-run` reads on this host) and this host's entry in
+   `projects/agent-workflow/state.md`'s per-host map (the cross-machine
+   visibility mirror) — other hosts' entries preserved, legacy
+   single-block maps migrated, If-Match round-trip (412 → re-run). The
+   script exists because the shell version failed twice on record (GNU
+   `date +%s%3N` truncation; ANSI-wrapped `node -e` output breaking
+   `jq --argjson`) — don't hand-roll the timestamps again.
 
 ## When NOT to run
 

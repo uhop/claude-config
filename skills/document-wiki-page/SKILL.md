@@ -13,17 +13,21 @@ This skill replaces the per-project `prompts/doc.md` files that historically liv
 
 ## Detect project context first
 
-Before writing, gather these values from the current working directory:
+One call gathers name, version, `OWNER/REPO`, default branch, and the wiki
+dir (the shared detector — never hand-roll the jq/sed pipeline):
+
+```bash
+~/.claude/skills/fleet-fix/repo-facts.mjs --context
+```
+
+Two values still need reading:
 
 | Value | How to find it |
 | --- | --- |
-| Project name | `jq -r .name package.json` |
-| Repo URL (https form) | `jq -r .repository.url package.json` — strip leading `git+` and trailing `.git` to get the GitHub URL |
-| Default branch | `git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null \| sed 's@^origin/@@'` — fall back to reading `git branch -r` or assuming `main` |
 | Public import style | Read `README.md` and `AGENTS.md` for canonical `import` statements; mirror exactly |
 | Wiki naming | Two tracks (see `wiki-conventions` / the vault `project-wiki-convention`): a **module** page is its source path lowercase (`utils/date.js` → `utils-date.md`, dash→U+2010 for literal dashes); a **prose/concept** page is Title-case with a `Concepts:-` / `Cookbook:-` prefix |
 
-These four values drive every link in the output. Don't assume `main` — `tape-six` and `tape-six-proc` use `master`.
+These values drive every link in the output. Don't assume `main` — `tape-six` and `tape-six-proc` use `master`.
 
 ## Before generating documentation
 
