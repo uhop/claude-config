@@ -1,283 +1,145 @@
 ---
 name: vault-propose-related
-description: "Propose missing `related:` entries for vault notes by reviewing semantic-NN candidates. Use when the user says /vault propose-related, asks to densify cross-references in the vault, or wants to expand `related:` arrays without reading every note manually. Per source note, fetches top-K embedding nearest neighbours, filters out existing related: + body wikilinks, judges which remaining candidates are genuine semantic matches, writes accepted proposals either to a review note (default, conservative) or directly into source FM (--apply mode)."
+description: "Propose missing `related:` entries for vault notes by reviewing semantic-NN candidates. Mechanical work (source enumeration with reviewed-tracking, `/similar` fetch, distance cap, dedup against existing related: + body wikilinks, the review-note write, and the apply path via the server's atomic FM membership patch) runs through the bundled `related-batch.mjs`; the skill is the judgment layer — the per-candidate verdicts. Use when the user says /vault propose-related, asks to densify cross-references, or wants to expand `related:` arrays without reading every note manually."
 user_invocable: true
 ---
 
 # Propose missing `related:` entries
 
 The vault's hand-curated `related:` arrays are sparse — typically 1–3 entries
-per note while many notes have 8–15 genuinely related neighbours. This skill
-densifies the graph by combining vault-storage's BGE retrieval index (which
-surfaces candidates cheaply) with agent judgment (which decides which
-candidates are *meaningful* relationships).
+while many notes have 8–15 genuinely related neighbours. This skill densifies
+the graph: vault-storage's BGE index surfaces candidates cheaply; the agent
+judges which are *meaningful* relationships.
 
-By default the skill is **suggestion-only** — proposals are written into a
-vault note (`queries/YYYY-MM-DD-related-proposals[-N].md`) for human review.
-With `--apply`, accepted proposals are written directly into source notes'
-frontmatter `related:` arrays. Both align with constraint C16's
-agent-driven-suggestions model.
+Default mode is **suggestion-only** — proposals land in a review note
+(`queries/YYYY-MM-DD-related-proposals[-N].md`, `status: draft`) for human
+review. `--apply` writes accepted links directly into source FM.
 
 ## Invocation
 
 ```
-/vault-propose-related                       # interactive: propose for next 30 source notes, write to review note
-/vault-propose-related --limit=N             # custom batch (1..200)
-/vault-propose-related --apply               # write accepted proposals directly to source FM
-/vault-propose-related --auto                # spawn a Haiku sub-agent for bulk
-/vault-propose-related --auto --limit=N      # bulk + cap
+/vault-propose-related                  # propose for the next 30 unreviewed sources → review note
+/vault-propose-related --limit=N        # custom batch (1..200)
+/vault-propose-related --apply          # accepted links written straight to source FM
+/vault-propose-related --auto [...]     # sub-agent for bulk (model per § Sub-agent mode)
 ```
 
-## Procedure
-
-### 1. Pick the batch of source notes
-
-Walk the **enrichable set** — the same canonical definition as `/vault-enrich-all` (its **§ Enrichable set**), sourced from `vault-storage`'s `GET /system/lint` → `coverage.enrichment.enrichable_types` (currently `permanent`/`project`/`design`/`research`/`query`; operational types, empty bodies, and archived excluded) — preferring notes with a short or empty `related:` array. Topics are the densest linking value, but project/design/research/query notes benefit from `related:` densification too, so **don't narrow to `permanent`**. Reuse the enumeration in the enrich SKILL's § Enrichable set (read `enrichable_types` live; never hardcode); `vault_list_pieces` walks one type at a time if you prefer.
-
-Track which records have already been reviewed in prior batches by checking
-`queries/*-related-proposals*.md` files. Skip already-reviewed records.
-
-### 2. For each source note: fetch candidates
+## Workflow
 
 ```bash
-vault-curl "/sections/$RECORD_ID/similar?k=15" -s
+R=~/.claude/skills/vault-propose-related/related-batch.mjs
+W=$(mktemp -d)
+"$R" prepare --limit=30 --out="$W/ws.json"
+# judge each candidate → decisions file (verdicts per § Judgment); then ONE of:
+"$R" review --worksheet="$W/ws.json" --decisions="$W/dec.json"   # default: proposals note
+"$R" apply  --worksheet="$W/ws.json" --decisions="$W/dec.json"   # direct FM writes
 ```
 
-Response: `{root_id, k, items: [{record_id, file_path, title, score, distance, ...}]}`.
-Self is excluded. `distance` is cosine distance — lower = closer match.
+`prepare` enumerates source notes — the enrichable set, with
+`enrichable_types` read live from `GET /system/lint` (client-side
+enumeration by necessity here: there is no server worklist for this pass;
+the filters mirror the server's documented exclusions — path-based
+`/archive/` check, superseded/archived status, this skill's own proposals
+notes excluded) — skips sources already covered by prior
+`queries/*-related-proposals*` notes (parsed from their `## path`
+headings), and advances through the unreviewed frontier in path order. Per
+source it fetches `/similar?k=15`, applies the 0.30 distance cap, drops
+archived/superseded candidates, and dedups against the source's existing
+`related:` + body wikilinks. Worksheet candidates carry title, type,
+distance, the disposition `band`, and the target's `agent.summary` when
+set — usually enough to judge without fetching bodies.
 
-The server returns top-K regardless of distance. Apply a distance cap:
+Decisions file — per source, candidate path → verdict (`accept` wants a
+one-line reason; it becomes the review-note rationale):
 
-| Cosine distance | Cosine similarity | Disposition |
+```json
+{"topics/a.md": {
+   "topics/b.md": {"verdict": "accept", "reason": "same subsystem, schema side"},
+   "topics/c.md": "skip",
+   "topics/d.md": {"verdict": "ambiguous", "reason": "borderline overlap"},
+   "topics/e.md": {"verdict": "supersede-candidate", "reason": "stale twin"}}}
+```
+
+Both finishing modes validate everything before any write (unknown
+sources/candidates/verdicts → exit 3, nothing written). `review` writes the
+proposals note (filename collision-proof per day; `status: draft` — the
+server's status enum has no `pending-review`). `apply` adds each accepted
+link via `PATCH /sections/{id}/fm` — the server's **atomic value-based
+array-membership op**: no `/meta` read, no body round-trip, idempotent
+set-semantics. The two documented data-loss classes of the old hand-rolled
+recipe (`/meta` null-`related` wholesale delete; `jq -r` trailing-newline
+body growth) are structurally impossible now; the old recipe lives in this
+file's git history. Ambiguous and supersession entries always surface in
+the report (apply mode never executes retirements). Exit 0 ok · 1 partial
+failures · 3 rejected pre-write; run solo or `|| true` in parallel batches.
+
+## Judgment — per candidate
+
+Distance bands (cosine distance; the 0.30 cap is the 99%-recall operating
+point on the curated set — false negatives are unbounded cost, checking a
+false positive is bounded):
+
+| Band | Distance | Disposition |
 |---|---|---|
-| ≤ 0.20 | ≥ 0.80 | Accept by default; only skip if clearly homonymous or topically off |
-| 0.20–0.25 | 0.75–0.80 | Default-accept on subject-overlap; skip if only superficially similar |
-| 0.25–0.30 | 0.70–0.75 | Be selective; accept only with strong topical justification |
-| > 0.30 | < 0.70 | **Filter out** — below the 99%-recall operating point per the embedding baseline |
+| `accept-by-default` | ≤ 0.20 | Accept unless clearly homonymous or topically off. |
+| `accept-on-subject-overlap` | 0.20–0.25 | Accept on subject overlap; skip if only superficially similar. |
+| `selective` | 0.25–0.30 | Accept only with strong topical justification. |
 
-The 0.30 cap is the **99%-recall threshold** on the curated `related:` set:
-only 1% of real relationships fall above this cap. Tilt heavily toward recall
-because false-negative cost (a real relationship that never gets proposed)
-is unbounded; false-positive cost (you check, decide skip) is bounded.
+Heuristics: same project / same major topic area → almost certainly
+related; same problem from a different angle → related; tangentially
+similar (both technical, no direct connection) → skip; same title word,
+different meaning → skip. **Don't guess** — `ambiguous` flags a candidate
+for human verdict, and a wrong accept costs more than either. **Be
+conservative**: better to under-suggest and run another batch than to
+flood `related:` with weak edges.
 
-### 3. Filter out already-known relationships
-
-Read the source note: `vault-curl "/vault/$FROM_PATH" -s`.
-
-From the source's frontmatter and body, extract:
-- `related:` array entries (existing wikilinks)
-- Body wikilinks `[[...]]` (anything currently cited in prose)
-
-For each candidate, resolve its `file_path` against the source's existing
-known-targets. Drop candidates that match — those edges already exist in
-some form. The `related:` array is the strict source of truth for typed
-`related-to` edges; body wikilinks are weaker but still mean "the agent
-already wrote this connection somewhere."
-
-### 4. Judge each remaining candidate
-
-For each candidate that survives the distance cap and the dedup filter:
-
-- **Accept** if you would write this into the source's `related:` array
-  based on a brief check of both notes' titles, tags, and topic. Heuristics:
-  - Same project / same major topic area → almost certainly related
-  - Subject overlap with clear semantic linkage → related
-  - Same problem, different angle ("bash patterns" ↔ "specific bash gotcha") → related
-  - Tangentially similar (both technical, no direct connection) → skip
-  - Same word in title but different meaning (homonym) → skip
-- **Flag as ambiguous** if you can't decide quickly. Don't guess — flag for
-  human review. The cost of a wrong "accept" is higher than a "skip" or
-  "ambiguous."
-- **Flag as supersession candidate** when the pair isn't *related* but
-  *successive* — one note reads as a stale predecessor the other has
-  effectively replaced (same concept, one clearly newer/fuller, the older
-  unmaintained). Don't add `related:` (that cements the stale note into
-  the graph); list the pair in the review note's own "supersession
-  candidates" section recommending retirement via `POST /vault/supersede`
-  semantics (archive the predecessor, typed `supersedes` edge from the
-  survivor). Never execute the retirement in `--apply` mode — it's a
-  destructive judgment for the main session and the user.
-
-When the candidate's title alone is ambiguous, fetch the candidate's note
-briefly: `vault-curl "/vault/$CANDIDATE_PATH" -s | head -40`. Read sparingly —
-the goal is a fast batch pass, not exhaustive verification.
-
-### 5a. Default mode: write proposals to a review note
-
-Save to the vault as `queries/YYYY-MM-DD-related-proposals[-N].md` (use a
-sequence suffix if multiple batches in one day):
-
-```yaml
----
-title: Related-edge proposals — YYYY-MM-DD batch N
-tags: [vault, related-proposals, query]
-created: YYYY-MM-DD
-updated: YYYY-MM-DD
-status: pending-review
-type: query
-related: ["[[projects/vault-storage/queue]]", "[[projects/vault-storage/design/embedding-baseline]]"]
----
-```
-
-Body structure: one section per source note. For each, list accepted
-proposals as wikilinks with a one-line rationale. Skipped candidates can be
-omitted; flag any *ambiguous* ones in a "needs human verdict" section.
-
-```markdown
-## `<source-note-path>`
-
-**Add to `related:`**:
-- `[[<candidate-1>]]` — <one-line reason: e.g., "same project; covers the schema-decision side of <topic>">
-- `[[<candidate-2>]]` — <reason>
-
-**Ambiguous (human verdict needed)**:
-- `[[<candidate-3>]]` — <why it's borderline>
-```
-
-Save the proposals review-note via the JSON write path (the body has a
-title/header and bullet lists, plus a YAML frontmatter object the
-server will format correctly):
-
-```bash
-# $WORK is the mktemp -d dir where you wrote proposals.md earlier; reuse its literal path (CLAUDE.md § "Scratch files")
-jq --null-input --rawfile body "$WORK/proposals.md" \
-  --arg today "$(date -u +%Y-%m-%d)" \
-  '{frontmatter: {title: "Related-link proposals", type: "query", status: "active", created: $today, updated: $today, tags: ["proposals","related"]}, body: $body}' \
-  > "$WORK/payload.json"
-
-vault-curl "/vault/queries/$FILENAME" -X PUT \
-  -H 'Content-Type: application/json' \
-  --data-binary @"$WORK/payload.json" \
-  -o /dev/null -w "%{http_code}\n"
-rm -rf "$WORK"   # best-effort
-```
-
-### 5b. Apply mode (`--apply`): write directly to source FM
-
-For each source with accepted proposals:
-
-Stage all temp files under a per-invocation `mktemp -d` so co-resident
-sessions can't clobber each other's write bodies:
-
-```bash
-work=$(mktemp -d)
-```
-
-1. **Read the source's current frontmatter + body in ONE call** via the
-   raw-FM reader. Do **NOT** read `related` from `/sections/$RECORD_ID/meta`
-   — that projection only exposes record-table columns and has no `related`
-   key, so it returns `null` for every note. Merging against `null` (→ `[]`)
-   and then doing the wholesale `related:` replace below would **silently
-   delete every existing `related:` entry**. `/sections/$RECORD_ID/fm` reads
-   the file from disk and returns all FM verbatim:
-   ```bash
-   vault-curl "/sections/$RECORD_ID/fm" -s > "$work/fm.json"
-   existing=$(jq '.frontmatter.related // []' "$work/fm.json")
-   jq -j '.body' "$work/fm.json" > "$work/body.md"   # -j (NOT -r): no trailing
-   # newline. `/fm`.body carries no trailing newline and the writer appends one
-   # on save; `jq -r` would add a second, growing the body by a blank line per
-   # apply. `-j` keeps the round-trip byte-faithful.
-   ```
-2. **Compute the new related list** — append accepted candidates as
-   `"[[<target>]]"` strings, preserving existing entries:
-   ```bash
-   new_related=$(echo "$existing" | jq --argjson adds "$ACCEPTED_LINKS_JSON" '. + $adds | unique')
-   ```
-3. **Write back via the JSON path** — only `related` is updated; the
-   shallow FM merge preserves every other key on disk:
-   ```bash
-   jq --null-input \
-     --rawfile body "$work/body.md" \
-     --argjson related "$new_related" \
-     '{frontmatter: {related: $related}, body: $body}' \
-     > "$work/payload.json"
-
-   vault-curl "/vault/$FROM_PATH" -X PUT \
-     -H 'Content-Type: application/json' \
-     --data-binary @"$work/payload.json" \
-     -o /dev/null -w "%{http_code}\n"
-   ```
-
-The writer's shallow FM merge replaces `related:` wholesale, so include
-all existing entries plus your additions inside the new array (step 1's
-`existing` is the source of truth for that — never an empty/`null` read).
-Body unchanged.
-
-Apply mode is faster but skips the human review step. Use it when:
-- The user has explicitly asked for `--apply`
-- Sub-agent confidence is high (cosine ≤ 0.20) — strong matches
-- The user is actively reviewing the conversation (not background)
-
-### 6. Report summary
-
-```
-Reviewed N source notes (R candidates considered, A accepted, S skipped, M ambiguous).
-[Default mode]    Proposals written to queries/<filename>.md — review and reply 'apply'.
-[Apply mode]      <X> source notes' related: arrays updated.
-```
+**`supersede-candidate`** is for pairs that aren't *related* but
+*successive* — one note reads as a stale predecessor the other replaced.
+Don't add `related:` (that cements the stale note into the graph); the
+verdict routes the pair to the review note's retirement section
+(supersede semantics — archive the predecessor, typed edge from the
+survivor). Never executed by the harness; main session + user decide.
 
 ## Sub-agent mode (`--auto`)
 
-**Model: Haiku** (default mode) **/ Sonnet** (`--apply` mode). Per
-[[topics/sub-agent-model-selection-by-task-shape]]: default mode writes
-proposals to a queries note for human review (low-stakes textual judgment
-on candidate pairs — Haiku fits). `--apply` mode writes directly to the
-source notes' FM `related:` arrays without human gate; that's structured
-YAML output at scale plus higher cost-of-one-bad-output (a wrong-related
-entry pollutes the typed-edge graph). Bump to Sonnet when applying.
+**Model: Haiku** (default mode) **/ Sonnet** (`--apply`). Per
+[[topics/sub-agent-model-selection-by-task-shape]]: review-note mode is
+low-stakes textual judgment behind a human gate — Haiku fits; `--apply`
+writes FM directly, so the cost of one bad output rises — Sonnet. Only use
+`--auto --apply` when the user explicitly authorized direct apply.
 
 ```
 subagent_type: general-purpose
-model: haiku
+model: haiku            # sonnet when --apply
 description: Propose related: entries for N source notes
 prompt: |
-  Read ~/.claude/skills/vault-propose-related/SKILL.md and follow the
-  procedure for the next $LIMIT source notes (the full ENRICHABLE set per
-  the canonical definition in /vault-enrich-all SKILL § Enrichable set —
-  NOT just permanent).
-  Default mode (write to queries note); be CONSERVATIVE on accepts —
-  better to under-suggest. Flag anything you're <80% sure about as
-  ambiguous rather than accepting.
-
-  Return: {reviewed: N, accepted: A, ambiguous: M, proposals_path: "..."}
+  Read ~/.claude/skills/vault-propose-related/SKILL.md. Using the
+  related-batch harness exactly as its Workflow section shows: prepare
+  --limit $LIMIT, judge every candidate per § Judgment (its bands and
+  conservative bias are binding; flag anything you're <80% sure about as
+  "ambiguous" rather than accepting), then run `review` (or `apply` only
+  if explicitly requested). Return: the harness's JSON report plus a
+  one-paragraph summary.
 ```
-
-For `--auto --apply`, only use Haiku when the user has explicitly
-authorized direct apply — this skips human review.
-
-## Output discipline
-
-- **Be conservative on accepts.** Better to under-suggest and let the user
-  run another batch than to flood `related:` arrays with weak edges.
-- **Don't auto-apply by default.** The skill's value is the agent judgment
-  layer between brute-force retrieval and human curation; that layer is
-  only trustworthy if its outputs go through human review (or are flagged
-  as auto-applied).
-- **Track which notes have been reviewed.** Subsequent batches should skip
-  source notes already covered by prior `queries/*-related-proposals*.md`
-  files. Cheap parse: read each prior proposals note's body, extract the
-  `## <path>` headings.
 
 ## When NOT to use this skill
 
-- **Per-query semantic search** — that's runtime via `/vault-search` /
-  `vault_similar`, not this offline pass. This skill is for *enriching the
-  curated edges*, run periodically (weekly / on-demand).
-- **Typed-edge classification** (e.g., `supersedes`, `caused-by`) — those
-  are agent-judged via `/vault-review-edges` after the indexer files
-  `edge_type` suggestions. This skill produces `related-to` only, the
-  loosest edge type (symmetric, auto-mirrored).
+- **Per-query semantic search** — that's `/vault-search` / `vault_similar`
+  at runtime; this is an offline curation pass (weekly / on-demand).
+- **Typed-edge classification** (`supersedes`, `caused-by`, …) — that's
+  `/vault-review-edges`. This skill produces `related-to` only — the
+  loosest, symmetric, auto-mirrored edge.
 
 ## Backend requirement
 
-vault-storage on `:8123`. The `/sections/{id}/similar` endpoint relies on
-the BGE embedding index.
+vault-storage on `:8123` (`VAULT_API_URL`/`VAULT_API_TOKEN` in `~/.env`);
+`/sections/{id}/similar` needs the BGE embedding index, and `apply` needs
+the FM membership-patch endpoint.
 
 ## Background
 
-Why this works: BGE retrieval (chunked, CLS-pooled, see `[[projects/vault-storage/design/embedding-model]]`)
+BGE retrieval (chunked, CLS-pooled — [[projects/vault-storage/design/embedding-model]])
 achieves ~24× lift over random for R@10 on the live vault. Absolute
 precision is depressed by sparse curation — many "false positives" at high
-cosine are *real* matches that nobody got around to writing into FM. This
-skill captures them: agent judges which top-K candidates are genuine; the
-curated set densifies; subsequent retrieval-quality evals improve.
+cosine are real matches nobody wrote into FM. This skill captures them;
+the curated set densifies; retrieval evals improve.
