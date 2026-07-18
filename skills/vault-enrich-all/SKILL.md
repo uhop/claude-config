@@ -1,367 +1,191 @@
 ---
 name: vault-enrich-all
-description: "Generate or refresh agent-derived frontmatter enrichment (summary, key_concepts, tags_suggested, related_proposed, edge_classifications, complexity) for vault notes. Writes a namespaced `agent:` block per note that the indexer / chunker / embedder will consume for HyDE-style retrieval augmentation. Use when the user says /vault-enrich-all, asks to backfill summaries / concept tags, or wants to densify the agent-derived metadata layer. Per design `[[projects/vault-storage/design/agent-frontmatter-enrichment]]` — refines C12 by separating user-authored top-level frontmatter from agent-authored enrichment."
+description: "Generate or refresh agent-derived frontmatter enrichment (summary, key_concepts, tags_suggested, related_proposed, edge_classifications, complexity) for vault notes. Writes a namespaced `agent:` block per note that the indexer / chunker / embedder consume for HyDE-style retrieval augmentation. Mechanical work (server-worklist pull, per-note context gather, validated JSON writes with If-Match + current-path resolution) runs through the bundled `enrich-batch.mjs`; the skill is the judgment layer — the enrichment content itself. Use when the user says /vault-enrich-all, asks to backfill summaries / concept tags, or wants to densify the agent-derived metadata layer. Per design `[[projects/vault-storage/design/agent-frontmatter-enrichment]]`."
 user_invocable: true
 ---
 
 # Vault — agent-driven frontmatter enrichment
 
-For each vault note, generate a namespaced `agent:` block in the
-frontmatter that captures LLM-derived enrichment: a 1-2 sentence summary,
-3-5 key concepts, tag/related-link proposals, edge-type classifications
-for body wikilinks, and a complexity label. Hash-gated invalidation
-ensures the block stays fresh on body changes.
-
-The block lives in the source markdown file (constraint C4: file is
-source of truth). It survives DB rebuilds, is git-tracked, and is
-human-visible. The indexer / chunker / embedder consume `agent.summary`
-as a HyDE-style prefix at index time per
-`[[projects/vault-storage/design/embedding-model]]`.
+For each vault note, generate a namespaced `agent:` block in the frontmatter:
+a 1-2 sentence summary, 3-5 key concepts, tag/related-link proposals,
+edge-type classifications for body wikilinks, and a complexity label.
+Hash-gated invalidation keeps the block fresh on body changes. The block
+lives in the source markdown (C4: file is source of truth) and is a
+load-bearing index-time input — see § Server-side integration.
 
 ## Invocation
 
 ```
-/vault-enrich-all                       # default: review & enrich next 30 unenriched enrichable notes
+/vault-enrich-all                       # enrich the next 30 unenriched enrichable notes
 /vault-enrich-all --limit=N             # custom batch (1..200)
-/vault-enrich-all --stale               # refresh stale blocks (hash mismatch) instead of new
-/vault-enrich-all --type=permanent      # restrict to ONE record type (default: the full enrichable set — see below)
-/vault-enrich-all --auto                # spawn a Sonnet sub-agent for bulk
-/vault-enrich-all --auto --limit=N      # bulk + cap
+/vault-enrich-all --stale               # refresh drifted blocks instead of backfilling new
+/vault-enrich-all --type=permanent      # restrict to ONE record type (default: full enrichable set)
+/vault-enrich-all --auto [--limit=N]    # Sonnet sub-agent for bulk
 ```
+
+## Enrichable set
+
+The canonical definition lives in **vault-storage, not here**: `ENRICHABLE_TYPES`
+in the server's lint handler (currently `permanent`, `project`, `design`,
+`research`, `query`), surfaced live by `GET /system/lint` →
+`coverage.enrichment` with the authoritative `unenriched_records` worklist
+(2026-07-09+). The harness reads it from the server; hand-rolled client-side
+enumeration is what caused the 2026-06-30 scope gaps (an `archived_at` filter
+let 177 archived notes through; a skill-side `type=permanent` scan diverged
+from the server). On a pre-worklist server, the fallback enumeration +
+reconciliation procedure lives in this file's git history.
+
+## Workflow
+
+```bash
+E=~/.claude/skills/vault-enrich-all/enrich-batch.mjs
+W=$(mktemp -d)
+
+# 1. prepare — server worklist + per-note context → worksheet
+"$E" prepare --limit=30 --out="$W/ws.json"          # missing blocks (add --type=T to narrow)
+"$E" prepare --stale --out="$W/ws.json"             # drifted blocks (from the suggestions queue)
+"$E" prepare --records="$W/chunk.txt" --out="$W/ws.json"   # explicit shard (paths or ids, one per line)
+
+# 2. judge — write the enrichment content per note (see § Generate enrichment fields)
+#    (start from .enrichments_template; null = skip)
+
+# 3. apply — validates everything first, then JSON-PUTs each block
+"$E" apply --worksheet="$W/ws.json" --enrichments="$W/enr.json"
+```
+
+Each worksheet item carries the note's `body`, `title`, `type`,
+`existing_tags` / `existing_related`, the extracted `body_wikilinks` (the
+exact keys `edge_classifications` may use), pre-filtered `related_candidates`
+(embedding neighbours at distance ≤ 0.30, minus links the note already has),
+and — in `--stale` mode — the `current_agent` block to refresh rather than
+recreate. The worksheet header carries the full tag taxonomy (for
+`tags_suggested` discipline) and the coverage counts; empty-body notes are
+excluded and listed under `needs_a_body`.
+
+`apply` rejects the whole file before any write (exit 3) on unknown paths,
+short summaries, bad `complexity`, non-wikilink `edge_classifications` keys,
+or invalid edge types. Writes go through the JSON path (the only sanctioned
+FM write path — `agent.summary` colon-space prose breaks the markdown path's
+YAML parser) with `derived_from_hash: "auto"` (the server stamps the body
+hash + `derived_at`; the wrong-hash class is dead at the source), `If-Match`
+round-trips with one 412 retry, and **current-path resolution** per record
+(writing to a stale worksheet path resurrects ghost records — 2026-07-12).
+Stale rows need no explicit resolution: the reindex settles their suggestion
+as `resolved_by='hash-matched'`. Exit 0 ok · 1 partial failures. Run solo or
+`|| true` in parallel Bash batches.
 
 ## Per-note `agent:` block shape
 
 ```yaml
 agent:
-  derived_at: 2026-04-30T22:00:00Z
-  derived_from_hash: "<body_hash, hex — quoted!>"
+  derived_at: 2026-04-30T22:00:00Z            # server-stamped
+  derived_from_hash: "<body_hash>"            # server-stamped from the "auto" sentinel
   summary: "<1-2 sentences capturing the note's core claim and scope>"
   key_concepts: [concept-1, concept-2, concept-3]
-  tags_suggested: [proposed-tag-1, proposed-tag-2]   # candidates for top-level tags:
-  related_proposed: ["[[other-note]]"]               # candidates for top-level related:
-  edge_classifications:                              # body wikilinks → edge types
+  tags_suggested: [proposed-tag-1]            # candidates for top-level tags:
+  related_proposed: ["[[other-note]]"]        # candidates for top-level related:
+  edge_classifications:                       # body wikilinks → edge types
     "[[some-page]]": derived-from
-    "[[other-page]]": applies-to
-  complexity: prose      # one of: prose | code-heavy | tabular | mixed | hub | log-entry
+  complexity: prose      # prose | code-heavy | tabular | mixed | hub | log-entry
 ```
 
 Top-level user-authored frontmatter (`title`, `tags`, `related`, `status`,
-`type`, `priority`, `edges`) is **not touched** — the agent only writes
-inside its `agent:` namespace.
+`type`, `priority`, `edges`) is never touched — the agent writes only inside
+its `agent:` namespace (the harness sends only that key; the server's
+shallow merge preserves the rest; the `agent` map itself is replaced
+wholesale per write).
 
-## Procedure
-
-### 1. Pick the batch
-
-**Enrichable set — the canonical definition lives in `vault-storage`, NOT here.** It is `ENRICHABLE_TYPES` in `vault-storage/src/server/handlers/lint.ts` (currently `permanent`, `project`, `design`, `research`, `query`), surfaced live by `GET /system/lint` → `coverage.enrichment`. **Read it from the server; do not hand-roll a second copy** — that duplication is exactly what caused the 2026-06-30 scope gap (a skill-side `type=permanent` scan diverged from the server, reporting "427/427" while 7 `project`/`design`/`query` notes sat unenriched). `--type=X` narrows to one type on purpose; the **default does not narrow**.
-
-```bash
-# Source of truth — the headline backlog count AND the authoritative type allowlist:
-COV=$(vault-curl /system/lint -s | jq -c '.coverage.enrichment')
-echo "$COV" | jq -c '{total, enriched, unenriched, enrichable_types}'
-# The headline {total,enriched,unenriched} already excludes operational types
-# (log/meta/queue-item/state/index), empty-body stubs, and archived notes.
-```
-
-**Since 2026-07-09 the server returns the worklist itself**: `coverage.enrichment.unenriched_records` — `[{record_id, file_path, type}]`, path-ordered, capped at 500 (compare its length with `unenriched` to detect truncation), computed with exactly the headline's exclusions (enrichable types, non-empty body, non-archived). **Use it directly** — it is the authoritative list this skill used to reconstruct client-side (and got wrong twice, 2026-06-30):
-
-```bash
-echo "$COV" | jq -r '.unenriched_records[] | "\(.record_id)\t\(.type)\t\(.file_path)"'
-# --type=X → add: select(.type == "X")
-```
-
-`--stale` is a different set (existing blocks whose `derived_from_hash` drifted) — enumerate it from the suggestions queue instead: `vault-curl '/suggestions?kind=agent_enrichment_stale&status=pending&limit=100' -s` (page by `items.length`).
-
-**Fallback (older server, `unenriched_records` absent from the response):** enumerate `/sections` filtered to the server's `enrichable_types` (**read live, never hardcoded**) + non-empty body + not archived + missing `agent_summary` (exposed flat per record; empty ⇒ no `agent:` block). Page by `items.length`, never the requested limit:
-
-```bash
-TYPES=$(echo "$COV" | jq -r '.enrichable_types | join(" ")')
-offset=0
-while :; do
-  page=$(vault-curl "/sections?limit=100&offset=$offset" -s)
-  n=$(echo "$page" | jq '.items | length'); [ "${n:-0}" -eq 0 ] && break
-  echo "$page" | jq -r --arg types "$TYPES" '
-    ($types | split(" ")) as $enrich
-    | .items[]
-    | select((.agent_summary // "") == "")          # missing block (for --stale: .agent_derived_from_hash != .body_hash)
-    | select(.type as $t | $enrich | index($t))      # type IS in the server allowlist
-    | select((.file_path // "") | test("/archive/") | not)   # not archived — server excludes by PATH; archived_at is null for path-archived notes, so do NOT use it
-    | select((.body | gsub("\\s";"") | ascii_downcase) | (length > 0 and . != "null"))   # body integrity: empty / whitespace-only / literal "null" bodies are never enrichable
-    | "\(.record_id)\t\(.type)\t\(.file_path)"'
-  offset=$((offset + n))
-done
-# --type=X → keep only that type out of $TYPES;  --stale → flip the first select to the hash-mismatch test.
-```
-
-**Cross-check the fallback enumeration against the server count — they MUST agree.** The archive/empty filters above *reimplement* the server's own exclusions, so they can silently drift. They did, 2026-06-30: `archived_at` (null for path-archived notes) let 177 `/archive/` notes through, so the scan reported **179** to enrich while `coverage.enrichment.unenriched` was **0**. After enumerating, reconcile: if your count exceeds `echo "$COV" | jq .unenriched`, the filter has false positives — **trust the server, not the filter**, and don't enrich the excess. This applies to the fallback path only — `unenriched_records` (2026-07-09) *is* the authoritative list; no reconciliation needed there.
-
-**Empty bodies are reported, never enriched.** A note whose body is empty, whitespace-only, or the literal string `null` (the BODY-lint categories — `topics/vault-hygiene-policy` § Body integrity) is excluded by the jq filter above. Don't "fix" such a note by summarizing nothing — the 2026-06-20 campaign wrote meaningless blocks on 7 stubs and every one had to be stripped. Collect the excluded paths and surface them in the final report as `needs a body`; whether to write content or leave the scaffold empty is the user's call. This applies to **every** invocation shape — the default set, `--type=X`, and `--stale` all share the filter.
-
-For each candidate, fetch the file:
-
-```bash
-WORK=$(mktemp -d)   # scratch dir; reuse this literal path across the steps below (CLAUDE.md § "Scratch files"), rm -rf "$WORK" when done
-vault-curl "/vault/$FILE_PATH" -s -o "$WORK/note.md"
-```
-
-Parse the FM. If `agent.derived_from_hash` matches the record's current
-`body_hash` (look it up via `/sections/{id}` or `vault_read_meta`), the
-block is fresh — skip unless `--stale` is set.
-
-**Use `body_hash`, not `content_hash`.** The API exposes both. `body_hash`
-is `sha256(body)` — pure body content, stable across enrichment cycles.
-`content_hash` is the embedding-input hash; once `agent.summary` is set,
-it includes the summary, so it diverges from body-only and would file
-spurious `agent_enrichment_stale` suggestions on every refresh. For
-unenriched records the two are equal; for enriched ones they differ.
-
-**Fallback when `body_hash` is missing** (server predates the field):
-compute it yourself by hashing the body bytes. The body is whatever
-follows the closing `---\n` of the FM block — preserve trailing newlines
-verbatim.
-
-```bash
-BODY_HASH=$(awk '/^---$/{n++; next} n==2{print}' "$WORK/note.md" | sha256sum | cut -d' ' -f1)
-# or in Python: hashlib.sha256(body.encode("utf-8")).hexdigest()
-```
-
-### 2. Generate enrichment fields
-
-Read the body. Reason about:
+## Generate enrichment fields
 
 - **`summary`**: 1-2 sentences, ~40-80 words. Lead with the note's core
-  claim or scope. Avoid restating the title verbatim.
-  **Mention the concrete name AND the abstract pattern**, not just one.
-  The 2026-05-01 query-document A/B
+  claim or scope; don't restate the title. **Mention the concrete name AND
+  the abstract pattern** — the 2026-05-01 A/B
   ([[projects/vault-storage/design/embedding-baseline-summary-query-ab]])
-  surfaced one outlier where the summary abstracted "shared header on two
-  notes that aren't duplicates" into "two aggregations: chunk-min vs
-  whole-doc" — retrieval rank crashed from 20 (body) to 47 (with summary)
-  on a query asking about the concrete failure-mode. Fix: keep both
-  layers in the same sentence — "Two aggregations (chunk-min vs whole-
-  doc); shared boilerplate causes chunk-min false positives that whole-
-  doc drowns" preserves the abstract pattern AND the concrete failure
-  signature the query was asking about.
-- **`key_concepts`**: 3-5 noun-phrases that the note hangs on. Lowercase,
-  hyphen-separated. These are *concepts*, not necessarily tags — they may
-  overlap with `tags_suggested` but serve a different purpose (retrieval
-  anchors / dedup probes vs. taxonomy membership).
-- **`tags_suggested`**: tags the agent thinks should join the top-level
-  `tags:` array. Cross-reference the existing taxonomy:
-  ```bash
-  vault-curl "/tags?prefix=$(echo $CONCEPT | head -c 3)" -s
-  ```
-  Only suggest tags that already exist in the taxonomy OR are clearly
-  worth adding. Don't propose freeform tags that would just become typos.
-- **`related_proposed`**: wikilinks to other notes the agent thinks should
-  join `related:`. Use `/sections/{id}/similar?k=15` for candidates;
-  filter to those at distance ≤ 0.30; judge each.
-- **`edge_classifications`**: for each `[[wikilink]]` in the body, propose
-  an edge type from the canonical 10 (`derived-from`, `applies-to`,
-  `cites`, etc.). The classifier's heuristic default is `cites`; this
-  field is the agent's better classification. **The body-wikilink
-  classifier and FM `edges:` map are still the runtime source of truth**
-  (per `/vault-review-edges`); `edge_classifications` is a hint that the
-  edge-review skill can leverage.
-- **`complexity`**: one of `prose`, `code-heavy`, `tabular`, `mixed`,
-  `hub` (a note that's mostly wikilinks to other notes), `log-entry`.
+  showed a summary that abstracted away the concrete failure signature
+  crashed retrieval rank from 20 to 47; keep both layers in one sentence.
+- **`key_concepts`**: 3-5 lowercase hyphen-separated noun-phrases the note
+  hangs on — retrieval anchors, not necessarily taxonomy tags.
+- **`tags_suggested`**: only tags already in the worksheet's `taxonomy`
+  list OR clearly worth adding; skip when uncertain — freeform proposals
+  just become typo queue-items.
+- **`related_proposed`**: judge each entry of the worksheet's
+  `related_candidates`; propose only genuine semantic kin (conservative on
+  ambiguous).
+- **`edge_classifications`**: classify only the worksheet's
+  `body_wikilinks`, and only where keyword cues support a type; the
+  classifier's runtime default is `cites`, and this field is an advisory
+  prior for `/vault-review-edges`, not the runtime truth.
+- **`complexity`**: `prose`, `code-heavy`, `tabular`, `mixed`, `hub` (a
+  note that's mostly wikilinks), or `log-entry`.
 
-### 3. Write the block
+**Empty bodies are reported, never enriched** — the harness excludes them
+(`needs_a_body`); the 2026-06-20 campaign wrote meaningless blocks on 7
+stubs and every one had to be stripped. Whether to write content or leave
+the scaffold empty is the user's call.
 
-Use the **JSON write path** (`Content-Type: application/json`) — the
-recommended path for this skill. `agent.summary` regularly contains
-colon-space prose ("The principle generalizes: any operator-visible…")
-that 500s through the markdown path's YAML parser. JSON sidesteps the
-whole authoring-trap class (colon-space, leading `@`/`*`/`-`/`?`,
-hex/bool/date-shadow strings, multi-line plain scalars) — the server
-takes the FM object directly and `yaml.stringify` produces correctly
-quoted YAML on the way to disk.
-
-Compose the FM object with the same fields you'd write into the YAML
-block:
-
-```json
-{
-  "frontmatter": {
-    "agent": {
-      "derived_at": "2026-04-30T22:00:00Z",
-      "derived_from_hash": "<body_hash, hex>",
-      "summary": "...",
-      "key_concepts": ["..."],
-      "tags_suggested": ["..."],
-      "related_proposed": ["..."],
-      "edge_classifications": {
-        "[[some-target]]": "derived-from"
-      },
-      "complexity": "prose"
-    }
-  },
-  "body": "<unchanged body>"
-}
-```
-
-The writer merges `frontmatter` into the on-disk FM (shallow, key-by-key),
-so you only need to send keys you want to update — top-level
-`title`/`tags`/`status`/`type`/`related`/`edges` are preserved unchanged
-when you omit them. **The `agent` map itself is replaced wholesale on each
-write**, though, so include all the fields you want preserved inside
-`agent`.
-
-**Preferred (2026-07-09+): set `derived_from_hash: "auto"`** — the server
-replaces the sentinel with the hash of the body it is writing and stamps
-`derived_at`; nothing to look up, and the wrong-hash class dies at the
-source. On an older server, look up `body_hash` via `/sections/{id}` (or
-`vault_read_meta`) to populate
-`derived_from_hash` — **not `content_hash`**. The two diverge once a
-summary is set: `content_hash` becomes `embedInputHash(body, summary)`,
-while `body_hash` stays at `sha256(body)`. Using `content_hash` from a
-post-enrichment record produces silent staleness suggestions on every
-refresh because the recorded value will never match what the importer
-recomputes from the body alone. (Note: under the JSON write path the hash
-value is just a JSON string and doesn't need explicit double-quoting —
-`yaml.stringify` quotes it correctly when emitting YAML to disk.)
-
-Use the current ISO 8601 UTC timestamp for `derived_at`.
-
-Construct the payload safely with `jq` (handles arbitrary body content
-and special characters in `summary`):
-
-```bash
-jq --null-input \
-  --rawfile body "$WORK/note-body.md" \
-  --arg hash "$BODY_HASH" \
-  --arg summary "$SUMMARY" \
-  --arg derived_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{frontmatter: {agent: {derived_at: $derived_at, derived_from_hash: $hash, summary: $summary, key_concepts: ["..."], complexity: "prose"}}, body: $body}' \
-  > "$WORK/payload.json"
-
-vault-curl "/vault/$FILE_PATH" -X PUT \
-  -H 'Content-Type: application/json' \
-  --data-binary @"$WORK/payload.json" \
-  -o /dev/null -w "%{http_code}\n"
-rm -rf "$WORK"   # best-effort cleanup
-```
-
-Expect `204`.
-
-The JSON path is the only sanctioned way to write FM (2026-06-11
-decision). Never hand-author the `---\n<FM>\n---\n<body>` markdown
-blob for enrichment writes — `agent.summary` regularly contains
-colon-space prose and `derived_from_hash` is an all-digit-prone string,
-both classic YAML quoting traps the JSON path eliminates. The markdown
-PUT mode is reserved for the UI editor and verbatim round-trips of
-server-emitted files.
-
-### 4. Report summary
+## Report summary
 
 ```
-Enriched N notes:
-  new blocks:           <count>
-  refreshed (stale):    <count>
-  skipped (fresh):      <count>
-  needs a body:         <count> — <paths, not enriched>
-  errors:               <count>
-<remaining> still needing enrichment — re-run /vault-enrich-all for the next batch.
+Enriched N notes: <new> new, <stale> refreshed, <skipped> skipped,
+  needs a body: <paths>, errors: <count>
+<remaining> still unenriched — re-run /vault-enrich-all for the next batch.
 ```
+
+(`written` / `needs_a_body` / `failures` come straight from the apply
+report; `remaining` from the next prepare's coverage line.)
 
 ## Sub-agent mode (`--auto`)
 
-**Model: Sonnet.** Per
-[[topics/sub-agent-model-selection-by-task-shape]] this skill outputs
-structured YAML at scale and requires multi-step reasoning per note
-(read body → judge claim → produce summary → inventory wikilinks →
-classify each → assemble). The 2026-05-01 wave-1 Haiku run was 33%
-malformed-YAML and 100% wrong-hash on the corrective `body_hash`
-instruction; I had to fix all 30 records by hand. Sonnet's incremental
-cost (~5× Haiku) is dwarfed by the cleanup cost when output is wrong.
-
-Per-note enrichment is the canonical sub-agent task: each note is
-independent, the work is textual reasoning over a single source, and
-quality is consistent at Sonnet scale.
+**Model: Sonnet.** Per [[topics/sub-agent-model-selection-by-task-shape]]:
+the 2026-05-01 wave-1 Haiku run was 33% malformed output and 100% wrong-hash
+on the corrective instruction; the harness has since removed the YAML and
+hash surfaces entirely, but per-note summary quality still needs multi-step
+reasoning — the quality bar above is the judgment that remains.
 
 ```
 subagent_type: general-purpose
 model: sonnet
 description: Enrich N vault notes with agent: blocks
 prompt: |
-  Read ~/.claude/skills/vault-enrich-all/SKILL.md and follow the procedure
-  for the next $LIMIT notes (the full ENRICHABLE set per the SKILL's
-  canonical definition — NOT just permanent; skip notes with fresh
-  `agent:` blocks unless --stale was passed).
-
-  Critical:
-  - Set `derived_from_hash: "auto"` (the server stamps the right hash).
-    On an older server: use `body_hash`, NOT `content_hash`.
-  - Always double-quote the hash value in the YAML.
-  - Use block-style YAML for lists (`-` prefix, one per line). Inline
-    flow style (`[a, b, c]`) breaks on values containing commas/colons.
-  - Never enrich an empty body (empty / whitespace-only / literal
-    "null") — exclude it and report its path under `needs_a_body`.
-
-  Quality bar:
-  - summary: lead with the claim, not the title rephrased
-  - key_concepts: real noun-phrases, not generic words
-  - tags_suggested: only existing taxonomy tags, or genuinely new ones;
-    skip if uncertain
-  - related_proposed: distance ≤ 0.30 only; conservative on ambiguous
-  - edge_classifications: only when keyword cues are present; skip otherwise
-
-  Return: {enriched: N, skipped_fresh: M, needs_a_body: [paths], errors: K, summary: "..."}
+  Read ~/.claude/skills/vault-enrich-all/SKILL.md. Using the enrich-batch
+  harness exactly as its Workflow section shows: prepare (add --stale if
+  requested; --limit $LIMIT), write the enrichment content for every
+  worksheet item per § Generate enrichment fields (its quality bar and
+  biases are binding; null = skip only for notes you cannot judge), apply.
+  Return: the apply report plus a one-paragraph summary.
 ```
-
-Per-note cost (~1500 in / 300 out tokens at Sonnet rates) is a few cents
-cent. Backfilling all enrichable notes is a few-dollar one-shot pass.
 
 ### Sharded dispatch (used by `/vault sweep`)
 
-For large backfills the orchestrator may run several sub-agents
-concurrently — the server is safe under concurrent writers (atomic
-synchronous writes + `If-Match`, 2026-06-11) and each note is an
-independent PUT. Split the server's `unenriched_records` worklist into
-**disjoint** chunks (~50 records each, ≤4 agents), and in each agent's
-prompt replace the "next $LIMIT notes" line with the chunk's explicit
-`file_path` list plus: "Enrich exactly these records; do not enumerate
-the worklist yourself." Disjointness is what makes this safe — never
-let two agents self-enumerate the same worklist. `--stale` refresh
-stays a single agent (its worklist comes from the shared suggestions
-queue head).
+For large backfills run ≤4 concurrent sub-agents on **disjoint** chunks:
+split the worksheet-independent worklist (`prepare`'s coverage or the
+`unenriched_records` list) into ~50-record chunks, write each chunk's
+`file_path` list to a file, and give each agent `prepare
+--records=<chunk-file>` — the explicit shard replaces self-enumeration, so
+two agents can never claim the same records. `--stale` stays a single agent
+(its worklist comes from the shared suggestions queue head). Concurrent
+writers are server-safe (atomic writes + `If-Match`, 2026-06-11).
 
 ## When this is the right tool
 
-- Backfilling enrichment after vault-storage deploy (one-shot).
+- Backfilling enrichment after a vault-storage deploy (one-shot).
 - Refreshing notes after material body edits (`--stale`).
-- Periodic densification of recent ingest output.
+- Periodic densification of recent ingest output. (New notes should be
+  **born enriched** instead — `/vault ingest` step 5 and `/vault log`
+  write the block in the same PUT, using this file's § Per-note `agent:`
+  block shape + § Generate enrichment fields.)
 
 ## Server-side integration (shipped)
 
-As of vault-storage schema 5/6, the indexer fully consumes the `agent:`
-block:
-
-- **Schema**: `records.agent_summary` and `records.agent_derived_from_hash`
-  columns store the parsed block. `JsonRecord` surfaces them in
-  `/sections/{id}` responses.
-- **Importer**: parses `agent.summary` and `agent.derived_from_hash` from
-  FM. The hash is wrapped into `embedInputHash` so summary changes
-  invalidate the chunk set the same way body edits do.
-- **Chunker**: when `agent.summary` is set, prepends `${summary}\n\n` to
-  every emitted chunk as a HyDE-style retrieval anchor.
-- **`embedPending`**: joins `agent_summary` into the pending query and
-  passes it to the chunker.
-- **Staleness**: when `agent.derived_from_hash` diverges from the body's
-  current hash, an `agent_enrichment_stale` suggestion is filed. Auto-
-  resolves with `resolved_by='hash-matched'` when this skill's next pass
-  refreshes the block.
-
-So writing the `agent:` block here is a fully load-bearing index-time
-input — not just durable FM the indexer treats as inert.
+As of vault-storage schema 5/6 the indexer fully consumes the block:
+`records.agent_summary` / `agent_derived_from_hash` columns; the hash wraps
+into `embedInputHash` so summary changes invalidate chunks like body edits;
+the chunker prepends `${summary}\n\n` to every chunk as a HyDE-style
+anchor; hash drift files `agent_enrichment_stale`, auto-resolved
+`hash-matched` on the next refresh.
 
 ## Backend requirement
 
-vault-storage on `:8123` is sufficient — it provides the structured
-suggestion / similar / record_id endpoints that the procedure relies on for
-candidate generation.
-
-## Dependencies
-
-- `vault-curl` on `$PATH`.
-- `jq` for response parsing.
+vault-storage on `:8123` (`VAULT_API_URL`/`VAULT_API_TOKEN` in `~/.env`).
+The harness needs `coverage.enrichment.unenriched_records` (2026-07-09+);
+older-server fallback enumeration lives in this file's git history.
