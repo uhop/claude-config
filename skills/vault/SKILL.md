@@ -35,6 +35,13 @@ needed:
 - **Assert every string replacement.** `--replace` fails (exit 3, nothing
   written) when the target is missing or ambiguous — the curly-vs-straight
   apostrophe class of bug makes an unasserted `replace` a silent no-op.
+- **A `null`/empty document is never a write.** vault-put refuses (exit 1,
+  nothing written) a body that is empty or the literal string `null`, and
+  any null top-level frontmatter value — the 2026-06-18 wipe wrote a
+  serialized JS `null` over the 59 KB stream-chain decisions note
+  (restored 2026-07-18 from vault-data git history). Removing a document
+  is `DELETE` (`vault-curl /vault/{path} -X DELETE`); hand-rolled JSON
+  payloads follow the same rule — never `body: null`.
 - **Never let scratch cleanup follow fallible steps unguarded** — chain
   `rm -rf "$WORK"` with `&&` (CLAUDE.md § Scratch files).
 - Round-trip modes send `If-Match` from their own GET: a concurrent write

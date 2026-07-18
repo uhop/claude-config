@@ -11,6 +11,7 @@
 // X-Vault-Composed — no on-disk file) is refused up front instead of
 // materializing a shadowing flat file. Replace asserts exactly one
 // occurrence unless --all (missing or ambiguous → exit 3, nothing written).
+// Null/empty documents are refused on every mode — removal is DELETE.
 
 import {readFileSync} from 'node:fs';
 import process from 'node:process';
@@ -138,14 +139,36 @@ const getDoc = async () => {
   return {head: text.slice(0, end + 5), body: text.slice(end + 5), etag};
 };
 
+// Null-wipe guard (2026-06-18: a serialized JS null replaced the 59 KB
+// stream-chain decisions note): a null/empty document is never a write —
+// removal is DELETE.
+const assertDoc = (frontmatter, body) => {
+  if (frontmatter !== undefined) {
+    if (frontmatter === null || typeof frontmatter !== 'object' || Array.isArray(frontmatter))
+      fail(1, 'refusing write: frontmatter must be a JSON object');
+    const nulls = Object.keys(frontmatter).filter(key => frontmatter[key] === null);
+    if (nulls.length)
+      fail(1, `refusing write: null frontmatter value for ${nulls.join(', ')} — omit the key instead`);
+  }
+  const stripped = body.trim();
+  if (!stripped || stripped === 'null')
+    fail(
+      1,
+      `refusing write: body is ${stripped ? 'the literal string "null"' : 'empty'} — to remove a document use DELETE (vault-curl /vault/${path} -X DELETE)`
+    );
+};
+
 if (fmFile) {
   const frontmatter = JSON.parse(readFileSync(fmFile, 'utf8')),
     body = readFileSync(bodyFile, 'utf8');
+  assertDoc(frontmatter, body);
   await put('application/json', JSON.stringify({frontmatter, body}), ifMatch);
 } else if (appendFile) {
   const {head, body, etag} = await getDoc(),
-    fragment = readFileSync(appendFile, 'utf8');
-  await put('text/markdown', head + body.replace(/\s*$/, '\n') + fragment, etag);
+    fragment = readFileSync(appendFile, 'utf8'),
+    merged = body.replace(/\s*$/, '\n') + fragment;
+  assertDoc(undefined, merged);
+  await put('text/markdown', head + merged, etag);
 } else {
   const {head, body, etag} = await getDoc();
   let edited = body;
@@ -156,5 +179,6 @@ if (fmFile) {
     // function replacer: a string replacement would interpret $-patterns ($`, $$, $&)
     edited = all ? edited.split(old).join(replacement) : edited.replace(old, () => replacement);
   }
+  assertDoc(undefined, edited);
   await put('text/markdown', head + edited, etag);
 }
