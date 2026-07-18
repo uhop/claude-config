@@ -96,17 +96,13 @@ In the query string, `%3A` = `:` and `%2F` = `/`. GitHub search indexes page **t
 
 ## 3. Validate the link targets
 
-GitHub silently renders broken wiki links as plain text — no linter catches them. After writing, confirm every bare target resolves to an existing `<Page-Name>.md`:
+GitHub silently renders broken wiki links as plain text — no linter catches them. After writing, run the bundled validator over the whole wiki (not just the sidebar):
 
 ```bash
-grep -oE '\]\(<?[^)]+>?\)' <wiki>/_Sidebar.md | sed -E 's/^\]\(<?//; s/>?\)$//; s/%3A/:/g; s/^\.\///' | \
-  while read -r t; do case "$t" in http*) ;; *) [ -f "<wiki>/${t}.md" ] || echo "MISSING: $t"; esac; done
-
-# bare colon-named targets scheme-parse and render unlinked — any hit is a break
-grep -nE '\]\([A-Za-z][A-Za-z0-9+.-]*:' <wiki>/_Sidebar.md | grep -vE '\((https?|mailto):' || true
+~/.claude/skills/wiki-organize/validate-wiki-links.mjs <wiki>
 ```
 
-A naive `[^)]+` extractor trips on paren-named pages (`emit()`) — check those by hand. See `github-wiki-no-wikilinks` for link-syntax rules and `github-wiki-colon-page-links` for the `./`-prefix rule on colon-named targets.
+It resolves every internal target against the wiki's flat page namespace — handling `./` prefixes, `%3A` encoding, the `<...>` paren-page form, reference-style definitions, code-block skipping — and reports `MISSING` targets, `COLON` (bare colon-named destination: scheme-parses, GitHub strips the href — see `github-wiki-colon-page-links`), and `ASSET` (relative image/pdf not on disk). Exit 1 on findings — run it solo or guard with `|| true` in parallel batches. Link-syntax background: `github-wiki-no-wikilinks`.
 
 ## 4. Ship it (submodule)
 
