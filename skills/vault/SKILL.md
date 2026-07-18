@@ -445,11 +445,10 @@ quiet.
 
 ### /vault sweep [options]
 
-Drain every safely-automatable maintenance queue. Orchestrates the
-existing review/cleanup skills + endpoints; loops each queue with
-`--auto --limit=100` until the count hits zero or stops dropping, then
-repeats the whole pass — up to `--max-rounds` — while residue remains
-that another round can actually drain (§ Procedure step 5).
+Drain every safely-automatable maintenance queue. The deterministic
+control flow — baselines, stage DAG, per-kind pass loops, stuck floors,
+convergence rounds — lives in `vault-sweep.mjs` (§ Procedure); the agent
+dispatches the sub-agents each plan names and loops `next` until done.
 
 ```
 /vault sweep                         # full default set (incl. duplicate review + compaction)
@@ -562,80 +561,55 @@ concurrent dispatch with its kind so a failed pass attributes cleanly.
 
 #### Procedure
 
-1. **Baseline.** Pull `vault-curl /system/lint -s`,
-   `vault-curl /suggestions/summary -s`, the **enrichment-coverage count**
-   (enrichable knowledge notes lacking an `agent:` block; this is *not* a
-   suggestion kind, so `/suggestions/summary` never shows it), and (cheap)
-   record counts. The coverage read is MANDATORY, LIVE, and comes from
-   exactly this key — the field is nested (`.coverage.enrichment`, NOT a
-   flat `coverage_enrichment`), and the server also returns the worklist:
+The control plane is `~/.claude/skills/vault/vault-sweep.mjs` — it owns
+every baseline read, count, stage advance, pass loop, stuck floor, and
+convergence round, persisted in a state file. Every measurement is a
+fresh live read of `/system/lint` (`.coverage.enrichment`, nested) +
+`/suggestions/summary` — never a remembered count (2026-07-12: a ghost
+record sat invisible through a second sweep because both baselines
+skipped the live coverage read). The agent's loop:
 
-   ```bash
-   vault-curl /system/lint -s | jq -c '.coverage.enrichment | {total, enriched, unenriched}, .unenriched_records' || true
-   ```
+```bash
+S=~/.claude/skills/vault/vault-sweep.mjs
+W=$(mktemp -d)
+"$S" begin --state="$W/state.json" [--include=…] [--exclude=…] [--max-passes=N] [--max-rounds=N]
+# … dispatch the plan's sub-agents, then:
+"$S" next --state="$W/state.json"
+# repeat dispatch → next until {status: "done"}
+```
 
-   Never substitute a remembered/earlier count — a mid-sweep write can mint
-   an unenriched record (observed 2026-07-12: a ghost resurrected at a
-   stale path sat invisible through a second sweep because both baselines
-   skipped this read). Compute the action set from the default set plus
-   `--include` / `--exclude`.
-2. **Dry-run.** If `--dry-run`, print the planned action set with
-   per-kind counts and stop.
-3. **One-shot endpoints first.** Run `cleanup-lint` and `embed-pending`
-   (in parallel, both POST). Each completes in seconds; together they
-   tighten the lint baseline before the suggestion-driven passes
-   touch records.
-4. **Staged drain.** Walk the § Ordering constraints stage DAG in
-   order; **within a stage, dispatch the kinds as parallel sub-agents**
-   (one Agent call per kind, labeled with the kind, fired in the same
-   message). A stage completes when every kind in it finishes; kinds in
-   a stage drain independently — one finishing early doesn't wait for
-   its sibling. Per kind, for at most `--max-passes` iterations
-   (default 5):
-   - Dispatch the corresponding skill with `--auto --limit=100`
-     (`/vault-compact <folder>` per candidate for `compaction_candidate`).
-   - Re-measure that kind's backlog: `/suggestions/summary` for the
-     suggestion kinds; the coverage scan (notes lacking an `agent:` block)
-     for the missing-block backfill.
-   - Stop when the count reaches 0, or when it didn't decrease since the
-     previous pass (stuck — sub-agent deferred, or items need human
-     judgment).
-
-   **Sharding.** *Enrichment backfill*: when the baseline's
-   `unenriched_records` worklist exceeds ~100 records, split it into
-   disjoint chunks of ~50 and dispatch up to 4 enrich agents in
-   parallel, each given its explicit chunk (see `/vault-enrich-all`
-   § Sub-agent mode, sharded dispatch); re-pull the worklist between
-   passes. *Triage kinds* (2026-07-13+ server): shard by claims — up
-   to 4 same-kind agents, each claiming its own batch under a unique
-   holder and batch-resolving as that holder (§ Ordering constraints).
-   Worth it above ~100 pending of one kind; below that, one agent per
-   kind suffices.
-5. **Convergence rounds.** One staged drain rarely ends at zero:
-   stage-3 accepts and stage-4 merges/compactions trigger reindexes
-   that file fresh suggestions *after* their kind's stage already ran
-   (and compaction summaries mint new enrichable notes). The old
-   answer was "re-run `/vault sweep` by hand"; instead, converge:
-   after stage 4, re-pull the step 1 baseline (fresh live reads,
-   never remembered counts) and compute the **drainable residue** —
-   every action whose backlog is > 0, *excluding* a kind whose count
-   equals the **stuck floor** its last drain loop ended at (record
-   that floor whenever a kind stops without reaching zero; an
-   unchanged floor means the remainder needs human judgment, and
-   re-dispatching only re-defers it — a count *above* the floor means
-   new items arrived and the kind is drainable again). While drainable
-   residue exists and fewer than `--max-rounds` (default 5) rounds
-   have run, run steps 3–4 again over just the drainable actions.
-   Stop early when a round changes no count. Two rounds is the normal
-   fixpoint; 5 is a runaway cap, not a target.
-6. **Final summary.** Print before/after counts per kind **per round**
-   (the convergence trail), total time, and any kind that stopped
-   above zero with a note about why (max-rounds/max-passes reached vs.
-   stuck vs. skipped). **Itemize every structural mutation
-   individually** — each merge as `archived path → survivor`, each
-   compacted folder by name — never as bare counts: this post-hoc
-   review glance is what replaced the retired `--include-destructive`
-   pre-commitment gate.
+1. **`begin`** computes the action set, runs the one-shot endpoints
+   itself (`cleanup-lint` ∥ `embed-pending`), and prints the first
+   dispatch plan. `begin --dry-run` prints the action set with live
+   per-kind counts and stops (no writes, no state).
+2. **Dispatch** every entry in the plan's `dispatch` array as parallel
+   sub-agents — one Agent call per agent entry, fired in the same
+   message, labeled with the kind:
+   - `vault-enrich-all` entries: its § Sub-agent mode prompt; pass
+     `--records=<records_file>` when the plan sharded the worklist,
+     else `--limit=<limit>`; `mode: "stale"` → `--stale`.
+   - Triage entries (`vault-review-tags` / `-edges` / `-duplicates`):
+     the skill's § Sub-agent mode prompt with the plan's `holder` and
+     `limit` — the generated holders make concurrent claims disjoint
+     by construction.
+   - `compaction_candidate`: run `/vault-compact <folder>` per entry
+     in the plan's `candidates` list.
+3. **`next`** after all dispatched agents return. The script
+   re-measures live, records progress (a count that stopped dropping
+   becomes that kind's **stuck floor**; a later count above the floor
+   reopens it), advances the § Ordering constraints stage DAG, rolls
+   convergence rounds, and prints either the next dispatch plan or the
+   final `{status: "done"}` report. Two rounds is the normal fixpoint;
+   `--max-rounds` is a runaway cap, not a target.
+4. **Final summary** from the done report — `rounds` is the per-round
+   before/after convergence trail; `floors` and `residue` name what
+   survived and why (`reason`: converged / no_change_round /
+   max_rounds); `one_shots` carries the cleanup/embed results — **plus
+   the itemized structural mutations collected from the sub-agent
+   reports**: each merge as `archived path → survivor`, each compacted
+   folder by name, never bare counts. This post-hoc itemization is
+   what replaced the retired `--include-destructive` pre-commitment
+   gate.
 
 A stuck kind isn't a failure — some suggestions legitimately need user
 input, and the sub-agent's `--auto` mode is conservative on ambiguity.
