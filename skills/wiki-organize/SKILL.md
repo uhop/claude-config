@@ -38,6 +38,7 @@ Root sidebar template:
 **Group label**
 
 - [Page](Page-Name)
+- [Category: page](./Category:-Page-Name)
 
 ---
 
@@ -50,7 +51,8 @@ Rules (each is a consequence of `github-wiki-constraints`):
 - **Search link at the very top** (§2), routing to `Home#search` — one short link in the narrow rail; the actual search URLs live in Home's `# Search` section.
 - **HTML entities in prose**, per the vault note `markdown-html-entities-not-unicode`: `&#128269;` not a literal 🔍, `&mdash;` not a literal em dash; ASCII inside code spans.
 - **Title is a Home link**: `### [PROJECT x.x](Home)`. Sub-pages get no automatic Home link, so the sidebar header is the only way back.
-- **Bare page names, never `./Page`.** The root sidebar is *inherited* onto subfolder pages, where `./` resolves wrong. `[Pick](Pick)`, not `[Pick](./Pick)`.
+- **Colon-free pages: bare names.** `[Pick](Pick)`, not `[Pick](./Pick)` — bare targets resolve globally, so they stay correct when the root sidebar is *inherited* onto subfolder pages.
+- **Colon-named pages (`Category:-Name`): never bare.** CommonMark parses `Category:` as a URI scheme and GitHub strips the href — the entry silently renders as plain text (bit list-toolkit 2026-07-18: 22 of 34 sidebar entries unlinked). Write `[page](./Category:-Page)`; the `./` forces relative-path parsing and anchors compose (`./Trees:-SplayTree#anchor`). Exception: in a multi-folder wiki the inherited root sidebar can't use `./` (directory-relative) — encode instead: `[page](Category%3A-Page)`. Detail: `github-wiki-colon-page-links`.
 - **Paren-named pages** use the angle-bracket link form: `[emit()](<emit()>)`, `[chain()](<chain()>)`.
 - **Group with bold labels** (`**Filters**`, `**Streamers**`) + bullet lists, mirroring `Home.md`'s `# Documentation` grouping.
 - **Deprecated surface**: keep the group but mark it — `**JSONL** (deprecated)` — where the pages already carry deprecation banners.
@@ -97,11 +99,14 @@ In the query string, `%3A` = `:` and `%2F` = `/`. GitHub search indexes page **t
 GitHub silently renders broken wiki links as plain text — no linter catches them. After writing, confirm every bare target resolves to an existing `<Page-Name>.md`:
 
 ```bash
-grep -oE '\]\(<?[^)]+>?\)' <wiki>/_Sidebar.md | sed -E 's/^\]\(<?//; s/>?\)$//' | \
+grep -oE '\]\(<?[^)]+>?\)' <wiki>/_Sidebar.md | sed -E 's/^\]\(<?//; s/>?\)$//; s/%3A/:/g; s/^\.\///' | \
   while read -r t; do case "$t" in http*) ;; *) [ -f "<wiki>/${t}.md" ] || echo "MISSING: $t"; esac; done
+
+# bare colon-named targets scheme-parse and render unlinked — any hit is a break
+grep -nE '\]\([A-Za-z][A-Za-z0-9+.-]*:' <wiki>/_Sidebar.md | grep -vE '\((https?|mailto):' || true
 ```
 
-A naive `[^)]+` extractor trips on paren-named pages (`emit()`) — check those by hand. See `github-wiki-no-wikilinks` for link-syntax rules and `%3A` colon-encoding.
+A naive `[^)]+` extractor trips on paren-named pages (`emit()`) — check those by hand. See `github-wiki-no-wikilinks` for link-syntax rules and `github-wiki-colon-page-links` for the `./`-prefix rule on colon-named targets.
 
 ## 4. Ship it (submodule)
 
@@ -111,4 +116,4 @@ The wiki is a git submodule — commit inside `<wiki>/`, then bump the pointer i
 
 - **`wiki-conventions`** — page naming (the filenames this sidebar links to).
 - **`document-wiki-page`** — writing one component page; its "update `Home.md`" step is the per-page complement to this skill's "mirror Home's grouping."
-- Vault knowledge: `github-wiki-constraints` (why/limits), `project-wiki-convention` (submodule + structure), `readme-and-wiki-shields` (the `Home.md` dashboard shields above the `# Search` section), `wiki-home-and-hub-pages` (Home as router; the `# Documentation` hub this skill mirrors — create it when missing), `markdown-html-entities-not-unicode` (entities in prose, ASCII in code), `github-wiki-organization-recipe` (this skill's source recipe).
+- Vault knowledge: `github-wiki-constraints` (why/limits), `github-wiki-colon-page-links` (colon-named targets need `./`), `project-wiki-convention` (submodule + structure), `readme-and-wiki-shields` (the `Home.md` dashboard shields above the `# Search` section), `wiki-home-and-hub-pages` (Home as router; the `# Documentation` hub this skill mirrors — create it when missing), `markdown-html-entities-not-unicode` (entities in prose, ASCII in code), `github-wiki-organization-recipe` (this skill's source recipe).

@@ -41,7 +41,12 @@ would drift from the bundle the first time the bundle changes.
    PUT back with `If-Match`); verify each substitution pattern matches
    exactly once before applying.
 4. **Inventory** the repo against the bundle's compliance checklist, in its
-   order, every applicable item. Batch the read-only probes in parallel Bash
+   order, every applicable item. When an entry enumerates removable artifacts,
+   probe each named file or directory individually and act on every hit — the
+   recorded failure mode is pattern-matching an entry's headline artifacts and
+   skipping the rest (list-toolkit 2026-07-17: mirror files removed, the
+   adjacent `.windsurf/` directory and uppercase COPILOT file missed).
+   Batch the read-only probes in parallel Bash
    calls, but guard every fallible sibling with `|| true` — `gh api` 404s
    (code scanning not enabled, no license) and `grep` misses cancel co-batched
    calls otherwise. `gh` reads are fine; `gh` mutations are gated and are not

@@ -10,6 +10,7 @@ description: Apply wiki page naming/link conventions when creating, renaming, or
 >
 > - `topics/project-wiki-convention` — folder/layout, filenames (both tracks below), the `wiki/` submodule.
 > - `github-wiki-no-wikilinks` — Markdown links + colon (`%3A`) encoding.
+> - `github-wiki-colon-page-links` — bare colon-named destinations parse as URI schemes; the `./`-prefix fix.
 > - `github-wiki-constraints` — the why/limits.
 
 ## Two naming tracks
@@ -25,12 +26,17 @@ descriptive Title-case name such as `Core-API.md`.
 
 **2. Prose / concept pages (not tied to a module) — Title-case, poetic OK.** First word capitalized,
 not All-Words-Capitalized. Cluster with a category prefix + colon: `Concepts:-code-forward.md`
-("Concepts: code forward"), `Cookbook:-caching.md`. In **links**, encode the colon:
-`[…](Concepts%3A-code-forward)`.
+("Concepts: code forward"), `Cookbook:-caching.md`. **Every markdown link to a colon-named page
+carries a `./` prefix**: `[…](./Concepts:-code-forward)`. A bare `Concepts:-…` destination parses as
+a URI scheme (CommonMark) and GitHub strips the href — the link silently renders as plain text (bit
+list-toolkit 2026-07-18: 22/34 sidebar entries unlinked; see `github-wiki-colon-page-links`). `%3A`
+encoding (`[…](Concepts%3A-code-forward)`) also works and is the required form for links inherited
+across folders — a root `_Sidebar.md` in a multi-folder wiki, where `./` resolves directory-relative.
 
 ## Always
 
-- **Links are Markdown `[display](Page-Name)` — NEVER `[[…]]`** (GitHub renders wikilinks as plain text).
+- **Links are Markdown `[display](Page-Name)` — NEVER `[[…]]`** (GitHub renders wikilinks as plain
+  text); colon-named targets take the `./` prefix (above) — bare ones break just as silently.
 - The wiki is a **`wiki/` git submodule** (chezmoi: `external_wiki/`); edit there, the user pushes.
   **Never create or adopt a sibling `<repo>.wiki` clone** — surface a stray one, don't use it.
 - Pages are top-level `.md`; `Home.md` is the landing; `_Sidebar.md` / `_Footer.md` are chrome.
