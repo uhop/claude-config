@@ -163,6 +163,8 @@ const stripSyntheticBlocks = s =>
     .replace(/<local-command-stderr>[\s\S]*?<\/local-command-stderr>/g, '')
     .replace(/<command-message>[\s\S]*?<\/command-message>/g, '')
     .replace(/<command-name>[\s\S]*?<\/command-name>/g, '')
+    .replace(/<command-args>[\s\S]*?<\/command-args>/g, '')
+    .replace(/<task-notification>[\s\S]*?<\/task-notification>/g, '')
     .trim();
 
 // Flatten a row into:
