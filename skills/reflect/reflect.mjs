@@ -294,7 +294,11 @@ for (const t of transcripts) {
   const events = [];
   // toolUseIdsByEvent[i] = list of {id, name} emitted by event i so we can
   // map tool_result_id → tool name regardless of how they're interleaved.
-  const toolUseRegistry = new Map(); // id → name
+  // id → {name, batch}. `batch` is the logical turn that emitted the tool_use
+  // (see turnSeq below), so Pass 3 can tell parallel calls from one turn apart
+  // from sequential retries across turns.
+  const toolUseRegistry = new Map();
+  let turnSeq = 0;
   for (const line of content.split('\n')) {
     if (line.length === 0) continue;
     let row;
@@ -307,13 +311,20 @@ for (const t of transcripts) {
     if (row.type !== 'user' && row.type !== 'assistant') continue;
     const ts = row.timestamp ? Date.parse(row.timestamp) : null;
     if (ts && ts < windowStartMs) continue;
+    // Parallel tool calls are NOT one row: the transcript streams each
+    // tool_use as its own assistant row, seconds apart, so neither the row nor
+    // the tool_result grouping recovers the batch. What does is contiguity —
+    // a run of consecutive assistant rows with no user row between them is one
+    // logical turn. Bumping on every user row keeps genuine retries distinct,
+    // since those are always separated by their own error result.
+    if (row.type === 'user') turnSeq++;
     const f = flatten(row);
     // Register tool_use ids → names for later tool_result name lookup
     const content2 = row.message?.content;
     if (Array.isArray(content2)) {
       for (const block of content2) {
         if (block?.type === 'tool_use' && block.id && block.name) {
-          toolUseRegistry.set(block.id, block.name);
+          toolUseRegistry.set(block.id, {name: block.name, batch: turnSeq});
         }
       }
     }
@@ -329,6 +340,7 @@ for (const t of transcripts) {
     events.push({
       role: row.type,
       ts,
+      turn: turnSeq,
       userText: f.userText,
       toolResultText: f.toolResultText,
       errorResults: f.errorResults,
@@ -395,6 +407,7 @@ for (const t of transcripts) {
     }
   }
   const loopBuckets = new Map();
+  const loopTurns = new Map(); // key → Set of turns already counted
   for (const e of events) {
     if (e.role !== 'assistant') continue;
     for (let j = 0; j < e.toolNames.length; j++) {
@@ -403,7 +416,15 @@ for (const t of transcripts) {
       const fp = inputFingerprint(e.toolInputs[j]);
       const key = `${name}::${fp}`;
       const arr = loopBuckets.get(key) ?? [];
-      arr.push(e.ts);
+      // Parallel calls sharing a fingerprint are one attempt, not N retries,
+      // and they stream as separate assistant rows with distinct timestamps —
+      // so dedupe on the logical turn, not on `ts`. Same rationale as Pass 3.
+      const seen = loopTurns.get(key) ?? new Set();
+      if (!seen.has(e.turn)) {
+        seen.add(e.turn);
+        loopTurns.set(key, seen);
+        arr.push(e.ts);
+      }
       loopBuckets.set(key, arr);
     }
   }
@@ -424,14 +445,29 @@ for (const t of transcripts) {
   // Pass 3: cross-session error aggregation. One bucket per (tool, errSig)
   // built from the actual is_error tool_result text — not concatenated
   // with adjacent successes.
+  // Per-transcript: `batch` values are indices into this transcript's events.
+  const countedBatches = new Set();
   for (let i = 0; i < events.length; i++) {
     const e = events[i];
     if (e.role !== 'user' || e.errorResults.length === 0) continue;
     for (const err of e.errorResults) {
-      const name = err.id ? toolUseRegistry.get(err.id) : null;
-      const resolved = name ?? (i > 0 ? events[i - 1]?.toolNames?.[0] : null) ?? '(unknown)';
+      const reg = err.id ? toolUseRegistry.get(err.id) : null;
+      const resolved =
+        reg?.name ?? (i > 0 ? events[i - 1]?.toolNames?.[0] : null) ?? '(unknown)';
       const errSig = err.text.replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
       const key = `${resolved}::${errSig}`;
+      // Parallel calls fail as a unit: one permission rejection or one
+      // cancelled batch is a single decision, but its N results arrive as N
+      // separate user events, so per-event counting does not catch it. Dedupe
+      // on the assistant turn that issued the calls — same turn, same batch,
+      // one occurrence; a genuine retry comes from a later turn and still
+      // counts. Without this, one decision clears the ≥3 threshold and reaches
+      // `high` confidence on recurrence that never happened. (Origin: reflect
+      // 2026-07-20 — one accidental rejection of six parallel Agent calls
+      // reported occurrences: 6.)
+      const batchKey = `${reg?.batch ?? `evt${i}`}::${key}`;
+      if (countedBatches.has(batchKey)) continue;
+      countedBatches.add(batchKey);
       failureBuckets.set(key, (failureBuckets.get(key) ?? 0) + 1);
       if (!failureExamples.has(key)) {
         const ctxStart = Math.max(0, i - 2);
