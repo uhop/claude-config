@@ -34,11 +34,18 @@ const STAGES = [
   ['compaction_candidate']
 ];
 const ALL_KINDS = STAGES.flat();
-const ALIASES = {coverage: 'enrich_backfill', enrichment: 'enrich_backfill', agent_enrichment_stale: 'enrich_stale'};
+const ALIASES = {
+  coverage: 'enrich_backfill',
+  enrichment: 'enrich_backfill',
+  agent_enrichment_stale: 'enrich_stale'
+};
 const SKILL_FOR = {
-  enrich_backfill: 'vault-enrich-all', enrich_stale: 'vault-enrich-all',
-  new_tag: 'vault-review-tags', tag_suggestion: 'vault-review-tags',
-  edge_type: 'vault-review-edges', duplicate: 'vault-review-duplicates',
+  enrich_backfill: 'vault-enrich-all',
+  enrich_stale: 'vault-enrich-all',
+  new_tag: 'vault-review-tags',
+  tag_suggestion: 'vault-review-tags',
+  edge_type: 'vault-review-edges',
+  duplicate: 'vault-review-duplicates',
   compaction_candidate: 'vault-compact'
 };
 
@@ -57,29 +64,50 @@ const usage = `Usage:
 kinds: ${ALL_KINDS.join(' | ')}`;
 
 const [command, ...rest] = process.argv.slice(2);
-if (!['begin', 'next'].includes(command)) fail(command === '--help' || command === '-h' ? 0 : 2, usage);
+if (!['begin', 'next'].includes(command))
+  fail(command === '--help' || command === '-h' ? 0 : 2, usage);
 
 const opts = {state: null, include: null, exclude: [], maxPasses: 5, maxRounds: 5, dryRun: false};
 for (const arg of rest) {
-  const [flag, value] = arg.includes('=') ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)] : [arg, null];
+  const [flag, value] = arg.includes('=')
+    ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
+    : [arg, null];
   const kinds = () => value.split(',').map(k => ALIASES[k.trim()] ?? k.trim());
   switch (flag) {
-    case '--state': opts.state = value; break;
-    case '--include': opts.include = kinds(); break;
-    case '--exclude': opts.exclude = kinds(); break;
-    case '--max-passes': opts.maxPasses = +value; break;
-    case '--max-rounds': opts.maxRounds = +value; break;
-    case '--dry-run': opts.dryRun = true; break;
-    case '--include-destructive': break; // retired 2026-07-13 — accepted and ignored
-    default: fail(2, `unknown option: ${arg}\n${usage}`);
+    case '--state':
+      opts.state = value;
+      break;
+    case '--include':
+      opts.include = kinds();
+      break;
+    case '--exclude':
+      opts.exclude = kinds();
+      break;
+    case '--max-passes':
+      opts.maxPasses = +value;
+      break;
+    case '--max-rounds':
+      opts.maxRounds = +value;
+      break;
+    case '--dry-run':
+      opts.dryRun = true;
+      break;
+    case '--include-destructive':
+      break; // retired 2026-07-13 — accepted and ignored
+    default:
+      fail(2, `unknown option: ${arg}\n${usage}`);
   }
 }
-if (!opts.state && !opts.dryRun) fail(2, '--state=FILE is required (holds the sweep state machine)');
+if (!opts.state && !opts.dryRun)
+  fail(2, '--state=FILE is required (holds the sweep state machine)');
 for (const k of [...(opts.include ?? []), ...opts.exclude])
   if (!ALL_KINDS.includes(k)) fail(2, `unknown kind: ${k}\n${usage}`);
 
 const api = async (method, apiPath) => {
-  const response = await fetch(`${base}${apiPath}`, {method, headers: {Authorization: `Bearer ${token}`}});
+  const response = await fetch(`${base}${apiPath}`, {
+    method,
+    headers: {Authorization: `Bearer ${token}`}
+  });
   const text = await response.text();
   if (!response.ok) fail(1, `${response.status} on ${method} ${apiPath} — ${text.slice(0, 300)}`);
   try {
@@ -91,7 +119,10 @@ const api = async (method, apiPath) => {
 
 // MANDATORY live reads — never a remembered count (2026-07-12 ghost lesson)
 const measure = async () => {
-  const [lint, summary] = await Promise.all([api('GET', '/system/lint'), api('GET', '/suggestions/summary')]);
+  const [lint, summary] = await Promise.all([
+    api('GET', '/system/lint'),
+    api('GET', '/suggestions/summary')
+  ]);
   const by = summary.by_kind ?? {};
   return {
     counts: {
@@ -120,7 +151,8 @@ const buildDispatch = async (state, kind, count, worklist) => {
   const entry = {kind, count, skill: SKILL_FOR[kind], agents: []};
   if (kind === 'enrich_backfill') {
     if (count > 100 && worklist.length) {
-      const chunkSize = 50, maxAgents = 4;
+      const chunkSize = 50,
+        maxAgents = 4;
       const chunks = [];
       for (let i = 0; i < worklist.length && chunks.length < maxAgents; i += chunkSize)
         chunks.push(worklist.slice(i, i + chunkSize));
@@ -134,7 +166,10 @@ const buildDispatch = async (state, kind, count, worklist) => {
   } else if (kind === 'enrich_stale') {
     entry.agents.push({mode: 'stale', limit: 100});
   } else if (kind === 'compaction_candidate') {
-    const pending = await api('GET', '/suggestions?kind=compaction_candidate&status=pending&limit=100');
+    const pending = await api(
+      'GET',
+      '/suggestions?kind=compaction_candidate&status=pending&limit=100'
+    );
     entry.candidates = pending.items.map(item => item.payload);
   } else {
     const shards = Math.min(4, Math.ceil(count / 100));
@@ -145,8 +180,9 @@ const buildDispatch = async (state, kind, count, worklist) => {
 };
 
 const drainable = (state, counts) =>
-  actionSet().filter(kind => counts[kind] > 0 &&
-    (!(kind in state.floors) || counts[kind] > state.floors[kind]));
+  actionSet().filter(
+    kind => counts[kind] > 0 && (!(kind in state.floors) || counts[kind] > state.floors[kind])
+  );
 
 const emit = value => console.log(JSON.stringify(value, null, 2));
 const saveState = state => writeFileSync(state.file, JSON.stringify(state, null, 2) + '\n');
@@ -163,7 +199,8 @@ const plan = async (state, counts, worklist) => {
     }
     if (active.length) {
       const dispatch = [];
-      for (const kind of active) dispatch.push(await buildDispatch(state, kind, counts[kind], worklist));
+      for (const kind of active)
+        dispatch.push(await buildDispatch(state, kind, counts[kind], worklist));
       state.pending = active;
       return {status: 'dispatch', round: state.round, stage: state.stage + 1, dispatch};
     }
@@ -197,23 +234,38 @@ const endOfRound = (state, counts) => {
 if (command === 'begin') {
   const {counts, worklist} = await measure();
   if (opts.dryRun) {
-    emit({dry_run: true, action_set: actionSet(), counts,
-      would_run: actionSet().filter(k => counts[k] > 0)});
+    emit({
+      dry_run: true,
+      action_set: actionSet(),
+      counts,
+      would_run: actionSet().filter(k => counts[k] > 0)
+    });
     process.exit(0);
   }
   const oneShots = {};
   [oneShots.cleanup_lint, oneShots.embed_pending] = await Promise.all([
-    api('POST', '/maintenance/cleanup-lint'), api('POST', '/maintenance/embed-pending')]);
+    api('POST', '/maintenance/cleanup-lint'),
+    api('POST', '/maintenance/embed-pending')
+  ]);
   const state = {
-    file: opts.state, started: new Date().toISOString(),
-    include: opts.include, exclude: opts.exclude,
-    maxPasses: opts.maxPasses, maxRounds: opts.maxRounds,
-    round: 1, stage: 0, passes: {}, floors: {}, pending: [],
+    file: opts.state,
+    started: new Date().toISOString(),
+    include: opts.include,
+    exclude: opts.exclude,
+    maxPasses: opts.maxPasses,
+    maxRounds: opts.maxRounds,
+    round: 1,
+    stage: 0,
+    passes: {},
+    floors: {},
+    pending: [],
     one_shots: oneShots,
     trail: [{round: 1, before: {...counts}}]
   };
-  const result = (await plan(state, counts, worklist)) ?? endOfRound(state, counts)
-    ?? (await plan(state, (await measure()).counts, worklist));
+  const result =
+    (await plan(state, counts, worklist)) ??
+    endOfRound(state, counts) ??
+    (await plan(state, (await measure()).counts, worklist));
   saveState(state);
   emit(result);
 } else {

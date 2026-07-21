@@ -32,8 +32,12 @@ import process from 'node:process';
 
 const VERDICTS = ['accept', 'skip', 'ambiguous', 'supersede-candidate'];
 const DISTANCE_CAP = 0.3; // 99%-recall operating point (embedding baseline)
-const band = distance => distance <= 0.2 ? 'accept-by-default'
-  : distance <= 0.25 ? 'accept-on-subject-overlap' : 'selective';
+const band = distance =>
+  distance <= 0.2
+    ? 'accept-by-default'
+    : distance <= 0.25
+      ? 'accept-on-subject-overlap'
+      : 'selective';
 
 const fail = (code, message) => {
   console.error(message);
@@ -50,22 +54,39 @@ const usage = `Usage:
   related-batch apply  --worksheet=FILE --decisions=FILE [--dry-run]`;
 
 const [command, ...rest] = process.argv.slice(2);
-if (!['prepare', 'review', 'apply'].includes(command)) fail(command === '--help' || command === '-h' ? 0 : 2, usage);
+if (!['prepare', 'review', 'apply'].includes(command))
+  fail(command === '--help' || command === '-h' ? 0 : 2, usage);
 
 const opts = {limit: 30, k: 15, out: null, worksheet: null, decisions: null, dryRun: false};
 for (const arg of rest) {
-  const [flag, value] = arg.includes('=') ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)] : [arg, null];
+  const [flag, value] = arg.includes('=')
+    ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
+    : [arg, null];
   switch (flag) {
-    case '--limit': opts.limit = +value; break;
-    case '--k': opts.k = +value; break;
-    case '--out': opts.out = value; break;
-    case '--worksheet': opts.worksheet = value; break;
-    case '--decisions': opts.decisions = value; break;
-    case '--dry-run': opts.dryRun = true; break;
-    default: fail(2, `unknown option: ${arg}\n${usage}`);
+    case '--limit':
+      opts.limit = +value;
+      break;
+    case '--k':
+      opts.k = +value;
+      break;
+    case '--out':
+      opts.out = value;
+      break;
+    case '--worksheet':
+      opts.worksheet = value;
+      break;
+    case '--decisions':
+      opts.decisions = value;
+      break;
+    case '--dry-run':
+      opts.dryRun = true;
+      break;
+    default:
+      fail(2, `unknown option: ${arg}\n${usage}`);
   }
 }
-if (!Number.isInteger(opts.limit) || opts.limit < 1 || opts.limit > 200) fail(2, '--limit must be 1..200');
+if (!Number.isInteger(opts.limit) || opts.limit < 1 || opts.limit > 200)
+  fail(2, '--limit must be 1..200');
 
 class ApiError extends Error {
   constructor(status, code, message) {
@@ -78,8 +99,10 @@ class ApiError extends Error {
 const api = async (method, apiPath, body) => {
   const response = await fetch(`${base}${apiPath}`, {
     method,
-    headers: {Authorization: `Bearer ${token}`,
-      ...(body !== undefined ? {'Content-Type': 'application/json'} : {})},
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body !== undefined ? {'Content-Type': 'application/json'} : {})
+    },
     ...(body !== undefined ? {body: JSON.stringify(body)} : {})
   });
   const text = await response.text();
@@ -88,8 +111,11 @@ const api = async (method, apiPath, body) => {
     json = JSON.parse(text);
   } catch {}
   if (!response.ok) {
-    throw new ApiError(response.status, json?.code ?? 'http_error',
-      json?.error ?? `${response.status} ${response.statusText} on ${method} ${apiPath}`);
+    throw new ApiError(
+      response.status,
+      json?.code ?? 'http_error',
+      json?.error ?? `${response.status} ${response.statusText} on ${method} ${apiPath}`
+    );
   }
   return json ?? text;
 };
@@ -120,18 +146,23 @@ const reviewedSources = async () => {
   } catch (err) {
     if (err.status !== 404) throw err;
   }
-  const names = files.map(f => typeof f === 'string' ? f : f.name ?? f.path ?? '').filter(n => n.includes('related-proposals'));
-  await pool(names.map(name => async () => {
-    const text = await api('GET', `/vault/queries/${name.replace(/^queries\//, '')}`);
-    for (const m of String(text).matchAll(/^##\s+`?([^`\n]+?)`?\s*$/gm)) reviewed.add(m[1]);
-  }));
+  const names = files
+    .map(f => (typeof f === 'string' ? f : (f.name ?? f.path ?? '')))
+    .filter(n => n.includes('related-proposals'));
+  await pool(
+    names.map(name => async () => {
+      const text = await api('GET', `/vault/queries/${name.replace(/^queries\//, '')}`);
+      for (const m of String(text).matchAll(/^##\s+`?([^`\n]+?)`?\s*$/gm)) reviewed.add(m[1]);
+    })
+  );
   return {reviewed, proposalFiles: names};
 };
 
 const prepare = async () => {
   const lint = await api('GET', '/system/lint');
   const types = lint.coverage?.enrichment?.enrichable_types;
-  if (!types) fail(1, 'server has no coverage.enrichment.enrichable_types — pre-2026-07-09 vault-storage');
+  if (!types)
+    fail(1, 'server has no coverage.enrichment.enrichable_types — pre-2026-07-09 vault-storage');
   const enrichable = new Set(types);
 
   const {reviewed, proposalFiles} = await reviewedSources();
@@ -158,43 +189,65 @@ const prepare = async () => {
   const batch = sources.slice(0, opts.limit);
 
   const items = [];
-  await pool(batch.map(source => async () => {
-    const fm = await api('GET', `/sections/${source.record_id}/fm`);
-    const related = fm.frontmatter.related ?? [];
-    const links = [...String(fm.body ?? '').matchAll(/\[\[([^\]]+)\]\]/g)].map(m => m[1]);
-    const known = new Set([...related.map(r => pathKey(r.replace(/^\[\[|\]\]$/g, ''))), ...links.map(pathKey)]);
-    let similar;
-    try {
-      similar = await api('GET', `/sections/${source.record_id}/similar?k=${opts.k}`);
-    } catch (err) {
-      if (err.status === 404) return; // unembedded record — nothing to propose
-      throw err;
-    }
-    const candidates = (similar.items ?? [])
-      .filter(row => (row.distance ?? 1) <= DISTANCE_CAP)
-      .filter(row => !row.file_path.includes('/archive/') && row.status !== 'superseded' && row.status !== 'archived')
-      .filter(row => !known.has(pathKey(row.file_path)))
-      .map(row => ({file_path: row.file_path, title: row.title, type: row.type,
-        distance: Math.round(row.distance * 1000) / 1000, band: band(row.distance),
-        ...(row.agent_summary ? {summary: row.agent_summary} : {})}));
-    if (candidates.length) items.push({...source, existing_related: related, candidates});
-  }));
+  await pool(
+    batch.map(source => async () => {
+      const fm = await api('GET', `/sections/${source.record_id}/fm`);
+      const related = fm.frontmatter.related ?? [];
+      const links = [...String(fm.body ?? '').matchAll(/\[\[([^\]]+)\]\]/g)].map(m => m[1]);
+      const known = new Set([
+        ...related.map(r => pathKey(r.replace(/^\[\[|\]\]$/g, ''))),
+        ...links.map(pathKey)
+      ]);
+      let similar;
+      try {
+        similar = await api('GET', `/sections/${source.record_id}/similar?k=${opts.k}`);
+      } catch (err) {
+        if (err.status === 404) return; // unembedded record — nothing to propose
+        throw err;
+      }
+      const candidates = (similar.items ?? [])
+        .filter(row => (row.distance ?? 1) <= DISTANCE_CAP)
+        .filter(
+          row =>
+            !row.file_path.includes('/archive/') &&
+            row.status !== 'superseded' &&
+            row.status !== 'archived'
+        )
+        .filter(row => !known.has(pathKey(row.file_path)))
+        .map(row => ({
+          file_path: row.file_path,
+          title: row.title,
+          type: row.type,
+          distance: Math.round(row.distance * 1000) / 1000,
+          band: band(row.distance),
+          ...(row.agent_summary ? {summary: row.agent_summary} : {})
+        }));
+      if (candidates.length) items.push({...source, existing_related: related, candidates});
+    })
+  );
   items.sort((a, b) => a.file_path.localeCompare(b.file_path));
 
   const worksheet = {
     generated_at: new Date().toISOString(),
     distance_cap: DISTANCE_CAP,
-    sources_scanned: batch.length, sources_with_candidates: items.length,
+    sources_scanned: batch.length,
+    sources_with_candidates: items.length,
     unreviewed_remaining: sources.length - batch.length,
     prior_proposal_notes: proposalFiles,
     items,
-    decisions_template: Object.fromEntries(items.map(item =>
-      [item.file_path, Object.fromEntries(item.candidates.map(c => [c.file_path, null]))]))
+    decisions_template: Object.fromEntries(
+      items.map(item => [
+        item.file_path,
+        Object.fromEntries(item.candidates.map(c => [c.file_path, null]))
+      ])
+    )
   };
   const output = JSON.stringify(worksheet, null, 2);
   if (opts.out) {
     writeFileSync(opts.out, output + '\n');
-    console.log(`worksheet: ${opts.out} — ${items.length} of ${batch.length} scanned sources have candidates; ${worksheet.unreviewed_remaining} sources still unscanned`);
+    console.log(
+      `worksheet: ${opts.out} — ${items.length} of ${batch.length} scanned sources have candidates; ${worksheet.unreviewed_remaining} sources still unscanned`
+    );
   } else console.log(output);
 };
 
@@ -205,7 +258,8 @@ const readDecisions = worksheet => {
   const decisions = raw && typeof raw === 'object' && raw.decisions ? raw.decisions : raw;
   const bySource = new Map(worksheet.items.map(item => [item.file_path, item]));
   const unknown = Object.keys(decisions).filter(key => !bySource.has(key));
-  if (unknown.length) fail(3, `decisions reference sources not in the worksheet: ${unknown.join(', ')}`);
+  if (unknown.length)
+    fail(3, `decisions reference sources not in the worksheet: ${unknown.join(', ')}`);
   const resolved = [];
   for (const [sourcePath, verdictMap] of Object.entries(decisions)) {
     if (verdictMap === null) continue;
@@ -213,16 +267,22 @@ const readDecisions = worksheet => {
     const knownCandidates = new Set(item.candidates.map(c => c.file_path));
     const perSource = {item, accept: [], ambiguous: [], supersede: []};
     for (const [candidate, rawVerdict] of Object.entries(verdictMap)) {
-      if (!knownCandidates.has(candidate)) fail(3, `${sourcePath}: candidate ${candidate} is not in the worksheet`);
+      if (!knownCandidates.has(candidate))
+        fail(3, `${sourcePath}: candidate ${candidate} is not in the worksheet`);
       if (rawVerdict === null) continue;
       const verdict = typeof rawVerdict === 'string' ? {verdict: rawVerdict} : rawVerdict;
-      if (!VERDICTS.includes(verdict.verdict)) fail(3, `${sourcePath} → ${candidate}: unknown verdict "${verdict.verdict}" (valid: ${VERDICTS.join(', ')})`);
+      if (!VERDICTS.includes(verdict.verdict))
+        fail(
+          3,
+          `${sourcePath} → ${candidate}: unknown verdict "${verdict.verdict}" (valid: ${VERDICTS.join(', ')})`
+        );
       const entry = {candidate, reason: verdict.reason ?? ''};
       if (verdict.verdict === 'accept') perSource.accept.push(entry);
       else if (verdict.verdict === 'ambiguous') perSource.ambiguous.push(entry);
       else if (verdict.verdict === 'supersede-candidate') perSource.supersede.push(entry);
     }
-    if (perSource.accept.length || perSource.ambiguous.length || perSource.supersede.length) resolved.push(perSource);
+    if (perSource.accept.length || perSource.ambiguous.length || perSource.supersede.length)
+      resolved.push(perSource);
   }
   return resolved;
 };
@@ -237,26 +297,32 @@ const review = async worksheet => {
   try {
     files = (await api('GET', '/vault/queries/')).files ?? [];
   } catch {}
-  const names = new Set(files.map(f => (typeof f === 'string' ? f : f.name ?? f.path ?? '').replace(/^queries\//, '')));
+  const names = new Set(
+    files.map(f => (typeof f === 'string' ? f : (f.name ?? f.path ?? '')).replace(/^queries\//, ''))
+  );
   const stem = `${today()}-related-proposals`;
-  let name = `${stem}.md`, batchN = 1;
+  let name = `${stem}.md`,
+    batchN = 1;
   while (names.has(name)) name = `${stem}-${++batchN}.md`;
 
   const sections = resolved.map(({item, accept, ambiguous, supersede}) => {
     const lines = [`## \`${item.file_path}\``, ''];
     if (accept.length) {
       lines.push('**Add to `related:`**:', '');
-      for (const {candidate, reason} of accept) lines.push(`- \`[[${pathKey(candidate)}]]\`${reason ? ` — ${reason}` : ''}`);
+      for (const {candidate, reason} of accept)
+        lines.push(`- \`[[${pathKey(candidate)}]]\`${reason ? ` — ${reason}` : ''}`);
       lines.push('');
     }
     if (ambiguous.length) {
       lines.push('**Ambiguous (human verdict needed)**:', '');
-      for (const {candidate, reason} of ambiguous) lines.push(`- \`[[${pathKey(candidate)}]]\`${reason ? ` — ${reason}` : ''}`);
+      for (const {candidate, reason} of ambiguous)
+        lines.push(`- \`[[${pathKey(candidate)}]]\`${reason ? ` — ${reason}` : ''}`);
       lines.push('');
     }
     if (supersede.length) {
-      lines.push('**Supersession candidates (retire, don\'t relate)**:', '');
-      for (const {candidate, reason} of supersede) lines.push(`- \`[[${pathKey(candidate)}]]\`${reason ? ` — ${reason}` : ''}`);
+      lines.push("**Supersession candidates (retire, don't relate)**:", '');
+      for (const {candidate, reason} of supersede)
+        lines.push(`- \`[[${pathKey(candidate)}]]\`${reason ? ` — ${reason}` : ''}`);
       lines.push('');
     }
     return lines.join('\n');
@@ -270,16 +336,23 @@ const review = async worksheet => {
     supersession_candidates: resolved.reduce((n, r) => n + r.supersede.length, 0)
   };
   if (opts.dryRun) {
-    console.log(JSON.stringify({dry_run: true, would_write: `queries/${name}`, ...counts}, null, 2));
+    console.log(
+      JSON.stringify({dry_run: true, would_write: `queries/${name}`, ...counts}, null, 2)
+    );
     return;
   }
   await api('PUT', `/vault/queries/${name}`, {
     frontmatter: {
       title: `Related-edge proposals — ${today()}${batchN > 1 ? ` batch ${batchN}` : ''}`,
       tags: ['vault', 'related-proposals', 'query'],
-      created: today(), updated: today(),
-      status: 'draft', type: 'query', // draft = pending human review ('pending-review' is not in the server's status enum)
-      related: ['[[projects/vault-storage/queue]]', '[[projects/vault-storage/design/embedding-baseline]]']
+      created: today(),
+      updated: today(),
+      status: 'draft',
+      type: 'query', // draft = pending human review ('pending-review' is not in the server's status enum)
+      related: [
+        '[[projects/vault-storage/queue]]',
+        '[[projects/vault-storage/design/embedding-baseline]]'
+      ]
     },
     body
   });
@@ -292,26 +365,54 @@ const apply = async worksheet => {
   const resolved = readDecisions(worksheet);
   const patches = resolved.filter(r => r.accept.length);
   if (opts.dryRun) {
-    console.log(JSON.stringify({dry_run: true, would_patch: patches.map(({item, accept}) =>
-      ({source: item.file_path, add: accept.map(a => `[[${pathKey(a.candidate)}]]`)}))}, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          dry_run: true,
+          would_patch: patches.map(({item, accept}) => ({
+            source: item.file_path,
+            add: accept.map(a => `[[${pathKey(a.candidate)}]]`)
+          }))
+        },
+        null,
+        2
+      )
+    );
     return;
   }
   const report = {applied: [], ambiguous: [], supersession_candidates: [], failures: []};
   for (const {item, ambiguous, supersede} of resolved) {
-    for (const {candidate, reason} of ambiguous) report.ambiguous.push({source: item.file_path, candidate, reason});
-    for (const {candidate, reason} of supersede) report.supersession_candidates.push({source: item.file_path, candidate, reason});
+    for (const {candidate, reason} of ambiguous)
+      report.ambiguous.push({source: item.file_path, candidate, reason});
+    for (const {candidate, reason} of supersede)
+      report.supersession_candidates.push({source: item.file_path, candidate, reason});
   }
-  await pool(patches.map(({item, accept}) => async () => {
-    try {
-      await api('PATCH', `/sections/${item.record_id}/fm`, {
-        ops: accept.map(({candidate}) => ({op: 'add', path: '/related', value: `[[${pathKey(candidate)}]]`}))
-      });
-      report.applied.push({source: item.file_path, added: accept.map(a => `[[${pathKey(a.candidate)}]]`)});
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
-      report.failures.push({source: item.file_path, status: err.status, code: err.code, message: err.message});
-    }
-  }), 4);
+  await pool(
+    patches.map(({item, accept}) => async () => {
+      try {
+        await api('PATCH', `/sections/${item.record_id}/fm`, {
+          ops: accept.map(({candidate}) => ({
+            op: 'add',
+            path: '/related',
+            value: `[[${pathKey(candidate)}]]`
+          }))
+        });
+        report.applied.push({
+          source: item.file_path,
+          added: accept.map(a => `[[${pathKey(a.candidate)}]]`)
+        });
+      } catch (err) {
+        if (!(err instanceof ApiError)) throw err;
+        report.failures.push({
+          source: item.file_path,
+          status: err.status,
+          code: err.code,
+          message: err.message
+        });
+      }
+    }),
+    4
+  );
   report.applied.sort((a, b) => a.source.localeCompare(b.source));
   console.log(JSON.stringify(report, null, 2));
   if (report.failures.length) process.exit(1);

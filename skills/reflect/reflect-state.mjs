@@ -33,15 +33,27 @@ if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see
 
 const extras = {};
 for (const arg of process.argv.slice(2)) {
-  const [flag, value] = arg.includes('=') ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)] : [arg, null];
+  const [flag, value] = arg.includes('=')
+    ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
+    : [arg, null];
   switch (flag) {
-    case '--sessions': extras.sessions_scanned = +value; break;
-    case '--signals': extras.signals = value; break;
-    case '--report': extras.report = value; break;
-    case '--help': case '-h':
-      console.log('Usage: reflect-state.mjs [--sessions=N] [--signals=TEXT] [--report=[[wikilink]]]');
+    case '--sessions':
+      extras.sessions_scanned = +value;
+      break;
+    case '--signals':
+      extras.signals = value;
+      break;
+    case '--report':
+      extras.report = value;
+      break;
+    case '--help':
+    case '-h':
+      console.log(
+        'Usage: reflect-state.mjs [--sessions=N] [--signals=TEXT] [--report=[[wikilink]]]'
+      );
       process.exit(0);
-    default: fail(2, `unknown option: ${arg}`);
+    default:
+      fail(2, `unknown option: ${arg}`);
   }
 }
 
@@ -50,8 +62,10 @@ const entry = {last_run_iso: now.toISOString(), last_run_ms: now.getTime(), ...e
 
 const cacheDir = path.join(homedir(), '.cache', 'reflect');
 mkdirSync(cacheDir, {recursive: true});
-writeFileSync(path.join(cacheDir, 'last-run.json'),
-  JSON.stringify({last_run_iso: entry.last_run_iso, last_run_ms: entry.last_run_ms}, null, 2) + '\n');
+writeFileSync(
+  path.join(cacheDir, 'last-run.json'),
+  JSON.stringify({last_run_iso: entry.last_run_iso, last_run_ms: entry.last_run_ms}, null, 2) + '\n'
+);
 
 const STATE = 'projects/agent-workflow/state.md';
 const url = `${base}/vault/${STATE}`;
@@ -81,6 +95,7 @@ const put = await fetch(url, {
   headers: {...headers, 'Content-Type': 'text/markdown', 'If-Match': etag},
   body: edited
 });
-if (put.status === 412) fail(2, '412 — state.md changed concurrently; re-run to retry on the fresh copy');
+if (put.status === 412)
+  fail(2, '412 — state.md changed concurrently; re-run to retry on the fresh copy');
 if (!put.ok) fail(1, `PUT ${STATE}: ${put.status} — ${(await put.text()).slice(0, 300)}`);
 console.log(`local cache + ${STATE} updated for host "${host}" (${entry.last_run_iso})`);

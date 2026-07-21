@@ -33,26 +33,56 @@ const usage = `Usage:
   compact-batch execute --plan=FILE --summary=BODY.md [--related=[[a]],[[b]]] [--dry-run]`;
 
 const [command, ...rest] = process.argv.slice(2);
-if (!['plan', 'execute'].includes(command)) fail(command === '--help' || command === '-h' ? 0 : 2, usage);
+if (!['plan', 'execute'].includes(command))
+  fail(command === '--help' || command === '-h' ? 0 : 2, usage);
 
-const opts = {folder: null, keep: null, before: null, out: null, plan: null, summary: null, related: [], dryRun: false};
+const opts = {
+  folder: null,
+  keep: null,
+  before: null,
+  out: null,
+  plan: null,
+  summary: null,
+  related: [],
+  dryRun: false
+};
 for (const arg of rest) {
-  const [flag, value] = arg.includes('=') ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)] : [arg, null];
+  const [flag, value] = arg.includes('=')
+    ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
+    : [arg, null];
   switch (flag) {
-    case '--keep': opts.keep = +value; break;
-    case '--before': opts.before = value; break;
-    case '--out': opts.out = value; break;
-    case '--plan': opts.plan = value; break;
-    case '--summary': opts.summary = value; break;
-    case '--related': opts.related = value.split(',').map(s => s.trim()).filter(Boolean); break;
-    case '--dry-run': opts.dryRun = true; break;
+    case '--keep':
+      opts.keep = +value;
+      break;
+    case '--before':
+      opts.before = value;
+      break;
+    case '--out':
+      opts.out = value;
+      break;
+    case '--plan':
+      opts.plan = value;
+      break;
+    case '--summary':
+      opts.summary = value;
+      break;
+    case '--related':
+      opts.related = value
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      break;
+    case '--dry-run':
+      opts.dryRun = true;
+      break;
     default:
       if (flag.startsWith('--')) fail(2, `unknown option: ${arg}\n${usage}`);
       if (opts.folder) fail(2, `unexpected argument: ${arg}\n${usage}`);
       opts.folder = arg.replace(/\/+$/, '');
   }
 }
-if (opts.keep !== null && opts.before !== null) fail(2, '--keep and --before are mutually exclusive');
+if (opts.keep !== null && opts.before !== null)
+  fail(2, '--keep and --before are mutually exclusive');
 
 class ApiError extends Error {
   constructor(status, code, message) {
@@ -65,8 +95,10 @@ class ApiError extends Error {
 const api = async (method, apiPath, body) => {
   const response = await fetch(`${base}${apiPath}`, {
     method,
-    headers: {Authorization: `Bearer ${token}`,
-      ...(body !== undefined ? {'Content-Type': 'application/json'} : {})},
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body !== undefined ? {'Content-Type': 'application/json'} : {})
+    },
     ...(body !== undefined ? {body: JSON.stringify(body)} : {})
   });
   const text = await response.text();
@@ -75,8 +107,11 @@ const api = async (method, apiPath, body) => {
     json = JSON.parse(text);
   } catch {}
   if (!response.ok) {
-    throw new ApiError(response.status, json?.code ?? 'http_error',
-      json?.error ?? `${response.status} ${response.statusText} on ${method} ${apiPath}`);
+    throw new ApiError(
+      response.status,
+      json?.code ?? 'http_error',
+      json?.error ?? `${response.status} ${response.statusText} on ${method} ${apiPath}`
+    );
   }
   return json ?? text;
 };
@@ -105,16 +140,24 @@ const plan = async () => {
   const pieces = [];
   let offset = 0;
   for (;;) {
-    const page = await api('GET', `/sections?file_prefix=${encodeURIComponent(prefix)}&limit=100&offset=${offset}&exclude=body&sort=created`);
+    const page = await api(
+      'GET',
+      `/sections?file_prefix=${encodeURIComponent(prefix)}&limit=100&offset=${offset}&exclude=body&sort=created`
+    );
     if (!page.items.length) break;
     for (const record of page.items) {
       const relative = record.file_path.slice(prefix.length);
-      if (relative.includes('/')) continue;               // subfolder piece (incl. archive/)
-      if (relative.startsWith('_summary-')) continue;     // a prior compaction summary
+      if (relative.includes('/')) continue; // subfolder piece (incl. archive/)
+      if (relative.startsWith('_summary-')) continue; // a prior compaction summary
       if (record.status === 'archived' || record.status === 'superseded') continue;
-      if (record.type === 'state') continue;              // managed by /vault check
-      pieces.push({record_id: record.record_id, file_path: record.file_path,
-        title: record.title, type: record.type, created: record.created});
+      if (record.type === 'state') continue; // managed by /vault check
+      pieces.push({
+        record_id: record.record_id,
+        file_path: record.file_path,
+        title: record.title,
+        type: record.type,
+        created: record.created
+      });
     }
     offset += page.items.length;
   }
@@ -126,26 +169,35 @@ const plan = async () => {
   else selected = pieces.slice(0, Math.floor(pieces.length / 2));
   const truncated = selected.length > PASS_CAP;
   selected = selected.slice(0, PASS_CAP);
-  if (!selected.length) fail(3, `nothing to archive in ${opts.folder} (${pieces.length} pieces, selection empty)`);
+  if (!selected.length)
+    fail(3, `nothing to archive in ${opts.folder} (${pieces.length} pieces, selection empty)`);
 
   const selectedIds = new Set(selected.map(p => p.record_id));
   const backlinks = [];
-  await pool(selected.map(piece => async () => {
-    const doc = await api('GET', `/vault/${piece.file_path}`);
-    const start = typeof doc === 'string' && doc.startsWith('---\n') ? doc.indexOf('\n---\n', 4) + 5 : 0;
-    piece.body = String(doc).slice(start);
-    try {
-      const back = await api('GET', `/sections/${piece.record_id}/backlinks`);
-      for (const row of back.items ?? [])
-        if (row.from_record && !selectedIds.has(row.from_record.record_id))
-          backlinks.push({archived: piece.file_path, from: row.from_record.file_path,
-            title: row.from_record.title, edge_type: row.edge?.type});
-    } catch {}
-  }));
+  await pool(
+    selected.map(piece => async () => {
+      const doc = await api('GET', `/vault/${piece.file_path}`);
+      const start =
+        typeof doc === 'string' && doc.startsWith('---\n') ? doc.indexOf('\n---\n', 4) + 5 : 0;
+      piece.body = String(doc).slice(start);
+      try {
+        const back = await api('GET', `/sections/${piece.record_id}/backlinks`);
+        for (const row of back.items ?? [])
+          if (row.from_record && !selectedIds.has(row.from_record.record_id))
+            backlinks.push({
+              archived: piece.file_path,
+              from: row.from_record.file_path,
+              title: row.from_record.title,
+              edge_type: row.edge?.type
+            });
+      } catch {}
+    })
+  );
 
   // group by month; widen to quarter/year until sections hold ~5-10 pieces
   const monthOf = p => String(p.created).slice(0, 7);
-  const quarterOf = p => `${String(p.created).slice(0, 4)}-Q${Math.ceil(+String(p.created).slice(5, 7) / 3)}`;
+  const quarterOf = p =>
+    `${String(p.created).slice(0, 4)}-Q${Math.ceil(+String(p.created).slice(5, 7) / 3)}`;
   const yearOf = p => String(p.created).slice(0, 4);
   let keyFn = monthOf;
   if (new Set(selected.map(monthOf)).size > Math.ceil(selected.length / 5)) keyFn = quarterOf;
@@ -156,7 +208,11 @@ const plan = async () => {
   const range = `${String(selected[0].created).slice(0, 10)}-to-${String(selected[selected.length - 1].created).slice(0, 10)}`;
   const worksheet = {
     folder: opts.folder,
-    mode: opts.before ? `before ${opts.before}` : opts.keep !== null ? `keep ${opts.keep}` : 'oldest half',
+    mode: opts.before
+      ? `before ${opts.before}`
+      : opts.keep !== null
+        ? `keep ${opts.keep}`
+        : 'oldest half',
     generated_at: new Date().toISOString(),
     total_pieces: pieces.length,
     selected_count: selected.length,
@@ -170,7 +226,9 @@ const plan = async () => {
   const output = JSON.stringify(worksheet, null, 2);
   if (opts.out) {
     writeFileSync(opts.out, output + '\n');
-    console.log(`plan: ${opts.out} — archive ${selected.length} of ${pieces.length} pieces (${range})${truncated ? ' [capped at 20 — re-run after this pass]' : ''}, ${backlinks.length} external inbound link(s)`);
+    console.log(
+      `plan: ${opts.out} — archive ${selected.length} of ${pieces.length} pieces (${range})${truncated ? ' [capped at 20 — re-run after this pass]' : ''}, ${backlinks.length} external inbound link(s)`
+    );
   } else console.log(output);
 };
 
@@ -180,7 +238,8 @@ const execute = async () => {
   if (!opts.plan || !opts.summary) fail(2, 'execute needs --plan and --summary');
   const sheet = JSON.parse(readFileSync(opts.plan, 'utf8'));
   const body = readFileSync(opts.summary, 'utf8');
-  if (body.trim().length < 100) fail(3, 'summary body is suspiciously short (< 100 chars) — nothing written');
+  if (body.trim().length < 100)
+    fail(3, 'summary body is suspiciously short (< 100 chars) — nothing written');
   const folderTag = sheet.folder.split('/').pop();
   const range = sheet.summary_path.match(/_summary-(.+)\.md$/)[1].replace('-to-', ' to ');
 
@@ -189,7 +248,9 @@ const execute = async () => {
     to: `${sheet.folder}/archive/${String(piece.created).slice(0, 4)}/${piece.file_path.split('/').pop()}`
   }));
   if (opts.dryRun) {
-    console.log(JSON.stringify({dry_run: true, would_write: sheet.summary_path, would_move: moves}, null, 2));
+    console.log(
+      JSON.stringify({dry_run: true, would_write: sheet.summary_path, would_move: moves}, null, 2)
+    );
     return;
   }
 
@@ -197,16 +258,22 @@ const execute = async () => {
     frontmatter: {
       title: `${folderTag} — summary ${range}`,
       tags: ['summary', folderTag, 'archived-history'],
-      created: today(), updated: today(),
-      status: 'active', type: 'meta',
+      created: today(),
+      updated: today(),
+      status: 'active',
+      type: 'meta',
       ...(opts.related.length ? {related: opts.related} : {})
     },
     body
   });
 
-  const report = {summary_written: sheet.summary_path, archived: [], failures: [],
+  const report = {
+    summary_written: sheet.summary_path,
+    archived: [],
+    failures: [],
     remaining_in_folder: sheet.remaining_after,
-    inbound_links_now_broken: sheet.inbound_backlinks};
+    inbound_links_now_broken: sheet.inbound_backlinks
+  };
   for (const move of moves) {
     try {
       await api('POST', '/vault/move', move);

@@ -36,12 +36,7 @@ const OUT_PATH = opt('--out', null);
 const INCLUDE_SIDECHAIN = opt('--include-sidechain', false) === true;
 const MAX_EXCERPT = Number(opt('--max-excerpt-chars', '800'));
 
-const STATE_FILE = join(
-  homedir(),
-  '.cache',
-  'reflect',
-  'last-run.json'
-);
+const STATE_FILE = join(homedir(), '.cache', 'reflect', 'last-run.json');
 
 const resolveWindowStart = since => {
   if (since === 'last-run') {
@@ -84,7 +79,7 @@ const NEGATION_PATTERNS = [
   /\bplease\s+don'?t\b/i,
   /\bwe\s+don'?t\s+(do|use)\s+(that|this|it)\b/i,
   /\bthat'?s?\s+(wrong|not right|not what)\b/i,
-  /\bnot\s+(that|this)\s+(way|one|approach)\b/i,
+  /\bnot\s+(that|this)\s+(way|one|approach)\b/i
 ];
 
 // Cue-less corrections: a steer phrased as an observation-of-a-better-way, with
@@ -97,21 +92,21 @@ const OBSERVATIONAL_CORRECTION_PATTERNS = [
   /\bthere(?:'s| is)\s+(?:a|an)\s+(better|doc|convention|skill|way|tool|helper|rule|pattern)\b/i,
   /\binstead of\b/i,
   /\brather than\b/i,
-  /\bwhy\s+(?:don'?t|not|are you|did you|would you|are we|did we)\b/i,
+  /\bwhy\s+(?:don'?t|not|are you|did you|would you|are we|did we)\b/i
 ];
 
 const CONFIRMATION_PATTERNS = [
   /\byes,?\s*(exactly|right|that'?s right|perfect|good|correct)\b/i,
   /\b(perfect|exactly right|nailed it|spot on)\b/i,
   /\bkeep doing (that|this)\b/i,
-  /\bthat'?s the (right|correct) (call|approach|move|answer)\b/i,
+  /\bthat'?s the (right|correct) (call|approach|move|answer)\b/i
 ];
 
 const SURPRISE_PATTERNS = [
   /\bTIL\b/,
   /\boh,?\s+(huh|wow)\b/i,
   /\b(I|we)\s+didn'?t\s+(expect|know|realize)\b/i,
-  /^(that'?s|this is|how)\s+(interesting|surprising|unexpected)\b/im,
+  /^(that'?s|this is|how)\s+(interesting|surprising|unexpected)\b/im
 ];
 
 // --- Transcript walking -------------------------------------------------
@@ -388,8 +383,10 @@ for (const t of transcripts) {
       excerpt
     };
 
-    if ((hasNegation || hasObservational) && prevAssistant) signals.corrections.push({...base, kind: 'correction'});
-    if (hasConfirmation && prevAssistant) signals.confirmations.push({...base, kind: 'confirmation'});
+    if ((hasNegation || hasObservational) && prevAssistant)
+      signals.corrections.push({...base, kind: 'correction'});
+    if (hasConfirmation && prevAssistant)
+      signals.confirmations.push({...base, kind: 'confirmation'});
     if (hasSurprise) signals.surprises.push({...base, kind: 'surprise'});
   }
 
@@ -452,8 +449,7 @@ for (const t of transcripts) {
     if (e.role !== 'user' || e.errorResults.length === 0) continue;
     for (const err of e.errorResults) {
       const reg = err.id ? toolUseRegistry.get(err.id) : null;
-      const resolved =
-        reg?.name ?? (i > 0 ? events[i - 1]?.toolNames?.[0] : null) ?? '(unknown)';
+      const resolved = reg?.name ?? (i > 0 ? events[i - 1]?.toolNames?.[0] : null) ?? '(unknown)';
       const errSig = err.text.replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
       const key = `${resolved}::${errSig}`;
       // Parallel calls fail as a unit: one permission rejection or one
@@ -500,9 +496,7 @@ for (const [key, count] of failureBuckets) {
 
 // --- Output -------------------------------------------------------------
 
-const totals = Object.fromEntries(
-  Object.entries(signals).map(([k, arr]) => [k, arr.length])
-);
+const totals = Object.fromEntries(Object.entries(signals).map(([k, arr]) => [k, arr.length]));
 
 const output = {
   scan_window: {

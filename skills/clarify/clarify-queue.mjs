@@ -28,15 +28,18 @@ const base = process.env.VAULT_API_URL?.replace(/\/+$/, ''),
 if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
 
 const [command, id, ...rest] = process.argv.slice(2);
-let resolution = null, rejected = false;
+let resolution = null,
+  rejected = false;
 for (const arg of rest) {
   if (arg.startsWith('--resolution=')) resolution = arg.slice(13);
   else if (arg === '--rejected') rejected = true;
   else fail(2, `unknown option: ${arg}`);
 }
 if (!['list', 'archive'].includes(command))
-  fail(command === '--help' || command === '-h' ? 0 : 2,
-    'Usage: clarify-queue.mjs list | clarify-queue.mjs archive Q-ID --resolution="text" [--rejected]');
+  fail(
+    command === '--help' || command === '-h' ? 0 : 2,
+    'Usage: clarify-queue.mjs list | clarify-queue.mjs archive Q-ID --resolution="text" [--rejected]'
+  );
 
 const headers = {Authorization: `Bearer ${token}`};
 const get = async (path, {optional = false} = {}) => {
@@ -52,7 +55,8 @@ const put = async (path, body, etag, contentType = 'text/markdown') => {
     body
   });
   if (response.status === 412) fail(2, `412 on ${path} — changed concurrently; re-run`);
-  if (!response.ok) fail(1, `PUT ${path}: ${response.status} — ${(await response.text()).slice(0, 300)}`);
+  if (!response.ok)
+    fail(1, `PUT ${path}: ${response.status} — ${(await response.text()).slice(0, 300)}`);
 };
 
 // blocks are "### Q-..." headings under "## Pending", ending at the next ### / ## / EOF
@@ -106,7 +110,11 @@ if (command === 'list') {
 if (!id?.startsWith('Q-')) fail(2, 'archive needs a Q-ID');
 if (!resolution) fail(2, 'archive needs --resolution="text"');
 const item = items.find(entry => entry.id === id);
-if (!item) fail(3, `${id} is not in ## Pending (${items.length} pending: ${items.map(i => i.id).join(', ') || 'none'})`);
+if (!item)
+  fail(
+    3,
+    `${id} is not in ## Pending (${items.length} pending: ${items.map(i => i.id).join(', ') || 'none'})`
+  );
 
 const stamp = new Date().toISOString().slice(0, 10);
 const annotated = `${item.block}\n\n**${rejected ? 'Rejected' : 'Resolved'}** (${stamp}): ${resolution}\n`;
@@ -117,8 +125,10 @@ if (archive === null) {
     frontmatter: {
       title: 'agent-workflow — Clarification queue archive',
       tags: ['agent', 'workflow', 'claude-code', 'clarify', 'archive'],
-      created: stamp, updated: stamp,
-      status: 'archived', type: 'project'
+      created: stamp,
+      updated: stamp,
+      status: 'archived',
+      type: 'project'
     },
     body: `Resolved / rejected clarification items moved out of [[projects/agent-workflow/clarify-queue]]. Append-only.\n\n## Resolved\n\n${annotated}`
   };
@@ -129,7 +139,10 @@ if (archive === null) {
 
 // remove the block from the queue; leave "(empty)" when it was the last one
 let newQueue = queue.text.replace(item.block, '').replace(/\n{3,}/g, '\n\n');
-if (!parsePending(newQueue).length) newQueue = newQueue.replace(/## Pending\n+/, '## Pending\n\n(empty)\n\n');
+if (!parsePending(newQueue).length)
+  newQueue = newQueue.replace(/## Pending\n+/, '## Pending\n\n(empty)\n\n');
 await put(QUEUE, newQueue, queue.etag);
 
-console.log(`${id} → ${ARCHIVE} (${rejected ? 'rejected' : 'resolved'}); ${items.length - 1} still pending`);
+console.log(
+  `${id} → ${ARCHIVE} (${rejected ? 'rejected' : 'resolved'}); ${items.length - 1} still pending`
+);

@@ -100,7 +100,9 @@ const main = async () => {
     console.log(`  ${action.padEnd(15)} ${n}`);
   }
 
-  const changes = results.filter(r => r.action !== 'unchanged' && r.action !== 'skip-unknown').length;
+  const changes = results.filter(
+    r => r.action !== 'unchanged' && r.action !== 'skip-unknown'
+  ).length;
   if (!APPLY && changes > 0) {
     console.log();
     console.log(`${changes} change(s) pending. Re-run with --apply to execute.`);

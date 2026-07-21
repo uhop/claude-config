@@ -31,10 +31,23 @@ const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 
 const run = (cmd, argv, opts = {}) => {
   try {
-    return {ok: true, out: execFileSync(cmd, argv, {cwd: root, encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024, ...opts}).trim()};
+    return {
+      ok: true,
+      out: execFileSync(cmd, argv, {
+        cwd: root,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        maxBuffer: 16 * 1024 * 1024,
+        ...opts
+      }).trim()
+    };
   } catch (err) {
-    return {ok: false, out: (err.stdout ?? '').toString().trim(), err: (err.stderr ?? err.message ?? '').toString().trim(), status: err.status};
+    return {
+      ok: false,
+      out: (err.stdout ?? '').toString().trim(),
+      err: (err.stderr ?? err.message ?? '').toString().trim(),
+      status: err.status
+    };
   }
 };
 
@@ -49,7 +62,12 @@ const walk = (dir, files = []) => {
   return files;
 };
 
-const digest = {project: pkg.name, version: pkg.version, generated_at: new Date().toISOString(), checks: {}};
+const digest = {
+  project: pkg.name,
+  version: pkg.version,
+  generated_at: new Date().toISOString(),
+  checks: {}
+};
 const check = (name, value) => (digest.checks[name] = value);
 
 // --- git: last released tag + changes since (input to the step-0 judgment) --
@@ -78,9 +96,14 @@ const check = (name, value) => (digest.checks[name] = value);
     const files = walk(srcDir).map(p => path.relative(root, p));
     const js = files.filter(f => f.endsWith('.js'));
     const dts = new Set(files.filter(f => f.endsWith('.d.ts')));
-    if (!dts.size) check('sidecars', {status: 'skip', reason: 'no .d.ts sidecars in src/ (not a sidecar project)'});
+    if (!dts.size)
+      check('sidecars', {
+        status: 'skip',
+        reason: 'no .d.ts sidecars in src/ (not a sidecar project)'
+      });
     else {
-      const missingSidecar = [], missingDirective = [];
+      const missingSidecar = [],
+        missingDirective = [];
       for (const file of js) {
         const sidecar = file.replace(/\.js$/, '.d.ts');
         if (!dts.has(sidecar)) {
@@ -93,8 +116,11 @@ const check = (name, value) => (digest.checks[name] = value);
       const orphans = [...dts].filter(d => !js.includes(d.replace(/\.d\.ts$/, '.js')));
       check('sidecars', {
         status: missingSidecar.length || missingDirective.length ? 'action' : 'ok',
-        js_files: js.length, paired: js.length - missingSidecar.length,
-        missing_sidecar: missingSidecar, missing_directive: missingDirective, orphan_dts: orphans
+        js_files: js.length,
+        paired: js.length - missingSidecar.length,
+        missing_sidecar: missingSidecar,
+        missing_directive: missingDirective,
+        orphan_dts: orphans
       });
     }
   }
@@ -102,12 +128,20 @@ const check = (name, value) => (digest.checks[name] = value);
 
 // --- retired artifacts (fleet bundle removable set — probe every item) ------
 {
-  const found = ['.windsurfrules', '.cursorrules', '.clinerules', '.github/COPILOT-INSTRUCTIONS.md', '.windsurf']
-    .filter(exists);
+  const found = [
+    '.windsurfrules',
+    '.cursorrules',
+    '.clinerules',
+    '.github/COPILOT-INSTRUCTIONS.md',
+    '.windsurf'
+  ].filter(exists);
   const commandsDir = path.join(root, '.claude', 'commands');
   if (existsSync(commandsDir)) {
-    const globalSkills = new Set(readdirSync(path.join(homedir(), '.claude', 'skills'), {withFileTypes: true})
-      .filter(entry => entry.isDirectory()).map(entry => entry.name));
+    const globalSkills = new Set(
+      readdirSync(path.join(homedir(), '.claude', 'skills'), {withFileTypes: true})
+        .filter(entry => entry.isDirectory())
+        .map(entry => entry.name)
+    );
     for (const file of readdirSync(commandsDir)) {
       if (file.endsWith('.md') && globalSkills.has(file.replace(/\.md$/, '')))
         found.push(`.claude/commands/${file} (copy of promoted global skill)`);
@@ -119,20 +153,41 @@ const check = (name, value) => (digest.checks[name] = value);
 // --- ai-docs presence (currency stays judgment — see /ai-docs-update) -------
 check('ai_docs', {
   status: ['llms.txt', 'llms-full.txt', 'AGENTS.md'].every(exists) ? 'ok' : 'action',
-  present: ['llms.txt', 'llms-full.txt', 'AGENTS.md', 'ARCHITECTURE.md', 'CLAUDE.md'].filter(exists),
-  absent: ['llms.txt', 'llms-full.txt', 'AGENTS.md', 'ARCHITECTURE.md', 'CLAUDE.md'].filter(f => !exists(f))
+  present: ['llms.txt', 'llms-full.txt', 'AGENTS.md', 'ARCHITECTURE.md', 'CLAUDE.md'].filter(
+    exists
+  ),
+  absent: ['llms.txt', 'llms-full.txt', 'AGENTS.md', 'ARCHITECTURE.md', 'CLAUDE.md'].filter(
+    f => !exists(f)
+  )
 });
 
 // --- package.json: files hygiene, exports shape, description/keywords, bin --
 {
-  const FORBIDDEN = ['AGENTS.md', 'ARCHITECTURE.md', 'CLAUDE.md', 'CODEBASE.md',
-    '.cursorrules', '.windsurfrules', '.clinerules', '.claude', '.windsurf', '.github'];
+  const FORBIDDEN = [
+    'AGENTS.md',
+    'ARCHITECTURE.md',
+    'CLAUDE.md',
+    'CODEBASE.md',
+    '.cursorrules',
+    '.windsurfrules',
+    '.clinerules',
+    '.claude',
+    '.windsurf',
+    '.github'
+  ];
   const files = pkg.files ?? null;
   const forbidden = files?.filter(entry => FORBIDDEN.includes(entry.replace(/\/$/, ''))) ?? [];
   const missing = files ? ['llms.txt', 'llms-full.txt'].filter(f => !files.includes(f)) : [];
-  check('pkg_files', files
-    ? {status: forbidden.length || missing.length ? 'action' : 'ok', missing_required: missing, forbidden_present: forbidden}
-    : {status: 'action', reason: 'no files array — tarball contents are implicit'});
+  check(
+    'pkg_files',
+    files
+      ? {
+          status: forbidden.length || missing.length ? 'action' : 'ok',
+          missing_required: missing,
+          forbidden_present: forbidden
+        }
+      : {status: 'action', reason: 'no files array — tarball contents are implicit'}
+  );
 
   const flagged = [];
   const inspect = (key, value) => {
@@ -144,43 +199,61 @@ check('ai_docs', {
     if (key.includes('*')) {
       const suffix = value.slice(value.indexOf('*') + 1);
       if (!value.includes('*') || suffix !== '')
-        flagged.push({key, value, reason: 'transforming wildcard — importmap users must enumerate files'});
+        flagged.push({
+          key,
+          value,
+          reason: 'transforming wildcard — importmap users must enumerate files'
+        });
     } else if (value.endsWith('/index.js')) {
-      if (!exists(value.replace(/^\.\//, ''))) flagged.push({key, value, reason: 'barrel target missing'});
+      if (!exists(value.replace(/^\.\//, '')))
+        flagged.push({key, value, reason: 'barrel target missing'});
     } else if (key !== '.' && !key.endsWith('.js') && value.endsWith('.js')) {
       flagged.push({key, value, reason: 'file-shape substitution (extension added)'});
     }
   };
   if (pkg.exports) for (const [key, value] of Object.entries(pkg.exports)) inspect(key, value);
-  check('pkg_exports', pkg.exports
-    ? {status: flagged.length ? 'action' : 'ok', flagged}
-    : {status: 'skip', reason: 'no exports map'});
+  check(
+    'pkg_exports',
+    pkg.exports
+      ? {status: flagged.length ? 'action' : 'ok', flagged}
+      : {status: 'skip', reason: 'no exports map'}
+  );
 
   check('pkg_meta', {
     status: pkg.description && pkg.keywords?.length ? 'ok' : 'action',
-    description_present: !!pkg.description, keywords_present: !!pkg.keywords?.length
+    description_present: !!pkg.description,
+    keywords_present: !!pkg.keywords?.length
   });
 
-  const bins = typeof pkg.bin === 'string' ? {[pkg.name]: pkg.bin} : pkg.bin ?? {};
+  const bins = typeof pkg.bin === 'string' ? {[pkg.name]: pkg.bin} : (pkg.bin ?? {});
   const modes = Object.values(bins).map(target => {
     const ls = run('git', ['ls-files', '-s', target]);
     const mode = ls.out.split(' ')[0] || null;
     return {target, mode, executable: mode === '100755'};
   });
-  check('bin_modes', Object.keys(bins).length
-    ? {status: 'ok', note: 'tidy, not load-bearing — npm sets the bit on install', targets: modes}
-    : {status: 'skip', reason: 'no bin'});
+  check(
+    'bin_modes',
+    Object.keys(bins).length
+      ? {status: 'ok', note: 'tidy, not load-bearing — npm sets the bit on install', targets: modes}
+      : {status: 'skip', reason: 'no bin'}
+  );
 }
 
 // --- LICENSE copyright year covers the current year -------------------------
 {
   if (!exists('LICENSE')) check('license_year', {status: 'action', reason: 'no LICENSE file'});
   else {
-    const line = readFileSync(path.join(root, 'LICENSE'), 'utf8').split('\n')
-      .find(l => /copyright/i.test(l)) ?? '';
+    const line =
+      readFileSync(path.join(root, 'LICENSE'), 'utf8')
+        .split('\n')
+        .find(l => /copyright/i.test(l)) ?? '';
     const years = [...line.matchAll(/\d{4}/g)].map(m => +m[0]);
     const covered = years.length > 0 && Math.max(...years) >= new Date().getFullYear();
-    check('license_year', {status: covered ? 'ok' : 'action', line: line.trim(), spdx: pkg.license ?? null});
+    check('license_year', {
+      status: covered ? 'ok' : 'action',
+      line: line.trim(),
+      spdx: pkg.license ?? null
+    });
   }
 }
 
@@ -201,10 +274,16 @@ check('ai_docs', {
       .map(f => path.relative(root, f));
     check('wiki_search_index', {
       status: staleSources.length ? 'action' : 'ok',
-      note: staleSources.length ? 'regenerate: npx wiki-search-index --wiki . --repo OWNER/REPO' : undefined,
+      note: staleSources.length
+        ? 'regenerate: npx wiki-search-index --wiki . --repo OWNER/REPO'
+        : undefined,
       newer_than_index: staleSources
     });
-  } else check('wiki_search_index', {status: 'skip', reason: wikiDir ? 'no search-index.json' : 'no wiki'});
+  } else
+    check('wiki_search_index', {
+      status: 'skip',
+      reason: wikiDir ? 'no search-index.json' : 'no wiki'
+    });
 }
 
 // --- dependency freshness (bump EVERYTHING reported, majors included) -------
@@ -216,12 +295,20 @@ check('ai_docs', {
     try {
       parsed = JSON.parse(outdated.out || '{}');
     } catch {}
-    if (parsed === null) check('deps_outdated', {status: 'error', message: outdated.err?.slice(0, 300) ?? 'unparseable npm outdated output'});
+    if (parsed === null)
+      check('deps_outdated', {
+        status: 'error',
+        message: outdated.err?.slice(0, 300) ?? 'unparseable npm outdated output'
+      });
     else {
       const dev = new Set(Object.keys(pkg.devDependencies ?? {}));
       const items = Object.entries(parsed).map(([name, info]) => ({
-        name, current: info.current, wanted: info.wanted, latest: info.latest,
-        dev: dev.has(name), major: info.latest?.split('.')[0] !== info.current?.split('.')[0]
+        name,
+        current: info.current,
+        wanted: info.wanted,
+        latest: info.latest,
+        dev: dev.has(name),
+        major: info.latest?.split('.')[0] !== info.current?.split('.')[0]
       }));
       check('deps_outdated', {status: items.length ? 'action' : 'ok', count: items.length, items});
     }
@@ -230,13 +317,20 @@ check('ai_docs', {
 
 // --- lockfile version sync (regen is unconditional after edits anyway) ------
 {
-  if (!exists('package-lock.json')) check('lockfile', {status: 'action', reason: 'no package-lock.json'});
+  if (!exists('package-lock.json'))
+    check('lockfile', {status: 'action', reason: 'no package-lock.json'});
   else {
     const lock = JSON.parse(readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
-    const rootVersion = lock.version, selfVersion = lock.packages?.['']?.version;
-    const inSync = rootVersion === pkg.version && (selfVersion === undefined || selfVersion === pkg.version);
-    check('lockfile', {status: inSync ? 'ok' : 'action', pkg_version: pkg.version,
-      lock_version: rootVersion, lock_self_version: selfVersion ?? null});
+    const rootVersion = lock.version,
+      selfVersion = lock.packages?.['']?.version;
+    const inSync =
+      rootVersion === pkg.version && (selfVersion === undefined || selfVersion === pkg.version);
+    check('lockfile', {
+      status: inSync ? 'ok' : 'action',
+      pkg_version: pkg.version,
+      lock_version: rootVersion,
+      lock_self_version: selfVersion ?? null
+    });
   }
 }
 
@@ -245,7 +339,9 @@ check('ai_docs', {
   const scripts = Object.keys(pkg.scripts ?? {});
   check('test_matrix', {
     status: scripts.includes('test') ? 'ok' : 'action',
-    gates: ['test', 'test:bun', 'test:deno', 'test:browser', 'ts-check', 'js-check', 'lint'].filter(s => scripts.includes(s))
+    gates: ['test', 'test:bun', 'test:deno', 'test:browser', 'ts-check', 'js-check', 'lint'].filter(
+      s => scripts.includes(s)
+    )
   });
 }
 
@@ -256,16 +352,33 @@ check('ai_docs', {
   try {
     files = JSON.parse(pack.out)[0].files.map(f => f.path);
   } catch {}
-  if (!files) check('tarball', {status: 'error', message: pack.err?.slice(0, 300) ?? 'unparseable npm pack output'});
+  if (!files)
+    check('tarball', {
+      status: 'error',
+      message: pack.err?.slice(0, 300) ?? 'unparseable npm pack output'
+    });
   else {
-    const FORBIDDEN_FILES = ['AGENTS.md', 'ARCHITECTURE.md', 'CLAUDE.md', 'CODEBASE.md',
-      '.cursorrules', '.windsurfrules', '.clinerules'];
+    const FORBIDDEN_FILES = [
+      'AGENTS.md',
+      'ARCHITECTURE.md',
+      'CLAUDE.md',
+      'CODEBASE.md',
+      '.cursorrules',
+      '.windsurfrules',
+      '.clinerules'
+    ];
     const FORBIDDEN_DIRS = ['.claude/', '.windsurf/', '.github/'];
-    const missing = ['llms.txt', 'llms-full.txt', 'README.md', 'LICENSE'].filter(f => !files.includes(f));
-    const forbidden = files.filter(f => FORBIDDEN_FILES.includes(f) || FORBIDDEN_DIRS.some(d => f.startsWith(d)));
+    const missing = ['llms.txt', 'llms-full.txt', 'README.md', 'LICENSE'].filter(
+      f => !files.includes(f)
+    );
+    const forbidden = files.filter(
+      f => FORBIDDEN_FILES.includes(f) || FORBIDDEN_DIRS.some(d => f.startsWith(d))
+    );
     check('tarball', {
       status: missing.length || forbidden.length ? 'action' : 'ok',
-      file_count: files.length, missing_required: missing, forbidden_present: forbidden,
+      file_count: files.length,
+      missing_required: missing,
+      forbidden_present: forbidden,
       has_src: !existsSync(path.join(root, 'src')) || files.some(f => f.startsWith('src/'))
     });
   }
@@ -274,11 +387,15 @@ check('ai_docs', {
 // --- project-specific extensions ---------------------------------------------
 check('project_specific', {
   status: 'ok',
-  agents_releasing_section: exists('AGENTS.md') && /^#{1,3}\s.*releasing/im.test(readFileSync(path.join(root, 'AGENTS.md'), 'utf8')),
+  agents_releasing_section:
+    exists('AGENTS.md') &&
+    /^#{1,3}\s.*releasing/im.test(readFileSync(path.join(root, 'AGENTS.md'), 'utf8')),
   release_check_local: exists('.claude/release-check.local.md')
 });
 
-const actions = Object.entries(digest.checks).filter(([, c]) => c.status === 'action' || c.status === 'error');
+const actions = Object.entries(digest.checks).filter(
+  ([, c]) => c.status === 'action' || c.status === 'error'
+);
 digest.summary = {
   total: Object.keys(digest.checks).length,
   action: actions.map(([name]) => name),

@@ -32,7 +32,12 @@ const NO_FETCH = flag('--no-fetch', false) === true;
 const MAX = Number(flag('--max', '40'));
 const ALL_CATS = ['frontmatter', 'body', 'wikilinks', 'density', 'currency', 'duplicates'];
 const catArg = flag('--category', null);
-const CATS = catArg ? catArg.split(',').map(s => s.trim()).filter(Boolean) : ALL_CATS;
+const CATS = catArg
+  ? catArg
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+  : ALL_CATS;
 for (const c of CATS) {
   if (!ALL_CATS.includes(c)) {
     console.error(`unknown --category '${c}' (known: ${ALL_CATS.join(', ')})`);
@@ -48,8 +53,14 @@ const TYPE_EXEMPT_BASENAMES = new Set(['_index.md', '_about.md']);
 // there's something to record — an empty one is a valid placeholder, not a
 // never-written stub, so the BODY check skips them.
 const RUNNING_FILE_BASENAMES = new Set([
-  'decisions.md', 'learnings.md', 'stack.md', 'queue.md', 'queue-archive.md',
-  'feedback.md', 'clarify-queue.md', 'clarify-queue-archive.md'
+  'decisions.md',
+  'learnings.md',
+  'stack.md',
+  'queue.md',
+  'queue-archive.md',
+  'feedback.md',
+  'clarify-queue.md',
+  'clarify-queue-archive.md'
 ]);
 const DENSITY_SKIP_STATUS = new Set(['archived', 'archive', 'done']);
 const ARCHIVE_RE = /(^|\/)archive\//;
@@ -57,19 +68,26 @@ const FETCH_CAP = NO_FETCH ? 0 : 300;
 
 // --- API via vault-curl --------------------------------------------------
 const api = path => {
-  const out = execFileSync('vault-curl', [path, '-s'], {encoding: 'utf8', maxBuffer: 512 * 1024 * 1024});
+  const out = execFileSync('vault-curl', [path, '-s'], {
+    encoding: 'utf8',
+    maxBuffer: 512 * 1024 * 1024
+  });
   return JSON.parse(out);
 };
-const apiText = path => execFileSync('vault-curl', [path, '-s'], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
+const apiText = path =>
+  execFileSync('vault-curl', [path, '-s'], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
 
 let all;
 try {
   const first = api('/sections?limit=100&offset=0');
   const total = first.total ?? first.items.length;
   all = [...first.items];
-  for (let off = 100; off < total; off += 100) all.push(...api(`/sections?limit=100&offset=${off}`).items);
+  for (let off = 100; off < total; off += 100)
+    all.push(...api(`/sections?limit=100&offset=${off}`).items);
 } catch (e) {
-  console.error(`vault-lint: failed to load /sections via vault-curl — ${e.message.split('\n')[0]}`);
+  console.error(
+    `vault-lint: failed to load /sections via vault-curl — ${e.message.split('\n')[0]}`
+  );
   process.exit(2);
 }
 
@@ -91,7 +109,8 @@ const linkTargets = text => {
   const out = [];
   for (const m of stripCode(text).matchAll(WIKILINK_RE)) {
     const t = m[1].split('|')[0].split('#')[0].trim();
-    if (!t || t.startsWith('#') || t.length > 200 || t.includes('\n') || ASSET_EXT.test(t)) continue;
+    if (!t || t.startsWith('#') || t.length > 200 || t.includes('\n') || ASSET_EXT.test(t))
+      continue;
     out.push(norm(t.replace(/^\/+/, '')));
   }
   return out;
@@ -115,7 +134,7 @@ const inbound = new Map();
 for (const r of all) {
   const from = norm(r.file_path);
   for (const t of new Set(linkTargets(r.body))) {
-    const targets = t.includes('/') ? (pathSet.has(t) ? [t] : []) : (byBase.get(t) || []);
+    const targets = t.includes('/') ? (pathSet.has(t) ? [t] : []) : byBase.get(t) || [];
     for (const tg of targets) if (tg !== from) inbound.set(tg, (inbound.get(tg) || 0) + 1);
   }
 }
@@ -132,7 +151,8 @@ const NOW = Date.now();
 const ageDays = d => Math.floor((NOW - d.getTime()) / 86400000);
 
 const lev = (a, b) => {
-  const m = a.length, n = b.length;
+  const m = a.length,
+    n = b.length;
   if (!m) return n;
   if (!n) return m;
   let prev = Array.from({length: n + 1}, (_, i) => i);
@@ -146,11 +166,17 @@ const lev = (a, b) => {
 };
 
 // --- findings ------------------------------------------------------------
-const F = [], B = [], W = [], D = [], C = [], U = [];
+const F = [],
+  B = [],
+  W = [],
+  D = [],
+  C = [],
+  U = [];
 const want = c => CATS.includes(c);
 
 // raw full-file link count (FM `related:` + body), bounded by FETCH_CAP
-let fetches = 0, fetchCapped = false;
+let fetches = 0,
+  fetchCapped = false;
 const fullLinkCount = path => {
   if (fetches >= FETCH_CAP) {
     fetchCapped = true;
@@ -174,10 +200,12 @@ if (want('frontmatter')) {
     });
     const probs = [];
     if (missing.length) probs.push(`missing ${missing.join(',')}`);
-    const cd = parseDate(r.created), ud = parseDate(r.updated);
+    const cd = parseDate(r.created),
+      ud = parseDate(r.updated);
     if (r.created && !cd) probs.push(`unparseable created '${r.created}'`);
     if (r.updated && !ud) probs.push(`unparseable updated '${r.updated}'`);
-    if (cd && ud && cd.getTime() > ud.getTime()) probs.push(`created > updated (${r.created} > ${r.updated})`);
+    if (cd && ud && cd.getTime() > ud.getTime())
+      probs.push(`created > updated (${r.created} > ${r.updated})`);
     if (probs.length) F.push({path: r.file_path, detail: probs.join('; ')});
   }
 }
@@ -192,7 +220,8 @@ if (want('body')) {
     // the note has no content — and it's invisible to every other category
     // (wikilinks/density read body links, of which an empty body has none).
     const body = r.body == null ? '' : String(r.body).trim();
-    if (body === '' || body === 'null') B.push({path: r.file_path, detail: 'empty body (no content written)'});
+    if (body === '' || body === 'null')
+      B.push({path: r.file_path, detail: 'empty body (no content written)'});
   }
 }
 
@@ -210,7 +239,11 @@ if (want('density')) {
     if (r.type === 'permanent') {
       if (bodyOut >= 2) continue;
       const total = bodyOut < 2 ? (fullLinkCount(r.file_path) ?? bodyOut) : bodyOut;
-      if (total < 2) D.push({path: r.file_path, detail: `topic: ${total} outbound wikilink${total === 1 ? '' : 's'} (< 2)`});
+      if (total < 2)
+        D.push({
+          path: r.file_path,
+          detail: `topic: ${total} outbound wikilink${total === 1 ? '' : 's'} (< 2)`
+        });
     } else if (r.type === 'project') {
       if (bodyOut > 0 || inboundOf(r) > 0) continue;
       const total = fullLinkCount(r.file_path) ?? 0;
@@ -231,11 +264,17 @@ if (want('currency')) {
     if (age <= thr) continue;
     if (r.type === 'query' && inboundOf(r) > 0) continue; // archive only if zero inbound
     const action =
-      r.type === 'log' ? 'archive → logs/archive/<YYYY>/'
-      : r.type === 'query' ? 'archive (0 inbound)'
-      : r.type === 'fleeting' ? 'ingest or retire'
-      : 'verify still current';
-    C.push({path: r.file_path, detail: `${r.type}: updated ${r.updated} (${age}d > ${thr}d) — ${action}`});
+      r.type === 'log'
+        ? 'archive → logs/archive/<YYYY>/'
+        : r.type === 'query'
+          ? 'archive (0 inbound)'
+          : r.type === 'fleeting'
+            ? 'ingest or retire'
+            : 'verify still current';
+    C.push({
+      path: r.file_path,
+      detail: `${r.type}: updated ${r.updated} (${age}d > ${thr}d) — ${action}`
+    });
   }
 }
 
@@ -254,8 +293,14 @@ if (want('duplicates')) {
   const fn = s => s.toLowerCase().replace(/[^a-z0-9]/g, '');
   for (let i = 0; i < folders.length; i++)
     for (let j = i + 1; j < folders.length; j++) {
-      const a = folders[i], b = folders[j], d = lev(fn(a), fn(b));
-      if (d <= 1) U.push({path: `projects/{${a},${b}}`, detail: `near-identical folder names (lev ${d} ignoring case/separators)`});
+      const a = folders[i],
+        b = folders[j],
+        d = lev(fn(a), fn(b));
+      if (d <= 1)
+        U.push({
+          path: `projects/{${a},${b}}`,
+          detail: `near-identical folder names (lev ${d} ignoring case/separators)`
+        });
     }
 
   // near-duplicate titles within a folder — merge candidates. Excludes types
@@ -273,15 +318,33 @@ if (want('duplicates')) {
   for (const [dir, recs] of byDir)
     for (let i = 0; i < recs.length; i++)
       for (let j = i + 1; j < recs.length; j++) {
-        const ta = recs[i].title.toLowerCase().trim(), tb = recs[j].title.toLowerCase().trim();
+        const ta = recs[i].title.toLowerCase().trim(),
+          tb = recs[j].title.toLowerCase().trim();
         if (ta === tb || lev(ta, tb) <= 2)
-          U.push({path: dir, detail: `near-duplicate titles: "${recs[i].title}" ~ "${recs[j].title}"`});
+          U.push({
+            path: dir,
+            detail: `near-duplicate titles: "${recs[i].title}" ~ "${recs[j].title}"`
+          });
       }
 }
 
 // --- output --------------------------------------------------------------
-const CATEGORIES = [['FRONTMATTER', F], ['BODY', B], ['WIKILINKS', W], ['DENSITY', D], ['CURRENCY', C], ['DUPLICATES', U]];
-const ABBREV = {FRONTMATTER: 'fm', BODY: 'body', WIKILINKS: 'links', DENSITY: 'density', CURRENCY: 'currency', DUPLICATES: 'dups'};
+const CATEGORIES = [
+  ['FRONTMATTER', F],
+  ['BODY', B],
+  ['WIKILINKS', W],
+  ['DENSITY', D],
+  ['CURRENCY', C],
+  ['DUPLICATES', U]
+];
+const ABBREV = {
+  FRONTMATTER: 'fm',
+  BODY: 'body',
+  WIKILINKS: 'links',
+  DENSITY: 'density',
+  CURRENCY: 'currency',
+  DUPLICATES: 'dups'
+};
 const selected = CATEGORIES.filter(([n]) => want(n.toLowerCase()));
 const totalFindings = selected.reduce((s, [, arr]) => s + arr.length, 0);
 
@@ -290,7 +353,9 @@ if (QUIET) {
     for (const f of arr) console.log(`${name.toLowerCase()}\t${f.path}\t${f.detail}`);
 } else {
   const skipped = all.length - active.length;
-  console.log(`vault-lint — ${active.length} active records (${all.length} total, ${skipped} archived/skipped)`);
+  console.log(
+    `vault-lint — ${active.length} active records (${all.length} total, ${skipped} archived/skipped)`
+  );
   if (totalFindings === 0) {
     console.log('clean — no findings.');
   } else {
@@ -298,12 +363,16 @@ if (QUIET) {
       if (!arr.length) continue;
       console.log(`\n${name} (${arr.length})`);
       for (const f of arr.slice(0, MAX)) console.log(`  ${f.path}: ${f.detail}`);
-      if (arr.length > MAX) console.log(`  (+${arr.length - MAX} more — --quiet for the full list)`);
+      if (arr.length > MAX)
+        console.log(`  (+${arr.length - MAX} more — --quiet for the full list)`);
     }
     const tally = selected.map(([n, a]) => `${ABBREV[n]}:${a.length}`).join(' ');
     console.log(`\n${totalFindings} findings — ${tally}`);
   }
-  if (fetchCapped) console.log(`note: density raw-fetch hit the ${FETCH_CAP} cap; some density flags are body-link-only (may over-flag related:-heavy notes).`);
+  if (fetchCapped)
+    console.log(
+      `note: density raw-fetch hit the ${FETCH_CAP} cap; some density flags are body-link-only (may over-flag related:-heavy notes).`
+    );
 }
 
 process.exit(totalFindings > 0 ? 1 : 0);

@@ -1,0 +1,7 @@
+# SKILL.md fenced blocks are literal artifacts — commands, payload shapes, sample
+# output, template shapes — copied verbatim by whoever follows the skill. Prettier
+# promotes fences and reflows hand-aligned samples: measured 2026-07-21, 18 of 25
+# changed substantively, including a fence-count change in vault-check-drift that
+# reflowed its sample report. Excluded wholesale, not per-file: the 7 that pass
+# today do so incidentally and flip the moment one gains an output block.
+skills/**/SKILL.md

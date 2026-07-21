@@ -92,7 +92,9 @@ const headers = {Authorization: `Bearer ${token}`};
 const put = async (contentType, payload, etag) => {
   if (dryRun) {
     console.log(`DRY RUN — would PUT ${path} (${contentType}${etag ? `, If-Match ${etag}` : ''})`);
-    console.log(payload.length > 2000 ? payload.slice(0, 2000) + `\n… [${payload.length} bytes]` : payload);
+    console.log(
+      payload.length > 2000 ? payload.slice(0, 2000) + `\n… [${payload.length} bytes]` : payload
+    );
     return;
   }
   const response = await fetch(url, {
@@ -133,7 +135,8 @@ const getDoc = async () => {
       `GET ${path}: composed view of the atomized folder ${path.replace(/\.md$/, '')}/ — no single file exists, and a round-trip write would create a shadowing flat file. Edit the folder's pieces instead.`
     );
   }
-  if (!text.startsWith('---\n')) fail(1, `GET ${path}: no frontmatter block — refusing a round-trip edit`);
+  if (!text.startsWith('---\n'))
+    fail(1, `GET ${path}: no frontmatter block — refusing a round-trip edit`);
   const end = text.indexOf('\n---\n', 4);
   if (end < 0) fail(1, `GET ${path}: unterminated frontmatter block`);
   return {head: text.slice(0, end + 5), body: text.slice(end + 5), etag};
@@ -148,7 +151,10 @@ const assertDoc = (frontmatter, body) => {
       fail(1, 'refusing write: frontmatter must be a JSON object');
     const nulls = Object.keys(frontmatter).filter(key => frontmatter[key] === null);
     if (nulls.length)
-      fail(1, `refusing write: null frontmatter value for ${nulls.join(', ')} — omit the key instead`);
+      fail(
+        1,
+        `refusing write: null frontmatter value for ${nulls.join(', ')} — omit the key instead`
+      );
   }
   const stripped = body.trim();
   if (!stripped || stripped === 'null')
@@ -175,7 +181,8 @@ if (fmFile) {
   for (const {old, new: replacement} of replaces) {
     const count = edited.split(old).length - 1;
     if (count === 0) fail(3, `replace assert failed — not found:\n${old.slice(0, 200)}`);
-    if (count > 1 && !all) fail(3, `replace assert failed — ${count} occurrences (use --all):\n${old.slice(0, 200)}`);
+    if (count > 1 && !all)
+      fail(3, `replace assert failed — ${count} occurrences (use --all):\n${old.slice(0, 200)}`);
     // function replacer: a string replacement would interpret $-patterns ($`, $$, $&)
     edited = all ? edited.split(old).join(replacement) : edited.replace(old, () => replacement);
   }
