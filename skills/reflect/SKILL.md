@@ -140,7 +140,24 @@ Read all three to dedupe; write only to vault + claude-config.
    ---
    ```
 
-7. **File ambiguous items to clarify-queue.** For each low/ambiguous candidate, append a `### Q-{date}-{nn}` block to `projects/agent-workflow/clarify-queue.md` under `## Pending`. Include transcript refs, the question, and 2-3 candidate interpretations. Read the file first, append, PUT back.
+7. **File ambiguous items to clarify-queue.** For each low/ambiguous candidate, append a block under `## Pending` in `projects/agent-workflow/clarify-queue.md`. Read the file first, append, PUT back.
+
+   **The heading must be `### Q-YYYY-MM-DD-NNN` and nothing else on that line.** `/clarify`'s parser matches `/### (Q-[\w-]+)\n/`, so a title after the id — `### Q-2026-07-20-001 — is there a rule for…` — fails to match and the item is **silently unlisted**: the file looks correct and `clarify-queue.mjs list` returns a clean `{"pending": 0}`, indistinguishable from an empty queue. (That happened on 2026-07-20; the helper now also reports an `unparsed` array and a stderr warning, but the format is still the thing to get right.) Copy this shape exactly:
+
+   ```markdown
+   ### Q-2026-07-20-001
+
+   - **Created:** YYYY-MM-DD (reflect, <host> <HHMM>)
+   - **Source:** project `<dir>`, session `<id>`, ts <epoch_ms>; report [[projects/agent-workflow/reports/<name>]]
+   - **Question:** <one sentence, ends with a question mark>
+   - **Context:** <what happened, and why the reading is ambiguous — enough that a reader months later needs no transcript>
+   - **Candidates:**
+     1. **<short label>.** <what this interpretation claims and where it would route>
+     2. **<short label>.** <…>
+     3. **<short label>.** <…>
+   ```
+
+   Two or three candidates; they must be genuinely distinct readings, not degrees of the same one. Include "no rule / one-off" whenever it is live — `/clarify` resolutions frequently land there, and omitting it biases the walk toward filing a rule.
 
 8. **Apply (if `--apply`).** Walk the high-confidence proposals one at a time:
 
