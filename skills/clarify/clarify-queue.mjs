@@ -58,15 +58,48 @@ const put = async (path, body, etag, contentType = 'text/markdown') => {
 // blocks are "### Q-..." headings under "## Pending", ending at the next ### / ## / EOF
 const parsePending = text => {
   const pending = text.match(/## Pending\n([\s\S]*?)(?=\n## |$)/)?.[1] ?? '';
-  return [...pending.matchAll(/### (Q-[\w-]+)\n([\s\S]*?)(?=\n### |$)/g)]
-    .map(m => ({id: m[1], block: `### ${m[1]}\n${m[2]}`.trimEnd(), body: m[2].trim()}));
+  const items = [...pending.matchAll(/### (Q-[\w-]+)\n([\s\S]*?)(?=\n### |$)/g)].map(m => ({
+    id: m[1],
+    block: `### ${m[1]}\n${m[2]}`.trimEnd(),
+    body: m[2].trim()
+  }));
+  // A heading the block regex rejects — a title on the ID line, a malformed id —
+  // otherwise vanishes: the file looks right and `list` returns a clean
+  // {pending: 0} indistinguishable from an empty queue, so the item sits
+  // invisible until someone remembers filing it. Report the headings that
+  // exist but did not parse. (Origin: /reflect 2026-07-20 filed
+  // "### Q-2026-07-20-001 — is there a durable rule…"; the regex requires a
+  // newline straight after the id, so the entry was silently unlisted.)
+  const parsed = new Set(items.map(i => i.id));
+  const unparsed = [...pending.matchAll(/^### (.+)$/gm)]
+    .map(m => m[1].trim())
+    .filter(h => !parsed.has(h));
+  return {items, unparsed};
 };
 
 const queue = await get(QUEUE);
-const items = parsePending(queue.text);
+const {items, unparsed} = parsePending(queue.text);
+
+if (unparsed.length) {
+  process.stderr.write(
+    `warning: ${unparsed.length} heading(s) under ## Pending did not parse as Q-items ` +
+      `and are NOT listed below — expected "### Q-<id>" alone on its line:\n` +
+      unparsed.map(h => `  ### ${h}\n`).join('')
+  );
+}
 
 if (command === 'list') {
-  console.log(JSON.stringify({pending: items.length, items: items.map(({id, body}) => ({id, body}))}, null, 2));
+  console.log(
+    JSON.stringify(
+      {pending: items.length, items: items.map(({id, body}) => ({id, body})), unparsed},
+      null,
+      2
+    )
+  );
+  // Exit 0 even with unparsed headings: `list` is a read, and a non-zero exit
+  // would cancel in-flight siblings if it ever shares a parallel Bash batch
+  // (CLAUDE.md § Tools). The stderr warning and the `unparsed` field carry the
+  // signal.
   process.exit(0);
 }
 
