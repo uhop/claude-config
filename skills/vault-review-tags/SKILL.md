@@ -115,8 +115,10 @@ prompt: |
   harness exactly as its Workflow section shows: prepare kind $KIND with
   --claim --holder "$HOLDER" --limit $LIMIT, judge every worksheet item per
   the skill's Judgment section (its stated biases are binding), write the
-  decisions file, resolve. Use "defer"/null rather than forcing a decision
-  on genuinely ambiguous items — the harness reopens them.
+  decisions file, resolve. Don't pass --out with a fixed scratchpad filename:
+  under --claim the harness auto-names the worksheet by holder, collision-proof
+  when sibling agents share one scratchpad. Use "defer"/null rather than forcing
+  a decision on genuinely ambiguous items — the harness reopens them.
   Return: the harness's JSON report plus a one-paragraph summary noting any
   ambiguous items you skipped.
 ```

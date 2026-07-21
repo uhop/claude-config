@@ -115,6 +115,9 @@ prompt: |
   vault-triage harness exactly as its Workflow section shows: prepare
   duplicate with --claim --holder "$HOLDER" --limit $LIMIT, judge every
   pair per the skill's Judgment table, write the decisions file, resolve.
+  Don't pass --out with a fixed scratchpad filename: under --claim the harness
+  auto-names the worksheet by holder, collision-proof when sibling agents share
+  one scratchpad.
   NEVER merge: mark true duplicates "merge-candidate" for the main
   session. When in doubt between "related" and "reject", prefer "reject" —
   cross-references must reflect real kinship, not embedding coincidence.

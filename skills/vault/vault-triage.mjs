@@ -8,6 +8,8 @@
 //
 //   vault-triage prepare <kind> [--limit=N] [--claim] [--holder=H] [--ttl=S]
 //                        [--scan[=MAX_DIST]] [--out=FILE]
+//     With --claim and no --out, the worksheet path defaults to a
+//     holder-namespaced temp file (collision-proof for concurrent agents).
 //   vault-triage resolve <kind> --worksheet=FILE --decisions=FILE
 //                        [--label=L] [--dry-run]
 //   vault-triage release <kind> --holder=H
@@ -30,6 +32,8 @@
 // Exits non-zero — run solo or guard with `|| true` in parallel Bash batches.
 
 import {readFileSync, writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
 import process from 'node:process';
 
 if (!import.meta.main)
@@ -243,6 +247,15 @@ const prepare = async () => {
     );
     items = response.items;
     totalPending = response.total;
+  }
+
+  // With --claim, default the worksheet path to a holder-namespaced temp file so
+  // concurrent sub-agents can't clobber each other: the harness pushes every
+  // sibling to one shared session scratchpad, so any fixed filename collides by
+  // construction, while the holder is unique per agent (CLAUDE.md § Scratch files).
+  if (opts.claim && !opts.out && holder) {
+    const safe = holder.replace(/[^a-zA-Z0-9._-]/g, '_');
+    opts.out = join(tmpdir(), `vault-triage-${safe}.json`);
   }
 
   const worksheet = {

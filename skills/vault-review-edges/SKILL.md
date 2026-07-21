@@ -92,9 +92,11 @@ prompt: |
   Read ~/.claude/skills/vault-review-edges/SKILL.md. Using the vault-triage
   harness exactly as its Workflow section shows: prepare edge_type with
   --claim --holder "$HOLDER" --limit $LIMIT, judge every worksheet item per
-  the skill's type table, write the decisions file, resolve. Default to
-  "reject" (cites is correct) when in doubt — don't force a type; honor any
-  `prior` field. Use "skip" for items you genuinely can't judge.
+  the skill's type table, write the decisions file, resolve. Don't pass --out
+  with a fixed scratchpad filename: under --claim the harness auto-names the
+  worksheet by holder, collision-proof when sibling agents share one scratchpad.
+  Default to "reject" (cites is correct) when in doubt — don't force a type;
+  honor any `prior` field. Use "skip" for items you genuinely can't judge.
   Return: the harness's JSON report plus a one-paragraph summary noting
   skipped items.
 ```

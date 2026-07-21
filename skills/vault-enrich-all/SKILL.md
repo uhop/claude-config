@@ -152,6 +152,9 @@ prompt: |
   requested; --limit $LIMIT), write the enrichment content for every
   worksheet item per § Generate enrichment fields (its quality bar and
   biases are binding; null = skip only for notes you cannot judge), apply.
+  The harness prints the worksheet to stdout — don't redirect it to a fixed
+  scratchpad filename; if you must write it to a file, namespace the name
+  uniquely (sibling agents share one scratchpad).
   Return: the apply report plus a one-paragraph summary.
 ```
 

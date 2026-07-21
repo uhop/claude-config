@@ -153,6 +153,14 @@ const collectTranscripts = () => {
 
 const transcripts = collectTranscripts();
 
+// A transcript whose mtime is within LIVE_WINDOW of the scan is still being
+// written — its tail is not yet on disk, so analyzing it silently under-reports
+// (silent-empty-result-ambiguity, producer side). Skip + surface it loudly so a
+// missed live session can't read as a genuinely quiet window.
+const scanMs = Date.now();
+const LIVE_WINDOW_MS = Number(opt('--live-window-secs', '120')) * 1000;
+const liveSessions = [];
+
 // Strip auto-inserted machine content (system reminders, command-message
 // blocks, stdout dumps) that Claude Code interleaves with user messages.
 // These are not user-authored text and must not be classified as such.
@@ -284,6 +292,16 @@ const SUPPRESSED_FAILURE_SUBSTRINGS = [
 let sessionsAnalyzed = 0;
 
 for (const t of transcripts) {
+  if (scanMs - t.mtime < LIVE_WINDOW_MS) {
+    liveSessions.push({
+      project: t.project,
+      session_id: t.session_id,
+      path: t.path,
+      mtime_iso: new Date(t.mtime).toISOString(),
+      age_seconds: Math.round((scanMs - t.mtime) / 1000)
+    });
+    continue;
+  }
   let content;
   try {
     content = readFileSync(t.path, 'utf8');
@@ -507,7 +525,7 @@ const output = {
   scan_window: {
     since: SINCE,
     start_iso: new Date(windowStartMs).toISOString(),
-    end_iso: new Date().toISOString()
+    end_iso: new Date(scanMs).toISOString()
   },
   filters: {
     project: PROJECT_FILTER,
@@ -516,8 +534,20 @@ const output = {
   totals,
   sessions_scanned: sessionsAnalyzed,
   transcripts_seen: transcripts.length,
+  live_sessions: liveSessions,
   signals
 };
+
+if (liveSessions.length > 0) {
+  process.stderr.write(
+    `WARNING: ${liveSessions.length} live session(s) skipped — transcript still ` +
+      `being written, tail not yet on disk. Re-run /reflect after they close:\n` +
+      liveSessions
+        .map(s => `  - ${s.project}/${s.session_id} (updated ${s.age_seconds}s ago)`)
+        .join('\n') +
+      '\n'
+  );
+}
 
 const json = JSON.stringify(output, null, 2);
 if (OUT_PATH) {
