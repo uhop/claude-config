@@ -15,6 +15,11 @@ import {readdirSync, readFileSync, statSync} from 'node:fs';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
 
+if (!import.meta.main)
+  throw new Error(
+    'profile.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const args = process.argv.slice(2);
 const flag = name => args.indexOf(name) !== -1;
 const opt = (name, fallback) => {

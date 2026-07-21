@@ -30,6 +30,11 @@ import {readdirSync, readFileSync, statSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 
+if (!import.meta.main)
+  throw new Error(
+    'bg-shells.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const args = process.argv.slice(2);
 const opt = (name, fallback) => {
   for (const a of args) {

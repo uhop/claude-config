@@ -26,6 +26,11 @@
 import {readFileSync, writeFileSync} from 'node:fs';
 import process from 'node:process';
 
+if (!import.meta.main)
+  throw new Error(
+    'enrich-batch.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const COMPLEXITY = ['prose', 'code-heavy', 'tabular', 'mixed', 'hub', 'log-entry'];
 const EDGE_TYPES = [
   'cites',

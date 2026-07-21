@@ -16,6 +16,11 @@
 import {readFileSync} from 'node:fs';
 import process from 'node:process';
 
+if (!import.meta.main)
+  throw new Error(
+    'vault-put.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const usage = `Usage:
   vault-put PATH --fm FM.json --body BODY.md [--if-match ETAG] [--dry-run]
   vault-put PATH --append FRAGMENT.md [--dry-run]

@@ -21,6 +21,11 @@ import {homedir} from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
+if (!import.meta.main)
+  throw new Error(
+    'repo-facts.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const args = process.argv.slice(2);
 const contextOnly = args.includes('--context');
 const root = path.resolve(args.find(a => !a.startsWith('--')) ?? '.');

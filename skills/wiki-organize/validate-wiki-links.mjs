@@ -17,6 +17,11 @@
 import {readdirSync, readFileSync, statSync, existsSync} from 'node:fs';
 import path from 'node:path';
 
+if (!import.meta.main)
+  throw new Error(
+    'validate-wiki-links.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const [root, ...only] = process.argv.slice(2);
 if (!root || !existsSync(root) || !statSync(root).isDirectory()) {
   console.error('usage: validate-wiki-links.mjs <wiki-dir> [page.md ...]');

@@ -23,6 +23,11 @@ import path from 'node:path';
 import process from 'node:process';
 import {fileURLToPath} from 'node:url';
 
+if (!import.meta.main)
+  throw new Error(
+    'make-migration.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const fail = (code, message) => {
   console.error(message);
   process.exit(code);

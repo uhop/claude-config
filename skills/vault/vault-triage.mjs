@@ -32,6 +32,11 @@
 import {readFileSync, writeFileSync} from 'node:fs';
 import process from 'node:process';
 
+if (!import.meta.main)
+  throw new Error(
+    'vault-triage.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const KINDS = ['new_tag', 'tag_suggestion', 'edge_type', 'duplicate'];
 const EDGE_TYPES = [
   'supersedes',

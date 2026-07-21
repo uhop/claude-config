@@ -17,6 +17,11 @@
 import {readFileSync, writeFileSync} from 'node:fs';
 import process from 'node:process';
 
+if (!import.meta.main)
+  throw new Error(
+    'compact-batch.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const PASS_CAP = 20; // per-pass archive cap — repeated passes beat one mega-summary
 
 const fail = (code, message) => {

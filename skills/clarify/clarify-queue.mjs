@@ -15,6 +15,11 @@
 
 import process from 'node:process';
 
+if (!import.meta.main)
+  throw new Error(
+    'clarify-queue.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const QUEUE = 'projects/agent-workflow/clarify-queue.md';
 const ARCHIVE = 'projects/agent-workflow/clarify-queue-archive.md';
 

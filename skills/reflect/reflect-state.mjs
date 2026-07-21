@@ -22,6 +22,11 @@ import {homedir, hostname} from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
+if (!import.meta.main)
+  throw new Error(
+    'reflect-state.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const fail = (code, message) => {
   console.error(message);
   process.exit(code);

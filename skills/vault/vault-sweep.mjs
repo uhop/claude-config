@@ -26,6 +26,11 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
+if (!import.meta.main)
+  throw new Error(
+    'vault-sweep.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const STAGES = [
   ['enrich_backfill', 'enrich_stale'],
   ['new_tag'],

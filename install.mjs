@@ -7,6 +7,11 @@ import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {homedir} from 'node:os';
 
+if (!import.meta.main)
+  throw new Error(
+    'install.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const SOURCE = dirname(fileURLToPath(import.meta.url));
 const TARGET = join(homedir(), '.claude');
 const INSTALL = ['CLAUDE.md', 'settings.json', 'commands', 'skills', 'hooks'];

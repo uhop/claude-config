@@ -30,6 +30,11 @@
 import {readFileSync, writeFileSync} from 'node:fs';
 import process from 'node:process';
 
+if (!import.meta.main)
+  throw new Error(
+    'related-batch.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const VERDICTS = ['accept', 'skip', 'ambiguous', 'supersede-candidate'];
 const DISTANCE_CAP = 0.3; // 99%-recall operating point (embedding baseline)
 const band = distance =>

@@ -18,6 +18,11 @@
 
 import {execFileSync} from 'node:child_process';
 
+if (!import.meta.main)
+  throw new Error(
+    'vault-lint.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
+  );
+
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
   for (const a of args) {
