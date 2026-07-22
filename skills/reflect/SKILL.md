@@ -193,10 +193,21 @@ Read all three to dedupe; write only to vault + claude-config.
    `date +%s%3N` truncation; ANSI-wrapped `node -e` output breaking
    `jq --argjson`) — don't hand-roll the timestamps again.
 
+## Cadence — when to run
+
+`/reflect` is a **cross-session, per-machine** sweep, not a per-session step — it looks *back* over recent **closed** sessions for patterns in how the collaboration went. That is a different axis from `/vault wrap` (which closes *one* session's content) and unrelated to `/vault sweep` (vault hygiene). Two properties fix the timing:
+
+- **It needs accumulation.** A signal reaches **high** confidence only on recurrence — ≥ 2 sessions or a cross-machine match (step 4). Per-session it mostly sees single instances; it is built to sweep a window, not a session.
+- **It reads only completed transcripts.** The live session's tail isn't on disk yet — `reflect.mjs` flags it, skips it, and warns (§ When NOT to run).
+
+**Best practice:** run it at the **start** of a fresh session — recent sessions are then closed and on disk — then `/clarify` to drain what it filed. The default `--since=last-run` auto-scopes the window to everything since your last reflect on this box. Rhythm ≈ weekly, or after a cluster of substantive sessions — enough closed sessions that patterns emerge.
+
+**Not** chained after `/vault wrap`: wrap runs *inside* the session it closes, so that session is still live and reflect would skip the very work you just wrapped. **Not** after `/vault sweep`: orthogonal — reflect's drain path is `projects/agent-workflow/queue.md` + `/clarify`, not the vault maintenance queues. And **per-machine** — transcripts are local-only (§ Limitations), so run it on each box you work on; a box that never reflects contributes no cross-machine evidence.
+
 ## When NOT to run
 
 - The first time on a fresh machine — `~/.claude/projects/` will be empty or sparse. Wait until you have ≥ 2 sessions worth of transcripts.
-- Mid-conversation — `/reflect` reads completed sessions. The current session isn't fully in scope yet.
+- Mid-conversation — `/reflect` reads completed sessions; the current one's tail isn't on disk. `reflect.mjs` flags any transcript modified within `--live-window-secs` (default 120) of the scan as a live session, excludes it from `sessions_scanned`, and warns on stderr — so a mid-session run is *visible*, not silently lossy, but it still skips today's work. Reflect from a later session instead.
 - Right after a `claude-config-update` pull on a non-primary machine — its transcripts are local-only, so cross-machine signals will be weak. Run on the host where most work happens.
 
 ## Limitations (first iteration)
