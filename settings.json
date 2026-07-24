@@ -6,11 +6,7 @@
       "Bash(git for-each-ref:*)",
       "Bash(git show-ref:*)"
     ],
-    "deny": [
-      "Bash(git push:*)",
-      "Bash(git tag:*)",
-      "Bash(npm publish:*)"
-    ],
+    "deny": ["Bash(git push:*)", "Bash(git tag:*)", "Bash(npm publish:*)"],
     "defaultMode": "auto"
   },
   "hooks": {
@@ -25,6 +21,18 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/destructive-op-gate.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/vault-resume-brief.sh",
+            "timeout": 5,
+            "statusMessage": "Fetching vault brief"
           }
         ]
       }
@@ -44,10 +52,7 @@
   "mcpServers": {
     "vault": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@uhop/vault-storage-mcp@latest"
-      ],
+      "args": ["-y", "@uhop/vault-storage-mcp@latest"],
       "env": {
         "VAULT_API_URL": "${VAULT_API_URL}",
         "VAULT_API_TOKEN": "${VAULT_API_TOKEN}"

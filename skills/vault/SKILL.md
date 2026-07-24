@@ -83,6 +83,7 @@ API endpoints (invoked via `vault-curl <path> [curl-options...]`):
   - Construct the payload with `jq` and `--rawfile` to safely embed a body that contains arbitrary characters — write scratch under a `WORK=$(mktemp -d)` dir, not a hardcoded `/tmp` name (CLAUDE.md § "Scratch files"): `jq --null-input --rawfile body "$WORK/body.md" '{frontmatter: {title: "X", ...}, body: $body}' > "$WORK/payload.json"`.
   - **Prose FM values (`title`, `agent.summary`) go via `--arg`, never as inline jq literals.** An apostrophe in an inline literal closes the single-quoted jq program (yields a bash `syntax error near unexpected token`). `--rawfile` already covers the body; `--arg name "$VALUE"` (apostrophe-safe inside double quotes, referenced as `$name` in the filter) covers FM strings the same way. Hit 2026-06-15 on a session-log `agent.summary` containing "JS's".
   - Same downstream FM merge / closed-enum validation / auto-managed-key rejection / `created`-`updated` indexer-override as the markdown mode.
+  - **The FM merge is union-only — omitting a key keeps the stored value; to *remove* a top-level key, send the reserved value `"__unset__"`** (server ≥ 2026-07-23; idempotent on absent keys). Below top level it 400s (`nested_unset_sentinel`) — nested objects/arrays are replaced wholesale, so omit the key from the nested object instead. On an older server the sentinel is stored as a literal string — don't send it there.
 - **Write (markdown — round-trip only)**: `vault-curl /vault/{path} -X PUT -H 'Content-Type: text/markdown' --data-binary @file.md`
   - **Never hand-author YAML through this mode** — that's the recurring quoting-trap failure class (colon-space, leading `@`/`*`/`-`/`?`, hex/bool/date shadows), and per the 2026-06-11 decision it is reserved for the UI editor and for verbatim round-trips: GET a server-emitted file, text-edit the *body only*, PUT it back. The YAML you re-send was machine-serialized, so it's safe. Any FM change → use the JSON path above.
   - Add `-o /dev/null -w "%{http_code}\n"` to confirm a 204 without flooding stdout (works for either Content-Type).
@@ -245,9 +246,13 @@ are skipped — the user is still iterating on them.
    at embed time.
 6. **Archive the source.** After successful ingestion of a single raw
    note, in this order:
-   - PUT the source with `ready` removed and `processed: true` added
+   - PUT the source with `ready: "__unset__"` and `processed: true`
      (and a `> Ingested YYYY-MM-DD → [[derived/note]]` footer pointing
-     at the primary derived target if there is one).
+     at the primary derived target if there is one). `"__unset__"` is
+     the server's FM key-removal sentinel (2026-07-23) — FM is
+     union-merged on write, so *omitting* a key never deletes it. On an
+     older server the sentinel is stored as a literal string; use
+     `ready: false` there instead.
    - `POST /vault/move` from `raw/<name>.md` to
      `raw/archive/<YYYY-MM-DD>-<name>.md` so the inbox surfaces only
      pending material.
@@ -343,7 +348,16 @@ Save a session log.
 
 ### /vault resume
 
-Rebuild context from the vault. Several steps below run as parallel Bash
+Rebuild context from the vault. Note: a SessionStart hook
+(`hooks/vault-resume-brief.sh`, 2026-07-23) already injects a few `[vault]`
+digest lines at session start via `GET /system/resume-brief` — lint state,
+pending-suggestion count, the project's Active titles + ready/blocked counts,
+a feedback.md pointer, and the latest log title. The digest is a *trigger*,
+never a substitute: it carries no bodies, so feedback rules, logs, and the
+drift check still come from this workflow. On a pre-brief server (404) the
+hook injects nothing, silently.
+
+Several steps below run as parallel Bash
 calls; guard every `vault-curl … | jq …` pipe with `|| true` per § "Guard
 `jq` pipes in parallel Bash batches" so a malformed response can't cancel
 `check-drift.sh` running in the same batch.
