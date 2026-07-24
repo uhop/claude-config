@@ -6,12 +6,19 @@
 //   vault-put PATH --fm FM.json --body BODY.md      # full JSON write (create/replace)
 //   vault-put PATH --append FRAGMENT.md             # round-trip body append, FM verbatim
 //   vault-put PATH --replace OLD NEW [...]          # asserted round-trip body edits
-// Round-trip modes GET first and send If-Match automatically; a concurrent
-// write surfaces as 412 (exit 2), and a composed folder view (weak ETag /
-// X-Vault-Composed — no on-disk file) is refused up front instead of
-// materializing a shadowing flat file. Replace asserts exactly one
-// occurrence unless --all (missing or ambiguous → exit 3, nothing written).
-// Null/empty documents are refused on every mode — removal is DELETE.
+// Round-trip modes try the server's atomic POST /vault/edit first
+// (2026-07-24): the RMW happens server-side in one request — no GET, no
+// If-Match dance, same assert semantics. A pre-edit server answers 405
+// (the path matches the {path} wildcard under other methods), which falls
+// back to the classic GET → edit → If-Match PUT round-trip. Multi-pair
+// --replace invocations stay on the round-trip so they remain
+// all-or-nothing (the server op is one replace per call). A concurrent
+// write on the fallback surfaces as 412 (exit 2), and a composed folder
+// view (weak ETag / X-Vault-Composed — no on-disk file) is refused on
+// both paths instead of materializing a shadowing flat file. Replace
+// asserts exactly one occurrence unless --all (missing or ambiguous →
+// exit 3, nothing written). Null/empty documents are refused on every
+// mode — removal is DELETE.
 
 import {readFileSync} from 'node:fs';
 import process from 'node:process';
@@ -129,6 +136,33 @@ const put = async (contentType, payload, etag) => {
   console.log(`${response.status} ${path} etag=${response.headers.get('etag') ?? ''}`);
 };
 
+// One op against POST /vault/edit. Returns true when the server handled it
+// (or dry-run printed it); false only on 405 — a pre-edit server, where the
+// caller falls back to the GET → edit → If-Match PUT round-trip.
+const editOp = async op => {
+  if (dryRun) {
+    console.log(`DRY RUN — would POST /vault/edit ${JSON.stringify({path, ...op}).slice(0, 2000)}`);
+    return true;
+  }
+  const response = await fetch(`${base.replace(/\/+$/, '')}/vault/edit`, {
+    method: 'POST',
+    headers: {...headers, 'Content-Type': 'application/json'},
+    body: JSON.stringify({path, ...op})
+  });
+  if (response.status === 405) return false;
+  const text = await response.text();
+  let json = null;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+  if (response.status === 409 && json?.code === 'replace_assert_failed')
+    fail(3, `replace assert failed — ${json.error}`);
+  if (!response.ok) fail(1, `${response.status} ${response.statusText} — ${text.slice(0, 500)}`);
+  const replaced = json?.replaced !== undefined ? ` replaced=${json.replaced}` : '';
+  console.log(`${response.status} ${path} etag=${json?.etag ?? ''}${replaced}`);
+  return true;
+};
+
 const getDoc = async () => {
   const response = await fetch(url, {headers});
   if (!response.ok) fail(1, `GET ${path}: ${response.status} ${response.statusText}`);
@@ -175,22 +209,34 @@ if (fmFile) {
   assertDoc(frontmatter, body);
   await put('application/json', JSON.stringify({frontmatter, body}), ifMatch);
 } else if (appendFile) {
-  const {head, body, etag} = await getDoc(),
-    fragment = readFileSync(appendFile, 'utf8'),
-    merged = body.replace(/\s*$/, '\n') + fragment;
-  assertDoc(undefined, merged);
-  await put('text/markdown', head + merged, etag);
-} else {
-  const {head, body, etag} = await getDoc();
-  let edited = body;
-  for (const {old, new: replacement} of replaces) {
-    const count = edited.split(old).length - 1;
-    if (count === 0) fail(3, `replace assert failed — not found:\n${old.slice(0, 200)}`);
-    if (count > 1 && !all)
-      fail(3, `replace assert failed — ${count} occurrences (use --all):\n${old.slice(0, 200)}`);
-    // function replacer: a string replacement would interpret $-patterns ($`, $$, $&)
-    edited = all ? edited.split(old).join(replacement) : edited.replace(old, () => replacement);
+  const fragment = readFileSync(appendFile, 'utf8');
+  if (!(await editOp({op: 'append', text: fragment}))) {
+    const {head, body, etag} = await getDoc(),
+      merged = body.replace(/\s*$/, '\n') + fragment;
+    assertDoc(undefined, merged);
+    await put('text/markdown', head + merged, etag);
   }
-  assertDoc(undefined, edited);
-  await put('text/markdown', head + edited, etag);
+} else {
+  const single =
+    replaces.length === 1 &&
+    (await editOp({
+      op: 'replace',
+      from: replaces[0].old,
+      to: replaces[0].new,
+      ...(all ? {all: true} : {})
+    }));
+  if (!single) {
+    const {head, body, etag} = await getDoc();
+    let edited = body;
+    for (const {old, new: replacement} of replaces) {
+      const count = edited.split(old).length - 1;
+      if (count === 0) fail(3, `replace assert failed — not found:\n${old.slice(0, 200)}`);
+      if (count > 1 && !all)
+        fail(3, `replace assert failed — ${count} occurrences (use --all):\n${old.slice(0, 200)}`);
+      // function replacer: a string replacement would interpret $-patterns ($`, $$, $&)
+      edited = all ? edited.split(old).join(replacement) : edited.replace(old, () => replacement);
+    }
+    assertDoc(undefined, edited);
+    await put('text/markdown', head + edited, etag);
+  }
 }

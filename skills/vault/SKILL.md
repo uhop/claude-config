@@ -44,10 +44,14 @@ needed:
   payloads follow the same rule — never `body: null`.
 - **Never let scratch cleanup follow fallible steps unguarded** — chain
   `rm -rf "$WORK"` with `&&` (CLAUDE.md § Scratch files).
-- Round-trip modes send `If-Match` from their own GET: a concurrent write
-  surfaces as a clean 412 (exit 2), never a silent clobber. FM changes still
-  require the JSON mode; `--append`/`--replace` keep the server-emitted YAML
-  verbatim (the safe round-trip per the 2026-06-11 decision), and the
+- Round-trip modes go through the server's atomic `POST /vault/edit` when it
+  exists (server ≥ 2026-07-24): the read-modify-write happens server-side in
+  one request — no GET, no scratch files, no If-Match dance, identical assert
+  semantics. On a pre-edit server (405) they transparently fall back to the
+  classic GET → edit → `If-Match` PUT, where a concurrent write surfaces as a
+  clean 412 (exit 2), never a silent clobber. FM changes still require the
+  JSON mode; `--append`/`--replace` keep the server-emitted YAML verbatim
+  (the safe round-trip per the 2026-06-11 decision), and the
   indexer/enrichment pipeline handles `updated`/staleness downstream.
 - **Composed folder views can't be round-trip-edited.** A GET of `X.md`
   where only the atomized folder `X/` exists returns a *composed* document
@@ -88,6 +92,7 @@ API endpoints (invoked via `vault-curl <path> [curl-options...]`):
   - **Never hand-author YAML through this mode** — that's the recurring quoting-trap failure class (colon-space, leading `@`/`*`/`-`/`?`, hex/bool/date shadows), and per the 2026-06-11 decision it is reserved for the UI editor and for verbatim round-trips: GET a server-emitted file, text-edit the *body only*, PUT it back. The YAML you re-send was machine-serialized, so it's safe. Any FM change → use the JSON path above.
   - Add `-o /dev/null -w "%{http_code}\n"` to confirm a 204 without flooding stdout (works for either Content-Type).
 - **Conditional writes (`If-Match`, use for read-modify-write on shared docs)**: `GET /vault/{path}` returns an `ETag` header (sha256 of the served bytes); send it back as `-H 'If-Match: <etag>'` on the PUT (either Content-Type) and the write lands only if the document hasn't changed in between — otherwise **412** `precondition_failed` with `details.current_etag`, meaning another writer got there first: re-GET, re-apply your edit to the fresh copy, retry with the new tag. Adopt this for any flow that GETs a shared doc (queue.md, learnings.md, archives), modifies it, and PUTs it back — it converts silent last-writer-wins clobbering into a visible, retryable conflict. Capture the ETag with `-D-` or `-o /dev/null -D- | grep -i etag`; successful PUTs (204) return the new `ETag` so chained conditional edits don't need a re-GET. `If-Match` never creates files (412 on a missing path); plain unconditional PUT remains valid for docs only one session touches.
+- **Edit (atomic server-side body op)**: `vault-curl /vault/edit -X POST -H 'Content-Type: application/json' --data-binary @op.json` with `{path, op: "append", text}` or `{path, op: "replace", from, to, all?}` — one op per call, server ≥ 2026-07-24. Replace is asserted (absent `from` → 409, ambiguous without `all` → 409 with the count — never a silent no-op); append joins after a single trailing newline; FM rides verbatim (`updated` re-stamped). Prefer `vault-put --append/--replace`, which calls this automatically with a round-trip fallback; reach for the raw endpoint only from contexts without vault-put.
 - **Supersede (replace a note, archiving the old)**: `vault-curl /vault/supersede -X POST -H 'Content-Type: application/json' --data-binary @payload.json` with `{old_path, new_path?, frontmatter, body}` — the successor in the standard JSON write shape; `new_path` defaults to `old_path` (supersede-in-place: the successor takes over the path, so inbound wikilinks resolve to the replacement). Use this — never DELETE+PUT or a wholesale overwrite — whenever a write *replaces* a note rather than evolving it: the old note moves to `<dir>/archive/<YYYY>/<name>` with its record id intact (edges/embeddings/suggestions survive) and gets `status: superseded`; the successor's body is auto-appended a `> Supersedes [[<archived-path>]].` footer that backs the typed `supersedes` edge (don't add your own). Validation-first — a rejected request (bad FM, occupied `new_path`/archive slot) mutates nothing. Routine edits to an existing note stay plain PUTs; supersession is for replacement semantics.
 - **List**: `vault-curl /vault/{path}/ -s` (trailing slash → `{"files": [...]}`)
 - **Delete**: `vault-curl /vault/{path} -X DELETE` — for junk with zero history value; a note retired *in favor of other content* should be superseded (or moved to an archive folder), not deleted.
