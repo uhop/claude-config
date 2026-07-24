@@ -84,13 +84,23 @@ an alias that loses specificity (`indexer-design` → `indexing`) is wrong.
 only clear typos/markers. A wrong reject destructively strips tags from
 records (the recorded Haiku failure mode — § Sub-agent mode).
 
+**`origin: proposed` items** (payload field, server ≥ 2026-07-24): the tag
+came from `agent.tags_suggested` and is NOT on the record's FM — it is the
+companion filing that routes an out-of-taxonomy `tag_suggestion`'s taxonomy
+question into this queue (before it, such suggestions were a two-queue
+deadlock: unacceptable taxonomy-first, unroutable — the 2026-07-20
+`blindspot` stuck floor). Judge exactly as above; the reject-side FM strip
+is a harmless no-op (the server's tag DELETE is idempotent for absent
+tags). A reject here means the companion `tag_suggestion` should be
+rejected too — same sweep, next stage.
+
 ## Judgment — `tag_suggestion` (per record × tag)
 
 | Action | When to choose | Effect |
 |---|---|---|
 | **accept** | The tag accurately describes the record and matches how the tag is used elsewhere. | Server realizes it on FM `tags:`; row settles as `tag-realized`. |
 | **reject** | Tangential, redundant with an existing tag on the record, or misframes the content. | Row flips; candidate stripped from `agent.tags_suggested`. |
-| **defer** | Valid tag but not yet in the taxonomy, and you don't want to mint a canonical here. | Left pending (claim released); taxonomy expansion belongs in the `new_tag` flow. |
+| **defer** | Valid tag but not yet in the taxonomy, and you don't want to mint a canonical here. | Left pending (claim released). On server ≥ 2026-07-24 the taxonomy question already sits in the `new_tag` queue as a companion (`origin: proposed`) — triage that first (sweep stage order does this); if the companion was **rejected**, reject this too instead of deferring again (deferring forever was the 2026-07-20 stuck-floor bug). On an older server: mint via `POST /tags/taxonomy` directly, or reject. |
 
 **Bias toward accept** — `tags_suggested` was produced under
 suggest-only-confidently-relevant instructions. Reject only on clear
