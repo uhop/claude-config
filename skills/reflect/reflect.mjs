@@ -16,7 +16,17 @@
 //   reflect.mjs --include-sidechain          # include sub-agent transcripts
 //   reflect.mjs --max-excerpt-chars N        # cap each excerpt (default 800)
 
-import {readdirSync, readFileSync, writeFileSync, statSync, existsSync, mkdirSync} from 'node:fs';
+import {
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  statSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  closeSync
+} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
@@ -160,6 +170,40 @@ const transcripts = collectTranscripts();
 const scanMs = Date.now();
 const LIVE_WINDOW_MS = Number(opt('--live-window-secs', '120')) * 1000;
 const liveSessions = [];
+// Floor for state_watermark_iso: the next run's window must start at or before
+// the earliest row of any session we skipped, or those rows land before
+// windowStartMs and get dropped at the row filter below — a skipped session
+// silently becoming an unreachable one.
+const liveFloorsMs = [];
+
+// First user/assistant row timestamp, read from the head of the file rather
+// than the whole transcript (these run to tens of MB). null when undetermined.
+const firstRowMs = fp => {
+  let fd;
+  try {
+    fd = openSync(fp, 'r');
+    const buf = Buffer.alloc(65536);
+    const n = readSync(fd, buf, 0, buf.length, 0);
+    const lines = buf.subarray(0, n).toString('utf8').split('\n');
+    if (n === buf.length) lines.pop(); // last line may be truncated mid-JSON
+    for (const line of lines) {
+      if (!line) continue;
+      let row;
+      try {
+        row = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (row.type !== 'user' && row.type !== 'assistant') continue;
+      if (row.timestamp) return Date.parse(row.timestamp);
+    }
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+  return null;
+};
 
 // Strip auto-inserted machine content (system reminders, command-message
 // blocks, stdout dumps) that Claude Code interleaves with user messages.
@@ -293,13 +337,17 @@ let sessionsAnalyzed = 0;
 
 for (const t of transcripts) {
   if (scanMs - t.mtime < LIVE_WINDOW_MS) {
+    const firstMs = firstRowMs(t.path);
     liveSessions.push({
       project: t.project,
       session_id: t.session_id,
       path: t.path,
       mtime_iso: new Date(t.mtime).toISOString(),
-      age_seconds: Math.round((scanMs - t.mtime) / 1000)
+      age_seconds: Math.round((scanMs - t.mtime) / 1000),
+      first_row_iso: firstMs === null ? null : new Date(firstMs).toISOString()
     });
+    // undetermined first row → don't advance at all for this session
+    liveFloorsMs.push(firstMs === null ? windowStartMs : firstMs);
     continue;
   }
   let content;
@@ -535,6 +583,7 @@ const output = {
   sessions_scanned: sessionsAnalyzed,
   transcripts_seen: transcripts.length,
   live_sessions: liveSessions,
+  state_watermark_iso: new Date(Math.min(scanMs, ...liveFloorsMs)).toISOString(),
   signals
 };
 
@@ -545,7 +594,9 @@ if (liveSessions.length > 0) {
       liveSessions
         .map(s => `  - ${s.project}/${s.session_id} (updated ${s.age_seconds}s ago)`)
         .join('\n') +
-      '\n'
+      `\nStep 9 MUST pass --watermark="${output.state_watermark_iso}" — advancing ` +
+      `past these sessions puts their already-written rows before the next ` +
+      `window start, where the row filter drops them.\n`
   );
 }
 

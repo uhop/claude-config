@@ -52,6 +52,8 @@ Read all three to dedupe; write only to vault + claude-config.
      echo "scan written: $WORK/scan.json"
    ```
 
+   `state_watermark_iso` is what step 9 records as the last run — **not** the scan time. It equals `end_iso` on a clean run, but clamps back to the earliest row of any live session the scanner skipped. Pass it through verbatim; see step 9.
+
    The script writes JSON to stdout AND to the `--out` path. `Read` that path — captured from the `scan written: …` line above (CLAUDE.md § "Scratch files": reuse the literal `mktemp -d` dir across calls, don't re-`mktemp`) — to consume. Output shape:
 
    ```json
@@ -60,6 +62,8 @@ Read all three to dedupe; write only to vault + claude-config.
      "totals": {"corrections": N, "confirmations": N, "stuck_loops": N, "repeated_failures": N, "surprises": N},
      "sessions_scanned": N,
      "transcripts_seen": N,
+     "live_sessions": [{project, session_id, path, mtime_iso, age_seconds, first_row_iso}],
+     "state_watermark_iso": "...",
      "signals": {
        "corrections":       [{kind, project, session_id, ts, excerpt}, ...],
        "confirmations":     [{...}],
@@ -180,8 +184,10 @@ Read all three to dedupe; write only to vault + claude-config.
 9. **Update state.** After the report writes successfully:
 
    ```bash
-   ~/.claude/skills/reflect/reflect-state.mjs --sessions=N --signals="<one line>" --report="[[projects/agent-workflow/reports/<name>]]"
+   ~/.claude/skills/reflect/reflect-state.mjs --sessions=N --signals="<one line>" --report="[[projects/agent-workflow/reports/<name>]]" --watermark="<state_watermark_iso from scan.json>"
    ```
+
+   **Always pass `--watermark` from `scan.json`, never let it default to wall-clock.** The scanner filters rows by timestamp against the window start, so a watermark set past a session it skipped as live puts that session's already-written rows *before* the next window and drops them — the live-session warning gets emitted and then immediately invalidated by the state write. `state_watermark_iso` is already clamped to the earliest row of any skipped session, so passing it is the whole fix. (Filed 2026-07-28 from the nuke run: advancing on wall-clock would have discarded 680 rows of a substantive session; four prior runs on this host had skipped live sessions and advanced past them regardless.)
 
    One in-process run writes both stores: the local cache
    `~/.cache/reflect/last-run.json` (the functional authority

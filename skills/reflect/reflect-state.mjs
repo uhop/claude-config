@@ -14,6 +14,13 @@
 //      writer surfaces as a clean 412 (exit 2), never a clobber.
 //
 //   reflect-state.mjs [--sessions=N] [--signals=TEXT] [--report=[[wikilink]]]
+//                     [--watermark=ISO]
+//
+// --watermark overrides wall-clock as the recorded last-run time. Pass
+// scan.json's state_watermark_iso: reflect.mjs clamps it to the earliest row of
+// any live session it skipped, so the next --since=last-run window still
+// reaches those sessions once they close. Wall-clock would step over them and
+// the row filter would drop everything they had already written.
 //
 // Exit 0 ok · 1 HTTP error · 2 usage/412.
 
@@ -37,6 +44,7 @@ const base = process.env.VAULT_API_URL?.replace(/\/+$/, ''),
 if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
 
 const extras = {};
+let watermark = null;
 for (const arg of process.argv.slice(2)) {
   const [flag, value] = arg.includes('=')
     ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
@@ -51,10 +59,15 @@ for (const arg of process.argv.slice(2)) {
     case '--report':
       extras.report = value;
       break;
+    case '--watermark':
+      watermark = new Date(value);
+      if (Number.isNaN(watermark.getTime())) fail(2, `--watermark: unparseable date: ${value}`);
+      break;
     case '--help':
     case '-h':
       console.log(
-        'Usage: reflect-state.mjs [--sessions=N] [--signals=TEXT] [--report=[[wikilink]]]'
+        'Usage: reflect-state.mjs [--sessions=N] [--signals=TEXT] [--report=[[wikilink]]]\n' +
+          '                         [--watermark=ISO]'
       );
       process.exit(0);
     default:
@@ -62,7 +75,7 @@ for (const arg of process.argv.slice(2)) {
   }
 }
 
-const now = new Date();
+const now = watermark ?? new Date();
 const entry = {last_run_iso: now.toISOString(), last_run_ms: now.getTime(), ...extras};
 
 const cacheDir = path.join(homedir(), '.cache', 'reflect');
