@@ -66,5 +66,6 @@
         "VAULT_API_TOKEN": "${VAULT_API_TOKEN}"
       }
     }
-  }
+  },
+  "model": "claude-fable-5[1m]"
 }
