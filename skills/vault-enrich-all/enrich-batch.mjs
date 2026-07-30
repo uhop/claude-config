@@ -190,8 +190,19 @@ const emptyBody = body => {
   return stripped.length === 0 || stripped === 'null';
 };
 
+// Mask code regions first (mirrors vault-storage src/markdown/wikilinks.ts) — a stray
+// `[[` inside inline code must not swallow body text up to the next real link.
+const maskCode = text =>
+  text
+    .replace(/(^|\n)([ \t]*)(```|~~~)[^\n]*\n[\s\S]*?\n\2\3[ \t]*(?=\n|$)/g, s =>
+      s.replace(/[^\n]/g, ' ')
+    )
+    .replace(/`+[^`\n]+?`+/g, s => s.replace(/[^\n]/g, ' '));
+
+const WIKILINK_RE = /\[\[([^\]\n|[]+?)(?:\|[^\]]*)?\]\]/g;
+
 const wikilinks = body => [
-  ...new Set([...body.matchAll(/\[\[([^\]]+)\]\]/g)].map(m => `[[${m[1]}]]`))
+  ...new Set([...maskCode(body).matchAll(WIKILINK_RE)].map(m => `[[${m[1].trim()}]]`))
 ];
 
 // --- prepare -----------------------------------------------------------------

@@ -141,6 +141,17 @@ const pool = async (jobs, width = 6) => {
 const pathKey = p => p.replace(/\.md$/, '');
 const today = () => new Date().toISOString().slice(0, 10);
 
+// Mask code regions first (mirrors vault-storage src/markdown/wikilinks.ts) — a stray
+// `[[` inside inline code must not swallow body text up to the next real link.
+const maskCode = text =>
+  text
+    .replace(/(^|\n)([ \t]*)(```|~~~)[^\n]*\n[\s\S]*?\n\2\3[ \t]*(?=\n|$)/g, s =>
+      s.replace(/[^\n]/g, ' ')
+    )
+    .replace(/`+[^`\n]+?`+/g, s => s.replace(/[^\n]/g, ' '));
+
+const WIKILINK_RE = /\[\[([^\]\n|[]+?)(?:\|[^\]]*)?\]\]/g;
+
 // --- prepare -----------------------------------------------------------------
 
 const reviewedSources = async () => {
@@ -198,7 +209,8 @@ const prepare = async () => {
     batch.map(source => async () => {
       const fm = await api('GET', `/sections/${source.record_id}/fm`);
       const related = fm.frontmatter.related ?? [];
-      const links = [...String(fm.body ?? '').matchAll(/\[\[([^\]]+)\]\]/g)].map(m => m[1]);
+      const masked = maskCode(String(fm.body ?? ''));
+      const links = [...masked.matchAll(WIKILINK_RE)].map(m => m[1].trim());
       const known = new Set([
         ...related.map(r => pathKey(r.replace(/^\[\[|\]\]$/g, ''))),
         ...links.map(pathKey)
