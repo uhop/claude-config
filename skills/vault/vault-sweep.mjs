@@ -19,6 +19,8 @@
 //   3 tag_suggestion ∥ edge_type
 //   4 duplicate
 //   5 compaction_candidate
+//   6 report (inefficiency_detected + infrastructure_upgrade triage — last,
+//     so review_backlog_high verification sees the post-drain queue)
 //
 // Exit 0 (plans and done are both success) · 1 HTTP failure · 2 usage.
 
@@ -36,13 +38,16 @@ const STAGES = [
   ['new_tag'],
   ['tag_suggestion', 'edge_type'],
   ['duplicate'],
-  ['compaction_candidate']
+  ['compaction_candidate'],
+  ['report']
 ];
 const ALL_KINDS = STAGES.flat();
 const ALIASES = {
   coverage: 'enrich_backfill',
   enrichment: 'enrich_backfill',
-  agent_enrichment_stale: 'enrich_stale'
+  agent_enrichment_stale: 'enrich_stale',
+  inefficiency_detected: 'report',
+  infrastructure_upgrade: 'report'
 };
 const SKILL_FOR = {
   enrich_backfill: 'vault-enrich-all',
@@ -51,7 +56,8 @@ const SKILL_FOR = {
   tag_suggestion: 'vault-review-tags',
   edge_type: 'vault-review-edges',
   duplicate: 'vault-review-duplicates',
-  compaction_candidate: 'vault-compact'
+  compaction_candidate: 'vault-compact',
+  report: 'vault-review-reports'
 };
 
 const fail = (code, message) => {
@@ -137,7 +143,8 @@ const measure = async () => {
       tag_suggestion: by.tag_suggestion ?? 0,
       edge_type: by.edge_type ?? 0,
       duplicate: by.duplicate ?? 0,
-      compaction_candidate: by.compaction_candidate ?? 0
+      compaction_candidate: by.compaction_candidate ?? 0,
+      report: (by.inefficiency_detected ?? 0) + (by.infrastructure_upgrade ?? 0)
     },
     worklist: lint.coverage?.enrichment?.unenriched_records ?? []
   };

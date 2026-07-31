@@ -51,15 +51,16 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
   per project and legitimately empty until there's something to record.
 - **WIKILINKS** — every body `[[target]]` resolves (path-qualified by path, bare
   by basename). Code fences and inline-code spans are stripped first, so literal
-  `` `[[x]]` `` examples don't false-fire. Links to moved/archived logs surface
-  here by design (the policy's "rewrite, re-archive, or accept the break"
-  signal).
+  `` `[[x]]` `` examples don't false-fire. Links into `logs/` surface here as
+  policy violations — durable notes cite logs as backticked paths (which the
+  code-span strip ignores), never wikilink them (2026-07-31 ruling).
 - **DENSITY** — `type: permanent` (topic) notes need ≥ 2 outbound wikilinks
   (body **and** frontmatter `related:` both count — a note under 2 body links is
   raw-fetched to confirm before flagging). `type: project` notes flag only when
   truly isolated (0 outbound **and** 0 inbound). `status: archived/archive/done`
   notes are skipped.
-- **CURRENCY** — per-type retention: `log` > 90 d (→ archive), `query` > 90 d
+- **CURRENCY** — per-type retention: `log` > 90 d (→ delete; 2026-07-31 ruling
+  — citations, not wikilinks, so deletion is safe), `query` > 90 d
   **and** 0 inbound (→ archive), `fleeting` > 30 d (→ ingest/retire), `project`
   > 180 d (→ verify), `permanent` > 365 d (→ verify still current). Types with
   no retention rule (`design`, `research`, `queue-item`, `idea`, `index`,

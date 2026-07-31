@@ -205,6 +205,11 @@ related: ["[[other-note]]"]
 Rules:
 - Filenames in kebab-case: `auth-flow.md`
 - Use wikilinks: `[[note-name]]` (not markdown links) for internal references
+- Exception — never wikilink into `logs/` from durable notes: logs are
+  transient (deleted at 90 days), so cite them as backticked plain paths
+  (`` `logs/2026-05-19-…` ``) instead; the linter strips inline-code spans, so
+  citations never dangle. Outbound links *from* a log are fine — they die with
+  the log. (Ruled 2026-07-31.)
 - 1 concept per topic note (atomicity)
 - Minimum 2 wikilinks per note (dense linking)
 - Every note starts with a 1-2 sentence summary paragraph
@@ -315,9 +320,11 @@ vault-curl /system/lint -s   # integrity, NOT hygiene
 
 On findings, decide (the linter won't):
 - Fix legitimate issues directly (frontmatter backfill, broken-link rewrites).
-- For per-type retention findings (e.g., logs > 90 days), move to
-  `logs/archive/<YYYY>/` rather than delete; archival preserves content while
-  removing it from the default `/vault resume` reading set.
+- Per-type retention actions: `log` findings (> 90 days) are **deleted** —
+  logs are transient by policy (2026-07-31); durable notes cite logs as
+  backticked paths, never wikilinks, so deletion breaks nothing. Other types
+  keep archival semantics (move — e.g. stale zero-inbound queries — to an
+  `archive/` folder rather than delete).
 - For duplicate-folder candidates, decide canonical and bulk-rewrite inbound
   wikilinks (the 2026-04-27 `tape6/` → `tape-six/` dedup is the procedural
   template — see `projects/tape-six/decisions.md` § Project name).
@@ -328,7 +335,9 @@ Save a session log.
 
 1. Create `logs/YYYY-MM-DD-{description}.md`
 2. Record: what was done, decisions made, pending items, key files touched
-3. Add wikilinks to relevant topic/project notes
+3. Add wikilinks to relevant topic/project notes (outbound-only rule: links
+   *from* a log die with it; durable notes referencing this log must cite its
+   backticked path, never `[[logs/...]]`)
 4. **Enrich at capture.** Write the `agent:` block in the **same** PUT that
    creates the log — born-enriched, so the log is searchable-sharp while it's
    hot (the `agent.summary` becomes a HyDE prefix at embed time), with no later
@@ -341,8 +350,8 @@ Save a session log.
    Field shape + quality guidance:
    `~/.claude/skills/vault-enrich-all/SKILL.md`. **Don't backfill *old* logs** —
    enrichment value is largest at capture: a log is already self-describing
-   (dated title + sections), so a retroactive summary adds little, and logs age
-   out to `logs/archive/` at 90d. Born-enrich the new one; leave the old ones.
+   (dated title + sections), so a retroactive summary adds little, and logs are
+   deleted at 90d. Born-enrich the new one; leave the old ones.
 5. **Refresh the drift baseline.** Run
    `~/.claude/skills/vault-check-drift/check-drift.sh --update` from the project
    directory so the next `/vault resume` starts from a clean baseline (the
@@ -509,14 +518,13 @@ same stage run as parallel sub-agents):
 | `suggestions.edge_type` | `/vault-review-edges --auto --limit=100` |
 | `suggestions.duplicate` | `/vault-review-duplicates --auto --limit=100` (merges via supersede — archival, never delete) |
 | `suggestions.compaction_candidate` | `/vault-compact <folder>` per candidate (originals archived) |
+| `suggestions.inefficiency_detected` + `infrastructure_upgrade` | `/vault-review-reports --auto` (verify against live data → reject-by-design / accept + queue item; migrate-tier left pending for the user) |
 
 #### Always skipped
 
 - `raw_inbox.ready` — `/vault ingest` is a separate workflow; the user
   flips `ready: true` when a draft is finished, not the sweep.
 - `suggestions.archive_candidate` — per-record retention judgment.
-- `suggestions.inefficiency_detected` / `infrastructure_upgrade` —
-  reports-only, no action surface.
 
 #### Ordering constraints
 
@@ -563,12 +571,20 @@ The resulting stage DAG:
    tags/`agent.tags_suggested` vs `edges:` — and the server's atomic
    top-level-key merge preserves both)
 4. `duplicate`, then `compaction_candidate` — the structural stage,
-   last and sequential within itself. Merges rewrite inbound wikilinks
+   sequential within itself. Merges rewrite inbound wikilinks
    across many records and archive the loser, so running them after
    the FM-triage stages means no tag/edge agent ever patches a record
    mid-archival; a merge landing inside a folder being compacted would
    race the compactor's multi-step move, hence duplicate before
    compaction, not parallel.
+5. `report` (`inefficiency_detected` + `infrastructure_upgrade`, sweep
+   alias `report`) — last, after every drain, so a `review_backlog_high`
+   report is verified against the post-sweep queue rather than the
+   pre-drain spike. Triage per `/vault-review-reports`: resolution
+   acknowledges the observed level (server-side hysteresis, 2026-07-31 —
+   the signal re-files only when the metric grows ~25% past it), so
+   reject-by-design sticks. Migrate-tier `infrastructure_upgrade` items
+   are never auto-resolved — left pending and surfaced in the summary.
 
 **Same-kind triage agents run concurrently only via claims**
 (2026-07-13+ server): each agent reserves its own batch with
