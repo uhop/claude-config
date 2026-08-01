@@ -35,6 +35,12 @@ needed:
 - **Assert every string replacement.** `--replace` fails (exit 3, nothing
   written) when the target is missing or ambiguous — the curly-vs-straight
   apostrophe class of bug makes an unasserted `replace` a silent no-op.
+- **`--replace-file` pairs match byte-for-byte — mind the trailing newline.**
+  A heredoc-written OLD file ends with `\n`, so a target that sits mid-line
+  (text continues after it on the same line) fails the assert. `truncate -s -1`
+  both files (or write them with `printf '%s'`) when the target does not end
+  at a line boundary. (Hit 2026-07-31: two mid-line queue edits failed clean
+  on the first try.)
 - **A `null`/empty document is never a write.** vault-put refuses (exit 1,
   nothing written) a body that is empty or the literal string `null`, and
   any null top-level frontmatter value — the 2026-06-18 wipe wrote a
