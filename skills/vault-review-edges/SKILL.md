@@ -38,8 +38,9 @@ W=$(mktemp -d)
 Each worksheet item carries the wikilink `snippet` (~120 chars each side),
 `from`/`to` record briefs (title + agent summary), and — when the source's
 `agent.edge_classifications` advisory covers this target — a `prior` field.
-When the snippet + briefs aren't enough, fetch the bodies:
-`vault-curl "/sections/$RECORD_ID" -s | jq -r .body | head -40`.
+When the snippet + briefs aren't enough, fetch the bodies with
+`mcp__vault__vault_read_piece{record_id}` (fallback:
+`vault-curl "/sections/$RECORD_ID" -s | jq -r .body | head -40`).
 
 Decisions map — one value per item id:
 

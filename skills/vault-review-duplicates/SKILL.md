@@ -36,7 +36,7 @@ W=$(mktemp -d)
 Each worksheet item carries the pair's `distance` plus both records'
 briefs — title, type, status, dates, agent summary, and the first ~30
 body lines (`body_head`) — usually enough to judge; fetch full bodies via
-`vault-curl /vault/<path>` only when it isn't. `path_moved` flags mark
+`mcp__vault__vault_read_file{path}` (fallback `vault-curl /vault/<path>`) only when it isn't. `path_moved` flags mark
 records relocated since filing; writes use current paths.
 
 Decisions map — one value per item id:
@@ -82,7 +82,8 @@ The only content-altering path; stays manual. Get explicit confirmation,
 then:
 
 1. **Choose canonical**: more recent `updated:`, more inbound wikilinks
-   (`vault-curl /sections/$ID/backlinks`), better structure; when in doubt
+   (`mcp__vault__vault_backlinks{record_id}`; fallback
+   `vault-curl /sections/$ID/backlinks`), better structure; when in doubt
    prefer the older note and absorb the newer's unique content.
 2. **Write merged content** into the canonical (union tags; lose nothing
    from either note), ending with a supersession footer pointing at the
@@ -93,10 +94,11 @@ then:
 3. **Redirect inbound wikilinks**: for each backlink source, edit its body
    to point at the canonical (`vault-put --replace` per site).
 4. **Archive the redundant note** (record id, embeddings, history survive):
-   `POST /vault/move` to `<dir>/archive/<YYYY>/<name>.md`, then stamp
-   `{frontmatter: {status: "superseded"}}` via a JSON PUT. `DELETE` is
-   reserved for zero-history junk.
-5. **Accept the suggestion**: `vault-curl /suggestions/$ID/accept -X POST`.
+   `mcp__vault__vault_move` to `<dir>/archive/<YYYY>/<name>.md`, then stamp
+   `status: "superseded"` with `vault_patch_fm` (fallbacks: `POST /vault/move`
+   and a JSON PUT). `DELETE` is reserved for zero-history junk.
+5. **Accept the suggestion**: `mcp__vault__vault_accept_suggestion{id}`
+   (fallback `vault-curl /suggestions/$ID/accept -X POST`).
 
 ## Sub-agent mode (`--auto`)
 

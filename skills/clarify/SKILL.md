@@ -37,7 +37,7 @@ Manual cadence — no scheduling. Run when there's 10–15 minutes of focus avai
 
 2. **Walk each item interactively.** For each item:
 
-   a. Surface the question, source ref, and any transcript excerpt the source ref points to (use Read or vault-curl as needed).
+   a. Surface the question, source ref, and any transcript excerpt the source ref points to — `Read` for local transcripts, `mcp__vault__vault_read_file` for vault paths (fall back to `vault-curl /vault/<path> -s` if that tool is absent).
 
    b. Use `AskUserQuestion` with the candidate interpretations as options, plus "Reject as false positive" and "Defer" — let the user pick (or supply "Other" with a free-form interpretation).
 

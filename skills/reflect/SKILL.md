@@ -38,11 +38,13 @@ Read all three to dedupe; write only to vault + claude-config.
 
 1. **Pre-flight.** Confirm the agent-workflow project exists in the vault:
 
+   `mcp__vault__vault_read_file{path: "projects/agent-workflow/queue.md"}` — you need this file's content in step 3 anyway, so the read doubles as the check. Fallback if that tool is absent from your registry (pre-0.1.0 adapter, or a host that has not restarted since it published):
+
    ```bash
    vault-curl /vault/projects/agent-workflow/queue.md -s -o /dev/null -w "%{http_code}\n"
    ```
 
-   404 → the scaffolding is missing. Stop and tell the user to run the migration (`projects/agent-workflow/` scaffold) before retrying. Don't auto-create — the project carries decisions that should be authored deliberately.
+   `not_found` / 404 → the scaffolding is missing. Stop and tell the user to run the migration (`projects/agent-workflow/` scaffold) before retrying. Don't auto-create — the project carries decisions that should be authored deliberately.
 
 2. **Scan.** Run the scanner with the user's args:
 
@@ -100,7 +102,7 @@ Read all three to dedupe; write only to vault + claude-config.
    | Surprise / discovery worth preserving | vault `topics/<topic-name>.md` (new note) or extend an existing topic |
    | Confirmation of non-obvious approach | same destinations as corrections — captures "do this" rather than "don't do that" |
 
-6. **Write the report.** Path: `projects/agent-workflow/reports/YYYY-MM-DD-<host>.md`, where `<host>` is the short hostname (`hostname -s`). The `-<host>` suffix disambiguates the per-machine runs done on each box — transcripts are local-only, so each host's run is distinct content, not a redundant overwrite. If that exact path already exists (a same-host re-run on the same day), append `-HHMM` → `YYYY-MM-DD-<host>-HHMM.md` rather than clobbering the earlier run. Use `vault-curl` JSON-PUT path (FM has dates and could shadow). Body shape:
+6. **Write the report.** Path: `projects/agent-workflow/reports/YYYY-MM-DD-<host>.md`, where `<host>` is the short hostname (`hostname -s`). The `-<host>` suffix disambiguates the per-machine runs done on each box — transcripts are local-only, so each host's run is distinct content, not a redundant overwrite. If that exact path already exists (a same-host re-run on the same day), append `-HHMM` → `YYYY-MM-DD-<host>-HHMM.md` rather than clobbering the earlier run. Write it with `mcp__vault__vault_write_file{path, frontmatter, body}` — it takes frontmatter as a JSON object and serializes the YAML server-side, which is what keeps the date fields from shadowing (fallback: the `vault-curl` JSON-PUT path, same reason). Body shape:
 
    ```markdown
    # Reflect — {date} · {host} (since {window_start_iso})
@@ -144,7 +146,7 @@ Read all three to dedupe; write only to vault + claude-config.
    ---
    ```
 
-7. **File ambiguous items to clarify-queue.** For each low/ambiguous candidate, append a block under `## Pending` in `projects/agent-workflow/clarify-queue.md`. Read the file first, append, PUT back.
+7. **File ambiguous items to clarify-queue.** For each low/ambiguous candidate, append a block under `## Pending` in `projects/agent-workflow/clarify-queue.md`. Use `mcp__vault__vault_replace` anchored on the text you are inserting after — an atomic server-side edit whose blast radius is the block, not the document (fallback: `vault-put --replace`). Don't read-modify-PUT the whole file for an append.
 
    **The heading must be `### Q-YYYY-MM-DD-NNN` and nothing else on that line.** `/clarify`'s parser matches `/### (Q-[\w-]+)\n/`, so a title after the id — `### Q-2026-07-20-001 — is there a rule for…` — fails to match and the item is **silently unlisted**: the file looks correct and `clarify-queue.mjs list` returns a clean `{"pending": 0}`, indistinguishable from an empty queue. (That happened on 2026-07-20; the helper now also reports an `unparsed` array and a stderr warning, but the format is still the thing to get right.) Copy this shape exactly:
 
@@ -179,7 +181,7 @@ Read all three to dedupe; write only to vault + claude-config.
    })
    ```
 
-   On "Apply as proposed" → execute the write (vault-curl PUT for vault paths, Edit for claude-config paths). On "Edit then apply" → present the proposed body, ask for tweaks, then write. On "Skip" → no-op. On "Move to clarify-queue" → file a Q-entry.
+   On "Apply as proposed" → execute the write. For vault paths prefer the narrow op — `mcp__vault__vault_append` / `vault_replace` to extend a `feedback.md` or `queue.md`, `vault_write_file` only when authoring a whole new note (fallback: `vault-put --append/--replace`); for claude-config paths use `Edit` against the real file under `~/Open/claude-config/`, never the `~/.claude/` symlink. On "Edit then apply" → present the proposed body, ask for tweaks, then write. On "Skip" → no-op. On "Move to clarify-queue" → file a Q-entry.
 
 9. **Update state.** After the report writes successfully:
 

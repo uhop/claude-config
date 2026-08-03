@@ -18,7 +18,9 @@ Returns the top-K embedding-nearest-neighbour records to a given record. Cheap (
 
 ## Procedure
 
-1. **Resolve to record_id** if a path was given:
+1. **Resolve to record_id** if a path was given: `mcp__vault__vault_list_pieces{file_prefix: "<full path incl. .md>", exclude: "body", limit: 1}` → `items[0].record_id`. There is no path→id tool as such; an exact path used as a prefix is the resolver, and it is unambiguous for a full path because one `.md` path is never a prefix of another. Check `total` — `0` means no record.
+
+   Fallback (pre-0.1.0 adapter):
 
    ```bash
    vault-curl "/sections?file_path=$(printf %s "$PATH" | jq -sRr @uri)" -s | jq -r '.items[0].record_id'
@@ -26,7 +28,7 @@ Returns the top-K embedding-nearest-neighbour records to a given record. Cheap (
 
    If no record matches the path, tell the user "no record at <path>" and stop. If `--id` was given, skip this step.
 
-2. **Call the endpoint**:
+2. **Fetch the neighbours** with `mcp__vault__vault_similar{record_id, k}`. Fallback:
 
    ```bash
    vault-curl "/sections/$RECORD_ID/similar?k=$K" -s
@@ -60,5 +62,5 @@ Vault-storage on `:8123` only.
 
 ## Dependencies
 
-- `vault-curl` on `$PATH`.
-- `jq` for path encoding and response parsing.
+- `mcp__vault__vault_similar` + `vault_list_pieces` in your tool registry — the primary path.
+- Fallback only: `vault-curl` on `$PATH`, plus `jq` for path encoding and response parsing.

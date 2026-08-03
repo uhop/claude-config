@@ -46,6 +46,11 @@ is no vault-triage.mjs harness kind for reports.
 
 1. **Claim** (concurrent/sweep) or list (solo):
 
+   - solo — `mcp__vault__vault_list_suggestions{kind: ["inefficiency_detected", "infrastructure_upgrade"], status: ["pending"], limit: 20}`; both kinds in one call, and `expand: "context"` inlines the record briefs.
+   - sweep — `mcp__vault__vault_claim_suggestions{kind, holder, limit}`, holder from the dispatch plan.
+
+   Fallback (pre-0.1.0 adapter):
+
    ```bash
    # solo
    vault-curl '/suggestions?kind=inefficiency_detected&status=pending&limit=20' -s
@@ -56,9 +61,11 @@ is no vault-triage.mjs harness kind for reports.
    ```
 
 2. **Verify against live data** — the payload carries filing-time numbers;
-   judge against current reality (`GET /system/status` for record/edge
-   counts, `GET /system/lint` for orphans, `GET /suggestions/summary` for
-   the backlog, and read the hub note for `edge_fanout_high`).
+   judge against current reality (`mcp__vault__vault_status` for record/edge
+   counts, `vault_lint` for orphans, `vault_suggestions_summary` for
+   the backlog, and `vault_read_file` on the hub note for `edge_fanout_high`;
+   REST fallbacks are `GET /system/status`, `/system/lint`,
+   `/suggestions/summary`).
 
 3. **Disposition per item:**
    - **By-design / false positive → reject** with the reason. Typical:
@@ -75,7 +82,9 @@ is no vault-triage.mjs harness kind for reports.
    - **`infrastructure_upgrade` → leave pending.** Reopen if claimed;
      surface verbatim in the report.
 
-4. **Resolve** the batch and reopen skips:
+4. **Resolve** the batch and reopen skips — `mcp__vault__vault_resolve_suggestions_batch{resolved_by, items: [{id, decision}]}`, then `vault_reopen_suggestion{id}` for claimed-but-left items. The batch call is always 200: check `failed` and the per-item `results[].error` before treating it as a clean drain.
+
+   Fallback (pre-0.1.0 adapter):
 
    ```bash
    vault-curl /suggestions/resolve-batch -X POST -H 'Content-Type: application/json' \
@@ -100,5 +109,5 @@ Dispatch prompt template — fill `<holder>`/`<limit>` from the sweep plan:
 > after filing the remediation as a Backlog item in
 > `projects/vault-storage/queue.md`. Never resolve
 > `infrastructure_upgrade` — reopen it and list it in your report.
-> Use `vault-curl`; guard any `| jq` pipe with `|| true`. Return the
-> per-item disposition lines.
+> Prefer the `mcp__vault__*` tools; on the `vault-curl` fallback path guard
+> any `| jq` pipe with `|| true`. Return the per-item disposition lines.
