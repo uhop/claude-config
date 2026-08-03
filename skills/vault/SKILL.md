@@ -21,6 +21,7 @@ operation, not per session:
 | --- | --- | --- |
 | Reads — document, folder, search, lint, status, suggestions, queue slices, graph | **MCP tools** | No scratch files, no `jq` shape-guessing, no parallel-batch cancellation hazard |
 | Document writes (create, replace, append, replace-a-string) | **`vault-put.mjs`** | Carries the asserted-replace, `If-Match`, and null-body guards that nothing else does |
+| One frontmatter key (add/remove a `related:` or `tags:` member) | **`PATCH /sections/{record_id}/fm`** via `vault-curl` | Atomic server-side FM op — no body round-trip, so the document can't be clobbered |
 | `supersede`, `move`, `propose`, `/vault/edit`, all `/maintenance/*` | **`vault-curl`** | No MCP tool exists |
 
 **Do not write through `mcp__vault__vault_write_file`.** It is an
@@ -33,6 +34,21 @@ all of them. Editing a body through it also means re-authoring the entire
 frontmatter from scratch — the wipe hazard, not a mitigation of it. Reserve it
 for a genuine full-document create where you are authoring FM and body anyway,
 and even then prefer `vault-put --fm/--body`.
+
+**Never rewrite a whole document to change one frontmatter key.** That is the
+single most common reason an agent reaches for a full-document write, and it is
+the highest-risk way to do the lowest-risk edit. Use the atomic FM patch:
+
+```bash
+vault-curl /sections/<record_id>/fm -X PATCH -H 'Content-Type: application/json' \
+  --data-binary '{"ops": [{"op": "add", "path": "/related", "value": "[[projects/x/queue-archive]]"}]}'
+```
+
+One op per array member; `add` is idempotent on an existing member. The response
+echoes the resulting array, so the effect is visible without a re-read. Get the
+`record_id` from `vault_list_pieces({file_prefix: "<path>"})`. This is what
+`/vault-propose-related` applies its accepted candidates with — see
+`related-batch.mjs`. Note the id is a *record* id, not a path.
 
 Corollary: **an MCP read cannot seed a conditional write.** MCP read tools
 return content without the `ETag`, so there is no tag to send back as
@@ -164,6 +180,7 @@ API endpoints (invoked via `vault-curl <path> [curl-options...]`):
   - Add `-o /dev/null -w "%{http_code}\n"` to confirm a 204 without flooding stdout (works for either Content-Type).
 - **Conditional writes (`If-Match`, use for read-modify-write on shared docs)**: `GET /vault/{path}` returns an `ETag` header (sha256 of the served bytes); send it back as `-H 'If-Match: <etag>'` on the PUT (either Content-Type) and the write lands only if the document hasn't changed in between — otherwise **412** `precondition_failed` with `details.current_etag`, meaning another writer got there first: re-GET, re-apply your edit to the fresh copy, retry with the new tag. Adopt this for any flow that GETs a shared doc (queue.md, learnings.md, archives), modifies it, and PUTs it back — it converts silent last-writer-wins clobbering into a visible, retryable conflict. Capture the ETag with `-D-` or `-o /dev/null -D- | grep -i etag`; successful PUTs (204) return the new `ETag` so chained conditional edits don't need a re-GET. `If-Match` never creates files (412 on a missing path); plain unconditional PUT remains valid for docs only one session touches.
 - **Edit (atomic server-side body op)**: `vault-curl /vault/edit -X POST -H 'Content-Type: application/json' --data-binary @op.json` with `{path, op: "append", text}` or `{path, op: "replace", from, to, all?}` — one op per call, server ≥ 2026-07-24. Replace is asserted (absent `from` → 409, ambiguous without `all` → 409 with the count — never a silent no-op); append joins after a single trailing newline; FM rides verbatim (`updated` re-stamped). Prefer `vault-put --append/--replace`, which calls this automatically with a round-trip fallback; reach for the raw endpoint only from contexts without vault-put.
+- **FM patch (atomic single-key frontmatter op)**: `vault-curl /sections/{record_id}/fm -X PATCH -H 'Content-Type: application/json' --data-binary @ops.json` with `{ops: [{op: "add"|"remove", path: "/related"|"/tags", value: "..."}]}` — server-side membership edit on an FM array, no body round-trip and therefore no way to clobber the document. Returns `{changed, results: [{op, path, changed, array}]}` with the resulting array, so no re-read is needed to confirm. Prefer this over any full-document write whose only purpose is one FM key. `record_id` comes from `vault_list_pieces({file_prefix})`. Used by `/vault-propose-related` (`related-batch.mjs`) to apply accepted candidates.
 - **Supersede (replace a note, archiving the old)**: `vault-curl /vault/supersede -X POST -H 'Content-Type: application/json' --data-binary @payload.json` with `{old_path, new_path?, frontmatter, body}` — the successor in the standard JSON write shape; `new_path` defaults to `old_path` (supersede-in-place: the successor takes over the path, so inbound wikilinks resolve to the replacement). Use this — never DELETE+PUT or a wholesale overwrite — whenever a write *replaces* a note rather than evolving it: the old note moves to `<dir>/archive/<YYYY>/<name>` with its record id intact (edges/embeddings/suggestions survive) and gets `status: superseded`; the successor's body is auto-appended a `> Supersedes [[<archived-path>]].` footer that backs the typed `supersedes` edge (don't add your own). Validation-first — a rejected request (bad FM, occupied `new_path`/archive slot) mutates nothing. Routine edits to an existing note stay plain PUTs; supersession is for replacement semantics.
 - **List**: `vault-curl /vault/{path}/ -s` (trailing slash → `{"files": [...]}`) — *prefer `vault_list_folder`*.
 - **Delete**: `vault-curl /vault/{path} -X DELETE` — for junk with zero history value; a note retired *in favor of other content* should be superseded (or moved to an archive folder), not deleted. (`vault_delete_file` exists on MCP; the same judgment applies — supersede beats delete.)
