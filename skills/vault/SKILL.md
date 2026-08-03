@@ -12,32 +12,57 @@ Persistent knowledge base (vault-storage), reachable two ways: **MCP tools**
 
 ## Connection
 
-### Surface split — MCP for reads, `vault-put` for writes, `vault-curl` for the rest
+### Surface split — MCP first, `vault-curl` for what MCP still lacks
 
-The MCP surface is a strict subset of the REST API, so the choice is per
-operation, not per session:
+**Adapter ≥ 0.1.0 reached parity with the REST API** (`@uhop/vault-storage-mcp`,
+2026-08-03). Before that it was reads-only-plus-one-dangerous-write, and the
+table below read very differently. The gate is self-resolving: your registered
+tool list is in context, so *if the tool named below is present, use it*; if it
+is not, this adapter predates parity — fall back to the `vault-curl` form given
+in the same row.
 
-| Operation | Use | Why |
+| Operation | Use | Fallback on a pre-0.1.0 adapter |
 | --- | --- | --- |
-| Reads — document, folder, search, lint, status, suggestions, queue slices, graph | **MCP tools** | No scratch files, no `jq` shape-guessing, no parallel-batch cancellation hazard |
-| Document writes (create, replace, append, replace-a-string) | **`vault-put.mjs`** | Carries the asserted-replace, `If-Match`, and null-body guards that nothing else does |
-| One frontmatter key (add/remove a `related:` or `tags:` member) | **`PATCH /sections/{record_id}/fm`** via `vault-curl` | Atomic server-side FM op — no body round-trip, so the document can't be clobbered |
-| `supersede`, `move`, `propose`, `/vault/edit`, all `/maintenance/*` | **`vault-curl`** | No MCP tool exists |
+| Reads — document, folder, search, lint, status, suggestions, queue slices, graph | **MCP tools** | (always existed) |
+| Body edits — append, replace-a-string | **`vault_append` / `vault_replace`** | `vault-put --append/--replace` |
+| One frontmatter array member (`related:`, `tags:`, `agent.tags_suggested`) | **`vault_patch_fm`** | `PATCH /sections/{record_id}/fm` via `vault-curl` |
+| Whole-document create or rewrite | **`vault_write_file`** (`expected_etag` when the read might be stale) | `vault-put --fm/--body` |
+| Replace a note, archiving the old one | **`vault_supersede`** | `POST /vault/supersede` via `vault-curl` |
+| Rename preserving `record_id` | **`vault_move`** | `POST /vault/move` |
+| Search-before-write | **`vault_propose`** | `POST /vault/propose` |
+| Raw inbox, cleanup-lint, embed-pending, incremental-reindex, run-all | **`vault_raw_inbox` / `vault_cleanup_lint` / `vault_embed_pending` / `vault_incremental_reindex` / `vault_run_scans`** | `vault-curl /maintenance/…` |
+| `/commit`, snapshots, `cleanup-tag-aliases`, `release-embedder`, `folder-listing`, individual `find-*` scans | **`vault-curl`** | — deliberately not exposed on MCP |
 
-**Do not write through `mcp__vault__vault_write_file`.** It is an
-unconditional whole-document create-or-replace: no `If-Match`, no asserted
-replace, no refusal of an empty/`null` body. Those three guards are exactly
-what `vault-put` exists for (the 2026-06-18 wipe that put a serialized `null`
-over the 59 KB stream-chain note; the curly-vs-straight apostrophe silent
-no-op), and they live **client-side in `vault-put`**, so an MCP write bypasses
-all of them. Editing a body through it also means re-authoring the entire
-frontmatter from scratch — the wipe hazard, not a mitigation of it. Reserve it
-for a genuine full-document create where you are authoring FM and body anyway,
-and even then prefer `vault-put --fm/--body`.
+**Scripts cannot call MCP tools.** MCP is an agent-level surface, so
+`enrich-batch.mjs`, `related-batch.mjs`, `vault-triage.mjs`,
+`compact-batch.mjs`, `vault-sweep.mjs`, and `vault-put.mjs` stay on
+`vault-curl` permanently. Parity changes what *you* call directly; it changes
+nothing inside the batch harnesses.
+
+**Prefer the narrow write over the whole-document one.** `vault_write_file`
+and `vault_update_piece` replace an entire document, so a mistake costs the
+whole document; `vault_append`, `vault_replace`, and `vault_patch_fm` are
+atomic server-side ops whose blast radius is the thing being changed. Reach
+for a whole-document write only when authoring a new note or genuinely
+rewriting one.
+
+The three data-loss guards that used to justify routing every write through
+`vault-put` are **server-side as of 2026-08-03** (`46f6bf7`): an empty body
+(400 `empty_body`), a literal-`"null"`/`"undefined"` body (400 `null_body`),
+and a null top-level FM value (400 `null_frontmatter_value`) are refused on
+`PUT /vault/{path}` and `PUT /sections/{id}` no matter which client sends
+them. `vault-put`'s own checks are now a fast-fail convenience, not the only
+line of defence — which is what makes an MCP write safe at all. (The
+`empty_body` rule exempts a document whose *stored* body is already empty, so
+an FM-only op that round-trips the body is never bricked.) Removal is
+`vault_delete_file`; replacement-in-favour-of-other-content is
+`vault_supersede`, never a delete.
 
 **Never rewrite a whole document to change one frontmatter key.** That is the
 single most common reason an agent reaches for a full-document write, and it is
-the highest-risk way to do the lowest-risk edit. Use the atomic FM patch:
+the highest-risk way to do the lowest-risk edit. Use the atomic FM patch —
+`vault_patch_fm({record_id, ops: [{op: "add", path: "/related", value:
+"[[projects/x/queue-archive]]"}]})`, or on a pre-0.1.0 adapter:
 
 ```bash
 vault-curl /sections/<record_id>/fm -X PATCH -H 'Content-Type: application/json' \
@@ -48,14 +73,21 @@ One op per array member; `add` is idempotent on an existing member. The response
 echoes the resulting array, so the effect is visible without a re-read. Get the
 `record_id` from `vault_list_pieces({file_prefix: "<path>"})`. This is what
 `/vault-propose-related` applies its accepted candidates with — see
-`related-batch.mjs`. Note the id is a *record* id, not a path.
+`related-batch.mjs` (a script, so it stays on curl). Note the id is a *record*
+id, not a path.
 
-Corollary: **an MCP read cannot seed a conditional write.** MCP read tools
-return content without the `ETag`, so there is no tag to send back as
-`If-Match`. Don't read via MCP and then write "based on" that read expecting
-concurrency safety — use `vault-put --replace`/`--append`, which performs its
-own atomic server-side op (or its own `If-Match` round-trip on a pre-`/vault/edit`
-server) and never trusts your earlier read.
+**Conditional writes from an MCP read** work as of adapter 0.1.0:
+`vault_read_file({path, include_etag: true})` returns `{path, etag, composed,
+content}`, and that `etag` goes straight back as `expected_etag` on
+`vault_write_file` / `vault_update_piece` — the write lands only if nobody
+else wrote in between, otherwise 412 `precondition_failed` with
+`details.current_etag` to re-read and retry against. `composed: true` marks an
+atomized-folder view with no single file behind it; edit its pieces instead.
+On a pre-0.1.0 adapter the read carries no tag at all, so there is nothing to
+seed a conditional write with — use `vault-put --replace`/`--append` there,
+which performs its own atomic server-side op and never trusts your earlier
+read. Either way, prefer `vault_append`/`vault_replace` over a
+read-then-rewrite: they need no ETag because the server holds the document.
 
 ### Reads: the MCP tools
 
@@ -78,12 +110,30 @@ Registered as `mcp__vault__<name>`; fetch schemas with
 | Queue slices | `vault_queue_by_project`, `vault_queue_top`, `vault_queue_by_priority`, `vault_queue_by_section`, `vault_queue_project_archive` |
 | Tags | `vault_list_tags`, `vault_tag_info`, `vault_records_by_tag` |
 
-Known MCP-vs-REST parameter gaps (use `vault-curl` when you need one):
+Every tool description names the response shape it returns, including which of
+the **three list shapes** it uses — audited against live responses 2026-08-03
+(`b1882f7`), so trust the description rather than probing:
 
-- `vault_resume_bundle` takes only `{project, logs}` — the REST endpoint's
-  `project_bodies=learnings,decisions,stack,queue` has no MCP equivalent, so
-  the `/vault learn` dedup pass needs curl or follow-up `vault_read_file`
-  calls.
+- the paginated envelope `{items, offset, limit, total}` (`vault_list_pieces`,
+  `vault_backlinks`, `vault_list_tags`, `vault_records_by_tag`,
+  `vault_list_suggestions`) — **page by `items.length`, never by the `limit`
+  you asked for**; the server caps `limit` at 100 and echoes what it used;
+- flat `{count, items}` for the queue slices — unpaginated, so a short result
+  means raise the limit, not fetch a second page;
+- genuinely unpaginated reads (`vault_list_folder`, `vault_neighborhood`,
+  `vault_similar`) — everything comes back at once.
+
+Conditional keys exist and are documented per tool: `requested` on a
+`vault_tag_info` alias lookup, `alias_for` + `requested` on
+`vault_records_by_tag`, the `project` echo and per-ref `target`/`matches` on
+the queue dependency views. They are absent unless you hit that case, so their
+absence is not evidence of anything.
+
+`vault_resume_bundle` takes `{project, logs, project_bodies}` as of adapter
+0.1.0 — `project_bodies: ["learnings", "decisions"]` delivers those files with
+full bodies for the `/vault learn` dedup pass (`feedback` always ships its
+body). On a pre-0.1.0 adapter that parameter is missing; fall back to
+`vault-curl "/system/resume-bundle?project=<name>&logs=0&project_bodies=learnings,decisions" -X POST -s`.
 
 Requires two environment variables (set in `~/.env`, which is sourced by
 `.bashrc`) — used by `vault-curl`, `vault-put`, and the MCP server alike:
@@ -91,7 +141,13 @@ Requires two environment variables (set in `~/.env`, which is sourced by
 - `VAULT_API_URL` — base URL of the vault REST API (vault-storage; e.g., `http://host:8123`)
 - `VAULT_API_TOKEN` — bearer token for authentication
 
-### Prefer `vault-put` for document writes
+### `vault-put` — the shell-side document writer
+
+Still the right tool from a **script**, from a pre-0.1.0 adapter, or when a
+multi-pair all-or-nothing replace is wanted (the MCP `vault_replace` is one op
+per call; `vault-put` batches pairs into a single round-trip). From the agent
+on a parity adapter, prefer `vault_append` / `vault_replace` / `vault_write_file`
+— same server ops, no scratch files.
 
 `~/.claude/skills/vault/vault-put.mjs` replaces the hand-rolled jq/python
 payload-assembly blocks (which failed 4× in one session — reflect 2026-07-10;
@@ -325,8 +381,9 @@ Rules:
 Compile **ready** raw notes into the wiki. Drafts (no `ready: true`)
 are skipped — the user is still iterating on them.
 
-1. **Pull the ready list.** `vault-curl /maintenance/raw-inbox -s | jq`
-   returns `{ready: [...], drafts: [...]}`. Process only `ready`. If
+1. **Pull the ready list.** `vault_raw_inbox` (pre-0.1.0 adapter:
+   `vault-curl /maintenance/raw-inbox -s | jq`) returns
+   `{ready: [{path, title, updated}], drafts: [...]}`. Process only `ready`. If
    that array is empty, report "no ready notes; N drafts waiting" and
    stop. (The user flips `ready: true` in FM when a note is ripe.)
 2. For each ready note, read the content with `vault_read_file`.
@@ -334,7 +391,7 @@ are skipped — the user is still iterating on them.
    project notes in `projects/<name>/`, or queue items in
    `projects/<name>/queue.md` per the content's nature. When a
    compilation *replaces* an existing topic outright (the old note is
-   being retired, not extended), use `POST /vault/supersede` instead of
+   being retired, not extended), use `vault_supersede` instead of
    overwriting in place — the predecessor is archived with its record id
    and a typed `supersedes` edge instead of silently vanishing into a
    PUT.
@@ -366,7 +423,7 @@ are skipped — the user is still iterating on them.
      union-merged on write, so *omitting* a key never deletes it. On an
      older server the sentinel is stored as a literal string; use
      `ready: false` there instead.
-   - `POST /vault/move` from `raw/<name>.md` to
+   - `vault_move` from `raw/<name>.md` to
      `raw/archive/<YYYY-MM-DD>-<name>.md` so the inbox surfaces only
      pending material.
    Process notes one-at-a-time end-to-end: derived note created →
@@ -380,13 +437,11 @@ Extract learnings from the current project/session.
 
 1. Identify the current project from git remote, directory name, or ask
 2. Read existing project notes if they exist (`projects/{name}/`). The dedup
-   pass needs **full bodies**, which is the one documented MCP parameter gap —
-   `vault_resume_bundle` has no `project_bodies`. Either stay on curl for this
-   call: `vault-curl "/system/resume-bundle?project=<name>&logs=0&project_bodies=learnings,decisions,stack,queue" -X POST -s`,
-   or take `vault_resume_bundle({project, logs: 0})` for the summaries and
-   follow with `vault_read_file` per note you actually need in full. (feedback.md
-   always arrives with its body either way; on an older server fall back to
-   individual reads)
+   pass needs **full bodies**: `vault_resume_bundle({project, logs: 0,
+   project_bodies: ["learnings", "decisions", "stack", "queue"]})` on adapter
+   0.1.0+. On a pre-0.1.0 adapter that parameter is missing — stay on curl for
+   this call: `vault-curl "/system/resume-bundle?project=<name>&logs=0&project_bodies=learnings,decisions,stack,queue" -X POST -s`.
+   (feedback.md always arrives with its body either way)
 3. Analyze recent work: git log, changed files, decisions made
 4. Create or update `projects/{name}/learnings.md`, `decisions.md`, `stack.md`
 5. Extract cross-project patterns into `topics/` notes (e.g., "api-rate-limiting", "docker-networking"). Propose-then-write: before creating, check neighbours with `POST /vault/propose` (search-before-write); if an existing note already covers the concept, extend it, and if the new write would *replace* it wholesale, use `POST /vault/supersede` rather than minting a near-duplicate. When creating a new topic note here, enrich at capture per the `/vault ingest` step 5 procedure — write the `agent:` block in the same PUT.
@@ -423,8 +478,7 @@ tool (embeddings / orphans / temporal anomalies / tag aliases — *not* hygiene)
 Call `vault_lint` for it; the curl form below is the fallback. `vault_lint`
 does return the `coverage.enrichment` block (`by_type` breakdown +
 `unenriched_records` worklist) that `/vault sweep` reads — verified
-2026-08-03 — even though its tool description advertises only
-`{ok, total_issues, checks}`:
+2026-08-03, and named in the tool description since `b1882f7`):
 
 ```bash
 vault-curl /system/lint -s   # integrity, NOT hygiene
@@ -531,9 +585,10 @@ parallel-batch `jq`-guard hazard does not arise here at all.
    reads (`projects/agent-workflow/queue.md` § Active, `clarify-queue.md`
    pending count), the 3 most recent `logs/` entries, and the project's
    notes including `feedback.md` — all via `vault_read_file` /
-   `vault_list_pieces`. The incremental reindex has no MCP tool, so that
-   one stays `vault-curl /maintenance/incremental-reindex -X POST -s`;
-   guard its `jq` pipe with `|| true` if you batch it with anything.
+   `vault_list_pieces`. The incremental reindex is `vault_incremental_reindex`
+   on adapter 0.1.0+; on an older one it stays
+   `vault-curl /maintenance/incremental-reindex -X POST -s` — guard its `jq`
+   pipe with `|| true` if you batch it with anything.
 4. Summarize current state and what's left to do. If `check-drift` flagged
    new commits / tags / publishes that aren't reflected in `projects/<name>`
    notes, update those notes to match (or at minimum flag the divergence in
