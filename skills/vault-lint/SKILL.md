@@ -1,6 +1,6 @@
 ---
 name: vault-lint
-description: Lint the vault for hygiene problems — broken wikilinks, frontmatter integrity, empty/placeholder bodies, topic-note density, per-type currency/retention, and duplicate folders/titles — against the thresholds in topics/vault-hygiene-policy.md. Read-only: reports findings, never fixes. Use when the user says /vault-lint, asks to check vault hygiene / health, find broken wikilinks, or audit frontmatter. Backed by `vault-lint.mjs` over vault-storage's `/sections`. Distinct from the server-side `/system/lint` integrity check.
+description: Lint the vault for hygiene problems — broken wikilinks, frontmatter integrity, empty/placeholder and newline-collapsed bodies, topic-note density, per-type currency/retention, and duplicate folders/titles — against the thresholds in topics/vault-hygiene-policy.md. Read-only: reports findings, never fixes. Use when the user says /vault-lint, asks to check vault hygiene / health, find broken wikilinks, or audit frontmatter. Backed by `vault-lint.mjs` over vault-storage's `/sections`. Distinct from the server-side `/system/lint` integrity check.
 user_invocable: true
 ---
 
@@ -40,12 +40,29 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
   `updated`; `created` parses and is ≤ `updated`. `_index.md` / `_about.md` are
   exempt from the `type` requirement; `type: state` notes are skipped entirely
   (managed by `/vault check`).
-- **BODY** — flags notes with no content: an empty / whitespace-only body, or
-  the literal string `null` (the serialization artifact of a never-written body —
-  JSON `null` round-tripped into the file). These pass every other category
-  silently (wikilinks/density scan body links, of which an empty body has none;
-  frontmatter checks only keys), so without this check a never-written note is
-  invisible. Skipped: `type: state` notes (machine-managed JSON snapshots) and
+- **BODY** — two content-integrity checks.
+  - *Empty body*: whitespace-only, or the literal string `null` (the
+    serialization artifact of a never-written body — JSON `null` round-tripped
+    into the file). These pass every other category silently
+    (wikilinks/density scan body links, of which an empty body has none;
+    frontmatter checks only keys), so without this check a never-written note
+    is invisible.
+  - *Collapsed body*: a line ≥ 400 chars carrying ≥ 2 **glue marks** — block
+    boundaries surviving as missing whitespace (`project## README`,
+    `true.I cannot`, ``an example:```js``, `And:- Some`). This is the
+    fingerprint of the 2026-07-21 contenteditable serializer bug, which
+    deleted newlines instead of collapsing them to spaces. Length alone is not
+    the signal — house style puts multi-hundred-char prose bullets in every
+    `queue.md`, and an atomized single-paragraph piece is one line by
+    construction — so the glue marks carry the decision. Inline/fenced code is
+    stripped first (`.Site.LanguageCode`, backticked `` `## Heading` ``
+    references would otherwise fire), and the marks are deliberately narrow:
+    `*` bullets are excluded because they collide with `*emphasis*`, a glued
+    capital must begin a real word or be `I`/`A` (else `unicode-X.X.X` and
+    `Node.JS` read as glued sentences), and a `#` run preceded by a quote is a
+    prose section reference, not a heading.
+
+  Skipped by both: `type: state` notes (machine-managed JSON snapshots) and
   empty `type: project` **running-files** (`decisions`/`learnings`/`stack`/
   `queue`/`queue-archive`/`feedback`/`clarify-queue*`) — those are scaffolded
   per project and legitimately empty until there's something to record.
@@ -85,6 +102,13 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
 - **Duplicate detection is conservative** — it misses digit-vs-word folder
   splits (`tape6` ↔ `tape-six`), the policy's own hard case, to avoid flooding
   on sibling-prefix families. Tune empirically per the policy's open question.
+- **Collapse detection needs prose structure.** Calibrated 2026-08-03 against
+  the four known-damaged notes (all four detected, 0 false positives across
+  ~1,100 records). The thinnest margin is a note that collapsed to exactly 2
+  marks, so a *short* collapsed note with no headings, no lists and one
+  sentence boundary can still slip under the bar — deliberate, since loosening
+  either threshold reintroduced dozens of false positives. It also cannot see
+  a collapse that merged only two paragraphs of a long healthy note.
 - **Report-only** — no auto-fix, despite the policy listing some
   auto-fixable classes. Fixing is a deliberate follow-up action (FM backfill,
   link rewrite, archival move), not a side effect of linting.

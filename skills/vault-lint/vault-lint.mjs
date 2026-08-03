@@ -70,6 +70,8 @@ const RUNNING_FILE_BASENAMES = new Set([
 const DENSITY_SKIP_STATUS = new Set(['archived', 'archive', 'done']);
 const ARCHIVE_RE = /(^|\/)archive\//;
 const FETCH_CAP = NO_FETCH ? 0 : 300;
+const COLLAPSE_MIN_LINE = 400;
+const COLLAPSE_MIN_MARKS = 2;
 
 // --- API via vault-curl --------------------------------------------------
 const api = path => {
@@ -120,6 +122,30 @@ const linkTargets = text => {
   }
   return out;
 };
+
+// --- collapsed-body primitives -------------------------------------------
+// The 2026-07-21 contenteditable serializer bug deleted newlines rather than
+// collapsing them to spaces, so every block boundary it ate survives as a
+// missing space. Line length alone proves nothing — house style puts
+// multi-hundred-char prose bullets in every queue.md, and an atomized
+// single-paragraph piece is one line by construction — so a long line counts as
+// collapsed only when it also carries independent glue marks.
+const GLUE_RES = [
+  // Openers (`"`, `(`) are excluded from the char before the run: a quoted
+  // section reference — see "### Signal" — is prose, not a glued heading.
+  /[\w.!?,;)]#{1,6} +\S/g, // heading: `project## README`
+  /[^\s`]```/g, // fence: `an example:```js`
+  // The capital must begin a real word (`[A-Z][a-z]`) or be a one-letter
+  // English word, or `unicode-X.X.X` and `Node.JS` read as glued sentences.
+  /[.!?][")'\]]?(?:[A-Z][a-z]|[IA] )/g, // paragraph: `true.I cannot`
+  /[.!?:)"']- +\S/g // list item: `people. And:- Some` (`*` bullets would collide with `*emphasis*`)
+];
+// Same reason stripCode guards the wikilink scan: code spans are full of
+// `.Site.LanguageCode` and backticked `## Heading` references that trip the
+// paragraph and heading marks. A collapsed line loses its fence mark to the
+// strip (both fences sit on it), but never its heading/paragraph/list marks.
+const glueMarks = line =>
+  GLUE_RES.reduce((n, re) => n + (stripCode(line).match(re) || []).length, 0);
 
 const pathSet = new Set();
 const byBase = new Map();
@@ -225,8 +251,20 @@ if (want('body')) {
     // the note has no content — and it's invisible to every other category
     // (wikilinks/density read body links, of which an empty body has none).
     const body = r.body == null ? '' : String(r.body).trim();
-    if (body === '' || body === 'null')
+    if (body === '' || body === 'null') {
       B.push({path: r.file_path, detail: 'empty body (no content written)'});
+      continue;
+    }
+    for (const line of body.split('\n')) {
+      if (line.length < COLLAPSE_MIN_LINE) continue;
+      const marks = glueMarks(line);
+      if (marks < COLLAPSE_MIN_MARKS) continue;
+      B.push({
+        path: r.file_path,
+        detail: `collapsed line: ${line.length} chars, ${marks} glued block boundaries (newlines lost on save)`
+      });
+      break;
+    }
   }
 }
 
