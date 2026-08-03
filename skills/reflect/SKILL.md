@@ -67,7 +67,7 @@ Read all three to dedupe; write only to vault + claude-config.
      "live_sessions": [{project, session_id, path, mtime_iso, age_seconds, first_row_iso}],
      "state_watermark_iso": "...",
      "signals": {
-       "corrections":       [{kind, project, session_id, ts, excerpt}, ...],
+       "corrections":       [{kind, project, session_id, ts, excerpt, unlanded?}, ...],
        "confirmations":     [{...}],
        "stuck_loops":       [{kind, project, session_id, tool, repetitions, excerpt}],
        "repeated_failures": [{kind, occurrences, tool, project, session_id, excerpt}],
@@ -86,7 +86,7 @@ Read all three to dedupe; write only to vault + claude-config.
    If the candidate's rule overlaps an existing entry, mark it `already_covered` — it goes in the report's "Already covered" section, not the proposals.
 
 4. **Classify by confidence.** For each non-covered candidate:
-   - **high** — recurrence, OR singular but with decisive language ("never", "always", "we don't do that"). Per [[projects/agent-workflow/decisions]] D2 + D3. Recurrence is met when **either** (a) the signal fired in ≥ 2 sessions in *this* scan, **or** (b) it fired once here and a matching signal appears in another host's recent report from step 3 — that cross-machine hit counts as the second occurrence. Without (b) a once-per-machine signal never crosses the bar on either host, since each run sees only local transcripts. Matching is semantic (same underlying rule / behaviour), not string-identical; when the match is uncertain, treat it as medium, not high.
+   - **high** — recurrence, OR singular but with decisive language ("never", "always", "we don't do that"). Per [[projects/agent-workflow/decisions]] D2 + D3. Recurrence is met when **either** (a) the signal fired in ≥ 2 sessions in *this* scan, **or** (b) it fired once here and a matching signal appears in another host's recent report from step 3 — that cross-machine hit counts as the second occurrence. Without (b) a once-per-machine signal never crosses the bar on either host, since each run sees only local transcripts. Matching is semantic (same underlying rule / behaviour), not string-identical; when the match is uncertain, treat it as medium, not high. **(c) `unlanded: true` on the signal counts as recurrence by itself** — the scanner sets it when the user's own words say the correction has not landed ("you still…", "why do you still…", "I still see…"), which makes that turn the second occurrence whether or not the first one was captured. Verify the antecedent before promoting: read back far enough to confirm what was corrected earlier, since a "still" turn is unintelligible on its own.
    - **medium** — singular, plausible signal, neutral language, no cross-machine corroboration.
    - **low / ambiguous** — multiple plausible interpretations, or possibly a one-off.
 

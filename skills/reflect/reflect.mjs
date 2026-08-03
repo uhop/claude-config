@@ -110,6 +110,28 @@ const OBSERVATIONAL_CORRECTION_PATTERNS = [
   /\bwhy\s+(?:don'?t|not|are you|did you|would you|are we|did we)\b/i
 ];
 
+// "Still" corrections: the user reporting that a correction already given has
+// not landed. Structurally the highest-value signal here — the turn *is* the
+// second occurrence, so one hit already meets the recurrence bar — and blind to
+// both families above: no negation cue, no closed verb list. Anchored on second
+// person, an interrogative, a negation, or a quoted artifact so ordinary
+// concessive "still" stays out; "we still" alone is deliberately NOT a cue
+// ("we still need a list", "do we still need overrides" are planning talk, and
+// were most of the false positives when it was included). Measured over 30 days
+// of transcripts: 59 turns contain "still", these fire on 10, of which 9 are
+// real (the survivor is a "why we still" buried in a long anecdote) — acceptable
+// under the same recall-over-precision tradeoff as OBSERVATIONAL above.
+const UNLANDED_CORRECTION_PATTERNS = [
+  /\byou\b(?:'re|'ve|\s+(?:are|were|have|had|do|did|keep))?\s+still\b/i,
+  /\bwhy\s+(?:\w+\s+){0,3}still\b/i,
+  /\bstill\s+(?:\w+\s+)?(?:not|no\b|don'?t|doesn'?t|does not|isn'?t|is not|didn'?t|hasn'?t|haven'?t|won'?t|can'?t|cannot)\b/i,
+  // quoted artifact + "still <verb>": the quotes carry the specificity, so this
+  // needs no verb list — "'// null -> Do stops' still wraps."
+  /["'`][^"'`\n]{3,80}["'`]\s+still\s+\w+/i,
+  /\bI\s+still\s+(?:see|notice|find|get|have)\b/i,
+  /\bI\s+(?:see|notice|find)\b[^.!?\n]{0,40}\bstill\b/i
+];
+
 const CONFIRMATION_PATTERNS = [
   /\byes,?\s*(exactly|right|that'?s right|perfect|good|correct)\b/i,
   /\b(perfect|exactly right|nailed it|spot on)\b/i,
@@ -433,10 +455,12 @@ for (const t of transcripts) {
     const prevAssistant = i > 0 && events[i - 1].role === 'assistant';
     const hasNegation = NEGATION_PATTERNS.some(re => re.test(text));
     const hasObservational = OBSERVATIONAL_CORRECTION_PATTERNS.some(re => re.test(text));
+    const hasUnlanded = UNLANDED_CORRECTION_PATTERNS.some(re => re.test(text));
     const hasConfirmation = CONFIRMATION_PATTERNS.some(re => re.test(text));
     const hasSurprise = SURPRISE_PATTERNS.some(re => re.test(text));
 
-    if (!hasNegation && !hasObservational && !hasConfirmation && !hasSurprise) continue;
+    if (!hasNegation && !hasObservational && !hasUnlanded && !hasConfirmation && !hasSurprise)
+      continue;
 
     const ctxStart = Math.max(0, i - 3);
     const ctxEnd = Math.min(events.length, i + 2);
@@ -454,8 +478,10 @@ for (const t of transcripts) {
       excerpt
     };
 
-    if ((hasNegation || hasObservational) && prevAssistant)
-      signals.corrections.push({...base, kind: 'correction'});
+    // `unlanded` rides along so step 4 can score one hit as recurrence: the
+    // user saying "you still…" is telling you this is the second time.
+    if ((hasNegation || hasObservational || hasUnlanded) && prevAssistant)
+      signals.corrections.push({...base, kind: 'correction', ...(hasUnlanded && {unlanded: true})});
     if (hasConfirmation && prevAssistant)
       signals.confirmations.push({...base, kind: 'confirmation'});
     if (hasSurprise) signals.surprises.push({...base, kind: 'surprise'});
