@@ -666,6 +666,18 @@ Use this when ending a session that produced shipped work, decisions, or
 cross-project learnings worth preserving. Skip when a session ends with
 nothing worth preserving — don't write stub logs to be ceremonial.
 
+**Cadence (ruled 2026-08-04):** wrap closes an *arc*, not a calendar day —
+a long session with several shipped arcs may wrap more than once, each
+continuation getting its own small log rather than an append (appending
+re-stales the earlier log's summary). The mechanical bookkeeping (queue →
+archive, decisions, stack) happens at ship time, not at wrap — wrap's
+unreconstructable payload is the narrative: the log and the distilled
+learnings, which only the hot session can write. When pairing with a sweep,
+**wrap first**: wrap's writes are the sweep's intake (stale enrichment, new
+FM tags, new wikilink edges). The sweep leg is optional per session — queues
+accumulate safely (claims, hysteresis), sub-agents judge from the notes not
+from session context, so sweep on queue pressure, not on schedule.
+
 ### /vault check [--update]
 
 Run the drift check standalone. Typically used mid-session to re-sync
