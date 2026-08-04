@@ -203,8 +203,40 @@ needed:
 Reach for raw `vault-curl` (below) for endpoints other than `/vault/{path}`
 document writes — `supersede`, `move`, `propose`, `/maintenance/*` — and
 anything `vault-put` doesn't cover. Reads go through the MCP tools above, not
-through `vault-curl`; the exceptions are the parameter gaps listed there and
-reads whose `ETag` you need.
+through `vault-curl`; the exceptions are the parameter gaps listed there,
+reads whose `ETag` you need, and **reads whose destination is a file rather
+than your context** (below).
+
+**Read to a file when the bytes are an input to a later step, not something
+you need to know.** `vault-curl /vault/<path> -s > "$WORK/doc.md"` is the
+right call when a large document is being *processed* rather than *read* —
+`sed`-ing an exact line range out of it, diffing it, or feeding a verbatim
+block to `vault-put --replace-file`. Two things make this a real exception
+rather than a preference:
+
+- **`vault_read_file` returns into context, and context is the scarce
+  resource.** Pulling a 100 KB `queue.md` to extract three lines spends the
+  whole 100 KB. Big results do not even arrive inline: past some size the
+  harness persists the tool result to disk and hands you a path, so the read
+  costs a round-trip and lands in a file regardless — which is where the curl
+  put it directly. The exact cutoff is unmeasured; the observed points
+  (2026-08-04) are `vault_read_file` on `schedule.md` at 52 KB,
+  `vault_resume_bundle` at 79 KB and `vault_queue_by_project` at 145 KB, all
+  three overflowed and had to be `jq`-ed off disk.
+- **Verbatim relocation must be mechanical.** Moving a shipped queue item
+  into `queue-archive.md` means reproducing multi-KB paragraphs exactly.
+  `vault_replace` takes `from`/`to` as strings, so that is you retyping them;
+  `--replace-file` matches byte-for-byte against what `sed` cut. Retyping is
+  the risk, not the round-trip.
+
+The boundary: **short strings you can type without risk go through
+`vault_replace` / `vault_patch_fm`** — the atomic server-side ops with the
+small blast radius. Drop to file-based reads and `vault-put --replace-file`
+only when the block is too large to reproduce by hand or the document is too
+large to pull into context. Reads you actually intend to *read* — a note you
+are about to reason about, a folder listing, a search — stay on MCP always.
+(Ruled 2026-08-04, blog session: the practice had been going off-book
+silently, which is worse than either rule.)
 
 ### Use `vault-curl` — don't hand-roll `curl`
 
@@ -223,8 +255,12 @@ command -v vault-curl >/dev/null || { echo "vault-curl missing — falling back 
 API endpoints (invoked via `vault-curl <path> [curl-options...]`):
 
 - **Read**: `vault-curl /vault/{path} -s` — *prefer `vault_read_file`*; use
-  this only when you need the response headers (`ETag` for a hand-rolled
-  conditional write, `X-Vault-Composed` to detect a composed folder view).
+  this when you need the response headers (`ETag` for a hand-rolled
+  conditional write, `X-Vault-Composed` to detect a composed folder view),
+  or when the bytes are headed for a file rather than your context —
+  `-s > "$WORK/doc.md"` to `sed` a range out of a large document or to feed
+  `vault-put --replace-file`. See the read-to-a-file exception above for the
+  boundary; a note you intend to actually read stays on `vault_read_file`.
 - **Write (JSON — THE write path)**: `vault-curl /vault/{path} -X PUT -H 'Content-Type: application/json' --data-binary @payload.json`
   - Body shape: `{"frontmatter": {...}, "body": "..."}` — the server takes the FM object directly, skips YAML parse, and serializes safely (auto-quoting colon-space, leading-special-char, hex/bool/date-shadow strings). Always use this when authoring or modifying frontmatter values.
   - Construct the payload with `jq` and `--rawfile` to safely embed a body that contains arbitrary characters — write scratch under a `WORK=$(mktemp -d)` dir, not a hardcoded `/tmp` name (CLAUDE.md § "Scratch files"): `jq --null-input --rawfile body "$WORK/body.md" '{frontmatter: {title: "X", ...}, body: $body}' > "$WORK/payload.json"`.
