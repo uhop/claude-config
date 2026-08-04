@@ -130,10 +130,15 @@ the queue dependency views. They are absent unless you hit that case, so their
 absence is not evidence of anything.
 
 `vault_resume_bundle` takes `{project, logs, project_bodies}` as of adapter
-0.1.0 — `project_bodies: ["learnings", "decisions"]` delivers those files with
-full bodies for the `/vault learn` dedup pass (`feedback` always ships its
-body). On a pre-0.1.0 adapter that parameter is missing; fall back to
-`vault-curl "/system/resume-bundle?project=<name>&logs=0&project_bodies=learnings,decisions" -X POST -s`.
+0.1.0 — `project_bodies: ["feedback", "learnings", "decisions"]` delivers
+those files with full bodies for the `/vault learn` dedup pass. Files named
+there bypass the bundle's size budget; the `feedback` body is otherwise
+included by default **only while the whole bundle fits 32 KiB** (server ≥
+2026-08-04) — above it feedback arrives as `summary` + `body_bytes` +
+`headings` with `body_omitted: {reason: "bundle_budget", budget_bytes}`; on
+an older server it always ships. On a pre-0.1.0 adapter the parameter is
+missing; fall back to
+`vault-curl "/system/resume-bundle?project=<name>&logs=0&project_bodies=feedback,learnings,decisions" -X POST -s`.
 
 Requires two environment variables (set in `~/.env`, which is sourced by
 `.bashrc`) — used by `vault-curl`, `vault-put`, and the MCP server alike:
@@ -474,10 +479,12 @@ Extract learnings from the current project/session.
 1. Identify the current project from git remote, directory name, or ask
 2. Read existing project notes if they exist (`projects/{name}/`). The dedup
    pass needs **full bodies**: `vault_resume_bundle({project, logs: 0,
-   project_bodies: ["learnings", "decisions", "stack", "queue"]})` on adapter
-   0.1.0+. On a pre-0.1.0 adapter that parameter is missing — stay on curl for
-   this call: `vault-curl "/system/resume-bundle?project=<name>&logs=0&project_bodies=learnings,decisions,stack,queue" -X POST -s`.
-   (feedback.md always arrives with its body either way)
+   project_bodies: ["feedback", "learnings", "decisions", "stack", "queue"]})`
+   on adapter 0.1.0+ — name `feedback` explicitly: named files bypass the
+   bundle's 32 KiB budget, and a mature feedback body is budget-gated when
+   unnamed (server ≥ 2026-08-04). On a pre-0.1.0 adapter the parameter is
+   missing — stay on curl for this call:
+   `vault-curl "/system/resume-bundle?project=<name>&logs=0&project_bodies=feedback,learnings,decisions,stack,queue" -X POST -s`.
 3. Analyze recent work: git log, changed files, decisions made
 4. Create or update `projects/{name}/learnings.md`, `decisions.md`, `stack.md`
 5. Extract cross-project patterns into `topics/` notes (e.g., "api-rate-limiting", "docker-networking"). Propose-then-write: before creating, check neighbours with `POST /vault/propose` (search-before-write); if an existing note already covers the concept, extend it, and if the new write would *replace* it wholesale, use `POST /vault/supersede` rather than minting a near-duplicate. When creating a new topic note here, enrich at capture per the `/vault ingest` step 5 procedure — write the `agent:` block in the same PUT.
@@ -608,14 +615,20 @@ parallel-batch `jq`-guard hazard does not arise here at all.
      lines. Skim the summaries; fetch a full body (`vault_read_file`)
      only when a summary is missing or the session directly continues
      that log's work.
-   - `project` — `feedback.md` arrives with its full body: surface its
-     rules near the top of the resume output (this is the read path for
-     fleet-shared project feedback — the vault is pull-only, not
-     auto-loaded like local memory; see
-     `topics/project-feedback-md-convention`). The other files
-     (queue/decisions/learnings/stack) come as `summary` + `body_bytes`;
-     fetch bodies with `vault_read_file` only as needed. A `null` entry
-     means the file doesn't exist — not every project has a `feedback.md`.
+   - `project` — `feedback.md` normally arrives with its full body:
+     surface its rules near the top of the resume output (this is the
+     read path for fleet-shared project feedback — the vault is
+     pull-only, not auto-loaded like local memory; see
+     `topics/project-feedback-md-convention`). When it instead carries
+     `body_omitted: {reason: "bundle_budget"}` (server ≥ 2026-08-04: the
+     body would push the bundle past 32 KiB), the `headings` index shows
+     what rules exist — fetch the body with `vault_read_file` (or
+     read-to-a-file when `body_bytes` says it is huge) and still surface
+     the rules; don't skip them because the bundle didn't inline them.
+     The other files (queue/decisions/learnings/stack) come as
+     `summary` + `body_bytes`; fetch bodies with `vault_read_file` only
+     as needed. A `null` entry means the file doesn't exist — not every
+     project has a `feedback.md`.
 3. **Fallback (pre-bundle server).** A 404 / missing-tool error from the
    bundle means an older server — run the individual reads instead:
    `vault_lint`, `vault_suggestions_summary`, the two agent-workflow file
