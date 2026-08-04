@@ -47,6 +47,19 @@ no temp files, no permission prompt per call. If they are absent, shell out to
 `bin/query.js`. Both are the same dispatcher over the same ops, so the request
 shape below is identical either way; only the envelope around it differs.
 
+**One exception, and it lands on exactly this project's normal workflow.** The
+client launches `bin/mcp.js` at session start, so the process pins whatever
+`~/Open/apodict/src/` looked like *then*: a session that edits the oracle keeps
+querying the old engine — no error, no warning, a plausible answer of the right
+shape. Measured 2026-08-04, minutes after a lower-bound fix landed, the same
+`simplify` returned `bound: 6, stopped: 'budget'` over MCP and `bound: 7,
+optimal: 'bound'` over the CLI. `/mcp` reconnect restarts a stdio server
+(verified the same day), so the remedy is one slash command — but nothing
+prompts you to reach for it. Treat MCP as stale after any `src/` change, and
+re-probe a query whose answer you already know before trusting the next
+verdict. Fixing the oracle and then analysing code with it is the ordinary
+shape of an apodict session, not an edge case.
+
 ```bash
 # MCP absent — the CLI path
 node ~/Open/apodict/bin/query.js --help          # ops + request shape
