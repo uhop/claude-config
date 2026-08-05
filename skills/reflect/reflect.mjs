@@ -327,6 +327,11 @@ const inputFingerprint = input => {
   }
 };
 
+// Error signature: whitespace-collapsed, truncated, lowercased — the shape
+// Pass 3 buckets on, shared so Pass 2's stuck-loop key uses the same notion
+// of "the same error".
+const errorSignature = text => (text ?? '').replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
+
 // --- Detection ----------------------------------------------------------
 
 const signals = {
@@ -487,17 +492,19 @@ for (const t of transcripts) {
     if (hasSurprise) signals.surprises.push({...base, kind: 'surprise'});
   }
 
-  // Pass 2: stuck loops — same (toolName + input fingerprint) repeated ≥ 3×,
-  // counting only repetitions whose tool_result came back is_error: true.
-  // The error gate kills the iterative-test-runs false-positive class: a
-  // refactor → `npm test` → fix → `npm test` cycle issues identical inputs
-  // many times, but those runs succeed (or fail differently) — they're
-  // progress, not a pathological retry. A genuine stuck loop is the same
-  // call erroring over and over.
-  const erroredIds = new Set();
+  // Pass 2: stuck loops — same (toolName + input fingerprint + error
+  // signature) repeated ≥ 3×, counting only repetitions whose tool_result
+  // came back is_error: true. The error gate kills the iterative-test-runs
+  // false-positive class: a refactor → `npm test` → fix → `npm test` cycle
+  // issues identical inputs many times, but those runs succeed — progress,
+  // not a pathological retry. The error signature in the key kills the
+  // by-design-nonzero class: a status probe (check-drift exits 1 on drift)
+  // returns different content each run, while a genuine stuck loop replays
+  // the same error verbatim (2026-08-05, from the 13× check-drift FP).
+  const erroredSigs = new Map(); // tool_use_id → error signature
   for (const e of events) {
     for (const err of e.errorResults) {
-      if (err.id) erroredIds.add(err.id);
+      if (err.id) erroredSigs.set(err.id, errorSignature(err.text));
     }
   }
   const loopBuckets = new Map();
@@ -505,10 +512,10 @@ for (const t of transcripts) {
   for (const e of events) {
     if (e.role !== 'assistant') continue;
     for (let j = 0; j < e.toolNames.length; j++) {
-      if (!erroredIds.has(e.toolUseIds[j])) continue;
+      if (!erroredSigs.has(e.toolUseIds[j])) continue;
       const name = e.toolNames[j];
       const fp = inputFingerprint(e.toolInputs[j]);
-      const key = `${name}::${fp}`;
+      const key = `${name}::${fp}::${erroredSigs.get(e.toolUseIds[j])}`;
       const arr = loopBuckets.get(key) ?? [];
       // Parallel calls sharing a fingerprint are one attempt, not N retries,
       // and they stream as separate assistant rows with distinct timestamps —
@@ -532,7 +539,7 @@ for (const t of transcripts) {
       ts: tsList[0],
       tool: name,
       repetitions: tsList.length,
-      excerpt: `[stuck loop] tool=${name} repeated ${tsList.length}× with same input fingerprint, each erroring`
+      excerpt: `[stuck loop] tool=${name} repeated ${tsList.length}× with same input fingerprint, erroring identically each time`
     });
   }
 
@@ -547,7 +554,7 @@ for (const t of transcripts) {
     for (const err of e.errorResults) {
       const reg = err.id ? toolUseRegistry.get(err.id) : null;
       const resolved = reg?.name ?? (i > 0 ? events[i - 1]?.toolNames?.[0] : null) ?? '(unknown)';
-      const errSig = err.text.replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
+      const errSig = errorSignature(err.text);
       const key = `${resolved}::${errSig}`;
       // Parallel calls fail as a unit: one permission rejection or one
       // cancelled batch is a single decision, but its N results arrive as N
