@@ -50,6 +50,15 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/herdr-tab-label.sh",
+            "timeout": 5
+          }
+        ]
       }
     ]
   },
