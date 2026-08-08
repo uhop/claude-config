@@ -69,6 +69,15 @@ files absent — see [[topics/tarball-ai-docs-convention]] and
   if not). If the project has a wiki, `wiki/Home.md` links all relevant pages.
 - `description` / `keywords` in `package.json` still describe the project
   (the digest only checks presence).
+- **No pointers into private or unpublished projects.** A package about to go
+  public must carry no `dependencies` / `devDependencies` entry on a package
+  that is not on npm, and no README / docs / example naming a private repo or a
+  local filesystem path (`~/Open/<proj>`). Each breaks a different consumer:
+  `npm i` fails on the first, the reader hits a 404 on the second. Load the
+  private one dynamically (guarded `await import()`) and refer to it by name
+  only. (Origin: 2026-08-06/07 — `invariants-sidecar` reached a release check
+  still dev-depending on the private `apodict` **and** with a README pointing at
+  its local path; both were caught by eye, not by this checklist.)
 
 ## Step 3 — Version bump
 
