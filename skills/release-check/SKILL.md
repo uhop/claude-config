@@ -69,6 +69,47 @@ files absent — see [[topics/tarball-ai-docs-convention]] and
   if not). If the project has a wiki, `wiki/Home.md` links all relevant pages.
 - `description` / `keywords` in `package.json` still describe the project
   (the digest only checks presence).
+- **Grep the docs for absolutes this release's features falsified.** Presence
+  is not currency: adding a capability and documenting it *somewhere* leaves
+  every sentence written when the old behaviour was the only behaviour, and
+  those sentences are now wrong. For each feature in the change list, name the
+  claim it contradicts and grep the whole doc set for it — leads, taglines,
+  blockquote summaries, and the wiki Home paragraph, which are exactly the
+  prose nobody re-reads because it was right for years. (Origin: 2026-08-08 —
+  `double-meh-bundler` added a streamed `+jsonl` framing, and "returns all
+  responses in **a single compressed envelope**" survived a 16/16 clean run in
+  six files: README, `llms.txt`, `llms-full.txt`, `AGENTS.md`,
+  `ARCHITECTURE.md`, `wiki/Home.md`. The streaming section had been added to
+  all of them; only the openings stayed false.) The tell is an absolute —
+  *all*, *every*, *a single*, *always*, *never* — next to a behaviour that just
+  became conditional.
+- **The mirror case: enumerated lists under-report when a guarantee _widens_.**
+  The rule above catches prose that over-claims after a behaviour narrowed;
+  the same currency gap runs the other way, and it hides better, because
+  nothing in the docs has become false. A doc that lists what degrades, what
+  is retried, what is contained — "bundler trouble, missing parts, and absent
+  features" — silently under-promises the moment a release adds a member, and
+  the reader never learns about the guarantee they would most want to rely on.
+  The tell is an *enumeration* standing next to a behaviour this release
+  extended, so grep for the list rather than for an absolute, and ask of each:
+  is this set still complete? (Origin: 2026-08-08 — `double-meh-sw` 1.0.0
+  contained cache-tier failures, so a quota error can no longer fail a
+  response the network already delivered; six files enumerated the degradation
+  set and not one of them named the tier. Caught only on the *second*
+  /release-check of that session, because the fix landed between the two runs
+  — a first run that is clean before the last commit proves nothing about the
+  docs after it.)
+- **Read every runnable snippet as someone pasting it, not as someone
+  proofreading it.** Ask what the reader gets if they copy it verbatim: does it
+  mount where they expect, is every identifier either defined or obviously a
+  placeholder, does the happy path actually work? Snippet review defaults to
+  scanning for *staleness* against the current API, which a snippet that was
+  never right passes forever. (Same origin: `createServer(toNodeHandler(…))
+  .listen(3000)` mounts the bundler on **every** path, so a copy-pasted server
+  answers `GET /` with 405. It was wrong from the first commit, sat in README
+  and `llms.txt`, and survived every prior review — the wiki carried the routed
+  form the whole time.) Cross-check snippets that appear in more than one file
+  against each other; a divergence usually means one of them is the wrong one.
 - **No pointers into private or unpublished projects.** A package about to go
   public must carry no `dependencies` / `devDependencies` entry on a package
   that is not on npm, and no README / docs / example naming a private repo or a
