@@ -239,6 +239,12 @@ const stripSyntheticBlocks = s =>
     .replace(/<command-name>[\s\S]*?<\/command-name>/g, '')
     .replace(/<command-args>[\s\S]*?<\/command-args>/g, '')
     .replace(/<task-notification>[\s\S]*?<\/task-notification>/g, '')
+    // Peer traffic from another Claude session (SendMessage): preamble,
+    // envelope and harness trailer are all machine-authored, and the
+    // trailer's own "never …" wording fires the patterns, so the whole
+    // turn goes. Requires the envelope to follow the preamble, so a user
+    // quoting the phrase keeps their text.
+    .replace(/Another Claude session sent a message:\s*<cross-session-message[\s\S]*/g, '')
     .trim();
 
 // Flatten a row into:
