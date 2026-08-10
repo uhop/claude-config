@@ -88,8 +88,8 @@ analyze_segment() {
 
     if [[ "$ghcmd" == "api" ]]; then
       local is_get=0
-      [[ "$seg" =~ (-X|--method)[[:space:]=]+(GET|get) ]] && is_get=1
-      if [[ "$seg" =~ (-X|--method)[[:space:]=]+(POST|PUT|PATCH|DELETE|post|put|patch|delete) ]]; then
+      [[ "$seg" =~ (-X|--method)[[:space:]=]*(GET|get) ]] && is_get=1
+      if [[ "$seg" =~ (-X|--method)[[:space:]=]*(POST|PUT|PATCH|DELETE|post|put|patch|delete) ]]; then
         deny "gh api write (non-GET method)" "Mutating the GitHub API is reserved."
       fi
       if [[ $is_get -eq 0 && "$seg" =~ (^|[[:space:]])(-f|-F|--field|--raw-field|--input)([[:space:]]|=) ]]; then
