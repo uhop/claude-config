@@ -82,7 +82,17 @@ const cacheDir = path.join(homedir(), '.cache', 'reflect');
 mkdirSync(cacheDir, {recursive: true});
 writeFileSync(
   path.join(cacheDir, 'last-run.json'),
-  JSON.stringify({last_run_iso: entry.last_run_iso, last_run_ms: entry.last_run_ms}, null, 2) + '\n'
+  // `report` rides in the cache so the next run's scanner can emit it as
+  // `prior_report` — the carried-forward resolution input (2026-08-09).
+  JSON.stringify(
+    {
+      last_run_iso: entry.last_run_iso,
+      last_run_ms: entry.last_run_ms,
+      ...(entry.report && {report: entry.report})
+    },
+    null,
+    2
+  ) + '\n'
 );
 
 const STATE = 'projects/agent-workflow/state.md';

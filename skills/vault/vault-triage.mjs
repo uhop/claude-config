@@ -340,13 +340,24 @@ const prepare = async () => {
     for (const item of worksheet.items) {
       const classifications = fmMaps.get(item.from.record_id) ?? {};
       const want = pathKey(item.to_path);
+      // Exact path wins over any basename hit — an earlier entry sharing the
+      // target's basename must not shadow a later exact entry (2026-07-29:
+      // `stream-sorting/decisions` shadowed `tape-six-fast-check/decisions`).
+      // Basename fallback only when unambiguous: decisions/queue/stack/
+      // learnings repeat in every project folder, so a multi-hit basename
+      // emits no prior rather than a guess.
+      let prior;
+      const basenameHits = [];
       for (const [key, type] of Object.entries(classifications)) {
         const got = pathKey(stripWikilink(key));
-        if (got === want || got.split('/').pop() === want.split('/').pop()) {
-          item.prior = type;
+        if (got === want) {
+          prior = type;
           break;
         }
+        if (got.split('/').pop() === want.split('/').pop()) basenameHits.push(type);
       }
+      if (prior === undefined && basenameHits.length === 1) prior = basenameHits[0];
+      if (prior !== undefined) item.prior = prior;
       worksheet.decisions_template[item.id] = null;
     }
   } else {

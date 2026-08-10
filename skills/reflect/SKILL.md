@@ -64,6 +64,7 @@ Read all three to dedupe; write only to vault + claude-config.
      "totals": {"corrections": N, "confirmations": N, "stuck_loops": N, "repeated_failures": N, "surprises": N},
      "sessions_scanned": N,
      "transcripts_seen": N,
+     "prior_report": "[[projects/agent-workflow/reports/<name>]] — this host's previous report, null on a first run or a pre-2026-08-09 cache",
      "live_sessions": [{project, session_id, path, mtime_iso, age_seconds, first_row_iso}],
      "state_watermark_iso": "...",
      "signals": {
@@ -82,6 +83,7 @@ Read all three to dedupe; write only to vault + claude-config.
    - The relevant project's vault `feedback.md`, `learnings.md`, `decisions.md` (if any)
    - `projects/agent-workflow/queue.md` (already-queued improvements)
    - **Recent other-host reports** — list `projects/agent-workflow/reports/` and read those from the last ~60 days whose `-<host>` filename suffix is *not* this machine. This is the **cross-machine recurrence input** for step 4: transcripts are local-only, so another host's report is the only fleet-visible evidence that the same signal also fired there. (Dedupe / `already_covered` still comes from the rules stores above — a report only *proposes*; the rule isn't "covered" until it lands in `CLAUDE.md` / `feedback.md` / `decisions.md` / `queue.md`.)
+   - **This host's previous report** — `prior_report` from scan.json (null on a first run or a pre-carry cache: fall back to the newest `-<host>` report in the listing). Read its `## Carried forward` section **and any ad-hoc deferral prose** (older reports used trailing "## Note — current session out of scope" paragraphs). Every item found there MUST be resolved in this run's report under `## Carried forward` (step 6): **covered** (the rule landed — cite where), **re-proposed** (as one of this run's P-entries), or **dropped** (with the reason stated). A deferral that is neither resolved nor re-carried is the write-only-report defect this step exists to close (2026-08-09: one deferral silently dropped, one accidentally re-derived seven weeks late).
 
    If the candidate's rule overlaps an existing entry, mark it `already_covered` — it goes in the report's "Already covered" section, not the proposals.
 
@@ -129,6 +131,14 @@ Read all three to dedupe; write only to vault + claude-config.
 
    ## Already covered
    - {signal} → existing rule at {file:line}
+
+   ## Carried forward
+   {resolution of the prior report's carried items, then this run's new deferrals.
+   Prior items: "- {item} → covered by {rule} | re-proposed as P{N} | dropped — {reason}".
+   New deferrals — findings unreadable or unactionable this run (live session,
+   missing evidence): "- {item} — carried because {reason}; next run: {what resolves it}".
+   Write "None." rather than omitting the section — absence must be visible,
+   not ambiguous.}
    ```
 
    FM:

@@ -84,13 +84,37 @@ const resolveWindowStart = since => {
 
 const windowStartMs = resolveWindowStart(SINCE);
 
+// Previous report ref for this host, written into the cache by
+// reflect-state.mjs step 9. Surfaced as `prior_report` so the carried-forward
+// resolution step cannot be skipped by omission — a deferral noted only in a
+// report body is write-only (2026-08-09: two deferrals checked two months
+// later — one silently dropped, one accidentally re-derived seven weeks late).
+const priorReport = (() => {
+  try {
+    return JSON.parse(readFileSync(STATE_FILE, 'utf8')).report ?? null;
+  } catch {
+    return null;
+  }
+})();
+
 // --- Pattern library ----------------------------------------------------
 
+// The don't/stop/never patterns deliberately carry no action-verb list: three
+// runs (2026-08-02 ×2, 2026-08-03) showed corrections about state, perception,
+// or prior discussion ("I don't mind…", "I don't see hA5-grid", "I don't like
+// it") falling through closed verb lists. Recall-over-precision, same tradeoff
+// as OBSERVATIONAL below; measured 2026-08-09 over 30 days: 63 → 163 correction
+// firings, 51 of the 100 new ones real — including previously invisible sharp
+// corrections ("stop creating excuses", "Never print it again", "don't import
+// random files"). Noise is epistemic prose ("I don't know/think") the dedupe
+// step drops; verb exclusions tested lossy (real corrections fire only via
+// "don't think" turns), and a prev-assistant-tool_use gate doesn't
+// discriminate (82/100 new firings, real ones included, follow text turns).
 const NEGATION_PATTERNS = [
   /\bno+,?\s+(don'?t|stop|not)\b/i,
-  /\bdon'?t\s+(do|use|run|call|reach|write|add|create|touch)\b/i,
-  /\bstop\s+(doing|using|calling|running)\b/i,
-  /\bnever\s+(do|use|run|call|write|amend|force)\b/i,
+  /\bdon'?t\s+\w+/i,
+  /\bstop\s+\w+ing\b/i,
+  /\bnever\s+\w+/i,
   /\bplease\s+don'?t\b/i,
   /\bwe\s+don'?t\s+(do|use)\s+(that|this|it)\b/i,
   /\bthat'?s?\s+(wrong|not right|not what)\b/i,
@@ -107,7 +131,11 @@ const OBSERVATIONAL_CORRECTION_PATTERNS = [
   /\bthere(?:'s| is)\s+(?:a|an)\s+(better|doc|convention|skill|way|tool|helper|rule|pattern)\b/i,
   /\binstead of\b/i,
   /\brather than\b/i,
-  /\bwhy\s+(?:don'?t|not|are you|did you|would you|are we|did we)\b/i
+  /\bwhy\s+(?:don'?t|not|are you|did you|would you|are we|did we)\b/i,
+  // Sentence-final bare "Why?" — the form actually used to open a challenge
+  // ("…yet we never talked about it. Why?"); the pattern above requires an
+  // interrogative immediately after "why", so it never matched (2026-08-02).
+  /(?:^|[.!?\n])\s*why\s*\?/im
 ];
 
 // "Still" corrections: the user reporting that a correction already given has
@@ -129,7 +157,13 @@ const UNLANDED_CORRECTION_PATTERNS = [
   // needs no verb list — "'// null -> Do stops' still wraps."
   /["'`][^"'`\n]{3,80}["'`]\s+still\s+\w+/i,
   /\bI\s+still\s+(?:see|notice|find|get|have)\b/i,
-  /\bI\s+(?:see|notice|find)\b[^.!?\n]{0,40}\bstill\b/i
+  /\bI\s+(?:see|notice|find)\b[^.!?\n]{0,40}\bstill\b/i,
+  // Quoted follow-up: `did you <verb>` + a quoted span is the user replaying a
+  // commitment ("did you do \"Next leg: …\"?"). The quotes carry the
+  // specificity — bare "did you push?" chatter stays out. Measured 2026-08-09
+  // over 30 days: 16 `did you` user turns, fires on 2, both real (the third
+  // hit was a continuation-summary turn, now stripped as synthetic).
+  /\bdid\s+you\s+(?:do|check|handle|finish|address)\b[^"'`\n]{0,40}["'`][^"'`\n]{3,}["'`]/i
 ];
 
 const CONFIRMATION_PATTERNS = [
@@ -245,6 +279,13 @@ const stripSyntheticBlocks = s =>
     // turn goes. Requires the envelope to follow the preamble, so a user
     // quoting the phrase keeps their text.
     .replace(/Another Claude session sent a message:\s*<cross-session-message[\s\S]*/g, '')
+    // Continuation-summary turns (context-compaction handoffs) are the
+    // assistant's own recap of the prior session arriving in a user-role row —
+    // correction-dense by construction, since they replay the very language
+    // the classifier hunts for. Anchored at turn start so a user merely
+    // quoting the phrase keeps their text. (Found 2026-08-09: a summary
+    // quoting a `did you check "…"` fixture re-fired it as a fresh signal.)
+    .replace(/^\s*This session is being continued from a previous conversation[\s\S]*/, '')
     .trim();
 
 // Flatten a row into:
@@ -309,7 +350,10 @@ const flatten = row => {
 const buildExcerpt = events => {
   const parts = [];
   for (const e of events) {
-    const prefix = e.role === 'user' ? 'USER' : 'ASSISTANT';
+    // A user-role row with no typed text is a tool_result carrier — label it
+    // honestly, or excerpt readers attribute tool output to the user (the
+    // 2026-07-27 misdiagnosis blamed three signals on `USER:`-rendered rows).
+    const prefix = e.role !== 'user' ? 'ASSISTANT' : e.userText ? 'USER' : 'TOOL_RESULT';
     let body = e.userText || e.toolResultText || '';
     if (e.toolNames?.length) body = `[tool_use ${e.toolNames.join(',')}] ` + body;
     if (e.hasToolResultError) body = `[tool_result ERROR] ` + body;
@@ -621,6 +665,7 @@ const output = {
   totals,
   sessions_scanned: sessionsAnalyzed,
   transcripts_seen: transcripts.length,
+  prior_report: priorReport,
   live_sessions: liveSessions,
   state_watermark_iso: new Date(Math.min(scanMs, ...liveFloorsMs)).toISOString(),
   signals
