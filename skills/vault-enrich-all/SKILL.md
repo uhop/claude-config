@@ -114,7 +114,9 @@ wholesale per write).
 - **`edge_classifications`**: classify only the worksheet's
   `body_wikilinks`, and only where keyword cues support a type; the
   classifier's runtime default is `cites`, and this field is an advisory
-  prior for `/vault-review-edges`, not the runtime truth.
+  prior for `/vault-review-edges`, not the runtime truth. Forward
+  derivation ("promoted / generalized to [[target]]") is `basis-for` —
+  a declaration alias stored as `derived-from` with the edge flipped.
 - **`complexity`**: `prose`, `code-heavy`, `tabular`, `mixed`, `hub` (a
   note that's mostly wikilinks), or `log-entry`.
 

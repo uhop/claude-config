@@ -56,12 +56,13 @@ server pins FM `edges:` per accept and settles rows as `fm-override` — and
 prints a JSON report. Exit 0 ok · 1 partial failures · 3 rejected pre-write.
 Run solo or `|| true` in parallel Bash batches.
 
-## Judgment — the 10 types
+## Judgment — the 10 types (+ 1 alias)
 
 | Type | When to choose |
 |---|---|
 | `cites` | Default; the source merely refers to the target. **Decision value `reject` or `cites`.** |
 | `derived-from` | Source builds on / extends / is grounded in target. Strong intellectual debt. |
+| `basis-for` | Forward derivation — the *target* was derived from the source: "promoted / generalized / captured / extracted / distilled to [[target]]", the origin note recording where its material went. Declaration alias (2026-08-10): stored as `derived-from` with the edge flipped, so pick it by the prose direction, not the storage direction. |
 | `supersedes` | Source replaces / obsoletes the target. |
 | `revises` | Source amends or refines target without replacing it. |
 | `caused-by` | Source describes a state that target produced. |
