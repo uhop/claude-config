@@ -730,7 +730,7 @@ parallel-batch `jq`-guard hazard does not arise here at all.
      as needed. A `null` entry means the file doesn't exist — not every
      project has a `feedback.md`.
      The block also carries `handoffs: {open, returned, claimed}` (server
-     ≥ 2026-08-11) — the coordination inbox, since claiming a repo means
+     ≥ 2026-08-10) — the coordination inbox, since claiming a repo means
      inheriting it. **Surface a non-empty `open` list**: another agent is
      waiting on this session, and each item carries only a
      `body_first_line`, so read the full request with `vault_handoff_get`
