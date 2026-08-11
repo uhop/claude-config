@@ -31,6 +31,7 @@ in the same row.
 | Rename preserving `record_id` | **`vault_move`** | `POST /vault/move` |
 | Search-before-write | **`vault_propose`** | `POST /vault/propose` |
 | Raw inbox, cleanup-lint, embed-pending, incremental-reindex, run-all | **`vault_raw_inbox` / `vault_cleanup_lint` / `vault_embed_pending` / `vault_incremental_reindex` / `vault_run_scans`** | `vault-curl /maintenance/…` |
+| Repo leases — list/events, claim/renew/release/transfer | **`vault_lease_*`** (adapter ≥ 0.4.0; § Agent coordination below) | `vault-curl /leases[/events]` + `POST /leases/claim\|renew\|release\|transfer` |
 | `/commit`, snapshots, `cleanup-tag-aliases`, `release-embedder`, `folder-listing`, individual `find-*` scans | **`vault-curl`** | — deliberately not exposed on MCP |
 
 **Scripts cannot call MCP tools.** MCP is an agent-level surface, so
@@ -109,6 +110,7 @@ Registered as `mcp__vault__<name>`; fetch schemas with
 | Graph | `vault_backlinks`, `vault_neighborhood`, `vault_similar` |
 | Queue slices | `vault_queue_by_project`, `vault_queue_top`, `vault_queue_by_priority`, `vault_queue_by_section`, `vault_queue_project_archive` |
 | Tags | `vault_list_tags`, `vault_tag_info`, `vault_records_by_tag` |
+| Repo leases (who holds a repo; event transcript) | `vault_lease_list`, `vault_lease_events` (§ Agent coordination) |
 
 Every tool description names the response shape it returns, including which of
 the **three list shapes** it uses — audited against live responses 2026-08-03
@@ -145,6 +147,55 @@ Requires two environment variables (set in `~/.env`, which is sourced by
 
 - `VAULT_API_URL` — base URL of the vault REST API (vault-storage; e.g., `http://host:8123`)
 - `VAULT_API_TOKEN` — bearer token for authentication
+
+### Agent coordination — repo leases
+
+The server carries a repo-lease registry answering "which agent may edit this
+repo's working tree directly" (design:
+[[projects/vault-storage/design/agent-coordination]] § Ownership protocol;
+rulings D21/D23). Tools: `vault_lease_list` / `vault_lease_events` (reads),
+`vault_lease_claim` / `vault_lease_renew` / `vault_lease_release` /
+`vault_lease_transfer` (adapter ≥ 0.4.0; on an older adapter,
+`vault-curl /leases` and `POST /leases/claim|renew|release|transfer`).
+
+**Single-agent sessions: this whole section is a no-op.** Claim nothing;
+check nothing for work in the session's own cwd repo; an empty registry is
+the normal state and everything behaves exactly as it did before the
+registry existed. The protocol engages only around cross-repo work and
+multi-agent fleets:
+
+- **Before editing a repo outside the session's cwd** (the CLAUDE.md
+  § Cross-repo work path), read the lease first:
+  `vault_lease_list({resource: "repo:<normalized-remote-url>"})` — e.g.
+  `repo:github.com/uhop/deep6`; a repo with no remote keys as
+  `repo:<host>:<path>`. Empty `items` = not held → proceed exactly as
+  before (disposable worktree, branch/patch handover to the user). Held by
+  someone else → don't race it: name the holder to the user and route the
+  work through them (the handoff queue automates this leg once it ships).
+  Registry unreachable → proceed as before too: the worktree discipline is
+  already collision-safe, so the check fails open, never blocks work.
+- **Claim only with a reason** — the user directed coordination, another
+  agent is known to be active on the fleet, or a long direct-edit arc
+  should be reserved. A session whose cwd *is* the repo claims with
+  `priority: "cwd"` (preempts an agent-held side lease; nothing preempts a
+  human holder). A side claim requires **no current holder** and **a clean
+  target checkout** — modified, staged, or untracked-unignored files are
+  dirt (ignored files never count; stash entries: mention to the user,
+  don't block); pass `attestation: "clean at <short-sha>"`. Dirty tree →
+  do not claim: tell the user and use a worktree. The check is client-side
+  by design — the server cannot see any host's working tree.
+- **Holder id**: `<hostname>/<session-prefix>`, e.g. `nuke/59bd32b6` —
+  unique per session, readable in `/ui/agents.html`. The operator holds as
+  `kind: "human"` (no TTL, never preempted) and claims via the UI;
+  `vault_lease_transfer` with `to_kind: "human"` is the "please review and
+  commit" handover.
+- **While holding**: re-claim at the start of each work burst (idempotent
+  re-claim = renew, safe retry); after a long gap or any vault error,
+  verify the lease still names you before the next mutating burst — losing
+  a lease is demotion, not damage (D23): downgrade to worktree + handover.
+  **Release at session end**; don't leave TTL expiry to say what an
+  explicit release states. Leases are cleared on server restart by design —
+  re-claim on the next burst if still needed.
 
 ### `vault-put` — the shell-side document writer
 
