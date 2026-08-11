@@ -32,6 +32,7 @@ in the same row.
 | Search-before-write | **`vault_propose`** | `POST /vault/propose` |
 | Raw inbox, cleanup-lint, embed-pending, incremental-reindex, run-all | **`vault_raw_inbox` / `vault_cleanup_lint` / `vault_embed_pending` / `vault_incremental_reindex` / `vault_run_scans`** | `vault-curl /maintenance/…` |
 | Repo leases — list/events, claim/renew/release/transfer | **`vault_lease_*`** (adapter ≥ 0.4.0; § Agent coordination below) | `vault-curl /leases[/events]` + `POST /leases/claim\|renew\|release\|transfer` |
+| Handoffs — create/list/get/events, claim/resolve/resubmit/note | **`vault_handoff_*`** (adapter ≥ 0.5.0; § Agent coordination below) | `vault-curl /handoffs[/{id}\|/events]` + `POST /handoffs[/claim\|resolve\|resubmit\|note]` |
 | `/commit`, snapshots, `cleanup-tag-aliases`, `release-embedder`, `folder-listing`, individual `find-*` scans | **`vault-curl`** | — deliberately not exposed on MCP |
 
 **Scripts cannot call MCP tools.** MCP is an agent-level surface, so
@@ -111,6 +112,7 @@ Registered as `mcp__vault__<name>`; fetch schemas with
 | Queue slices | `vault_queue_by_project`, `vault_queue_top`, `vault_queue_by_priority`, `vault_queue_by_section`, `vault_queue_project_archive` |
 | Tags | `vault_list_tags`, `vault_tag_info`, `vault_records_by_tag` |
 | Repo leases (who holds a repo; event transcript) | `vault_lease_list`, `vault_lease_events` (§ Agent coordination) |
+| Handoffs (inbox for a role; one item; transcript) | `vault_handoff_list`, `vault_handoff_get`, `vault_handoff_events` (§ Agent coordination) |
 
 Every tool description names the response shape it returns, including which of
 the **three list shapes** it uses — audited against live responses 2026-08-03
@@ -148,15 +150,19 @@ Requires two environment variables (set in `~/.env`, which is sourced by
 - `VAULT_API_URL` — base URL of the vault REST API (vault-storage; e.g., `http://host:8123`)
 - `VAULT_API_TOKEN` — bearer token for authentication
 
-### Agent coordination — repo leases
+### Agent coordination — repo leases and handoffs
 
-The server carries a repo-lease registry answering "which agent may edit this
-repo's working tree directly" (design:
+The server carries two coordination surfaces: a repo-lease registry answering
+"which agent may edit this repo's working tree directly", and a handoff queue
+answering "how does a non-owner get work done there" (design:
 [[projects/vault-storage/design/agent-coordination]] § Ownership protocol;
-rulings D21/D23). Tools: `vault_lease_list` / `vault_lease_events` (reads),
-`vault_lease_claim` / `vault_lease_renew` / `vault_lease_release` /
+rulings D21/D23). Lease tools: `vault_lease_list` / `vault_lease_events`
+(reads), `vault_lease_claim` / `vault_lease_renew` / `vault_lease_release` /
 `vault_lease_transfer` (adapter ≥ 0.4.0; on an older adapter,
 `vault-curl /leases` and `POST /leases/claim|renew|release|transfer`).
+Handoff tools: `vault_handoff_*` (adapter ≥ 0.5.0; on an older adapter,
+`vault-curl /handoffs[/{id}]` and
+`POST /handoffs[/claim|resolve|resubmit|note]`).
 
 **Single-agent sessions: this whole section is a no-op.** Claim nothing;
 check nothing for work in the session's own cwd repo; an empty registry is
@@ -170,10 +176,11 @@ multi-agent fleets:
   `repo:github.com/uhop/deep6`; a repo with no remote keys as
   `repo:<host>:<path>`. Empty `items` = not held → proceed exactly as
   before (disposable worktree, branch/patch handover to the user). Held by
-  someone else → don't race it: name the holder to the user and route the
-  work through them (the handoff queue automates this leg once it ships).
-  Registry unreachable → proceed as before too: the worktree discipline is
-  already collision-safe, so the check fails open, never blocks work.
+  someone else → don't race it: name the holder to the user, work in a
+  worktree, and file the result as a handoff (below) rather than editing the
+  tree they hold. Registry unreachable → proceed as before too: the worktree
+  discipline is already collision-safe, so the check fails open, never blocks
+  work.
 - **Claim only with a reason** — the user directed coordination, another
   agent is known to be active on the fleet, or a long direct-edit arc
   should be reserved. A session whose cwd *is* the repo claims with
@@ -196,6 +203,48 @@ multi-agent fleets:
   **Release at session end**; don't leave TTL expiry to say what an
   explicit release states. Leases are cleared on server restart by design —
   re-claim on the next burst if still needed.
+
+**Handoffs — asking another agent to do the work.** A handoff is addressed to
+a **role** (`to: "repo:<normalized-remote-url>"`), never a session, so it
+survives its requester and is picked up by whoever holds that repo's lease,
+including an agent that starts tomorrow. Handoffs are durable across server
+restarts (the server keeps a spool of self-describing files); resolved ones
+archive into `projects/<project>/handoff-archive.md`. Same no-op rule as
+leases: a single-agent session that owns its cwd repo never files one.
+
+- **Filing one** (you are not the owner): work in a disposable worktree,
+  then `vault_handoff_create({idempotency_key, project, to, kind, ref, from,
+  body})`. `kind` is `review-branch` | `apply-patch` | `answer-question` |
+  `run-check`; `ref` is `{type: "worktree" | "branch", value}` — omit it for a
+  pure question. **The idempotency key is mandatory and must be yours to
+  regenerate**: a failed create is ambiguous, and retrying with the same key
+  returns the original (`status: "existing"`) instead of filing twice. `from`
+  is `{host, session, repo?}` — provenance only, nothing keys off it. **Keep
+  your branch/worktree until the handoff resolves**; it is the backup copy.
+- **Waiting on one**: poll `vault_handoff_get({id})` and watch `status`. When
+  actively blocked, a `Bash(run_in_background: true)` `until` loop over the
+  status is the wake mechanism — the harness re-invokes you when it exits.
+  When not blocked, don't poll: the result reaches you at the next
+  `/vault resume`, since it is attached to the repo rather than to your
+  session.
+- **Receiving them** (you hold the lease): `/vault resume`'s project block
+  carries the inbox — claiming a repo means inheriting it. Claim before
+  reviewing (`vault_handoff_claim({id, holder})`, same holder id as the
+  lease), then resolve exactly once: `done` (you applied it — you own any
+  merge conflicts), `rejected`, or `returned` for rework. **`returned`
+  requires a `note`** — the critique is what makes the rework possible, and a
+  return without one is a silent drop. Claims expire lazily (~30 min), so an
+  abandoned review reopens rather than wedging the work.
+- **Reworking**: a returned handoff comes back to *you*. Fix it, then
+  `vault_handoff_resubmit({id, ref?, body?})` — same record, same id, so the
+  discussion and history stay in one place. Never file a fresh handoff for a
+  second attempt.
+- **Discussion** rides `vault_handoff_note({id, author, text})`, append-only
+  and attached to the work; refused once the handoff is done/rejected.
+- **Never auto-resolve someone else's handoff.** Handoffs are deliberately
+  not a suggestion kind — `/vault sweep` cannot see or drain them, and no
+  `--auto` pass should ever settle one. A cross-agent work request is
+  human-or-owner judgment.
 
 ### `vault-put` — the shell-side document writer
 
@@ -680,6 +729,15 @@ parallel-batch `jq`-guard hazard does not arise here at all.
      `summary` + `body_bytes`; fetch bodies with `vault_read_file` only
      as needed. A `null` entry means the file doesn't exist — not every
      project has a `feedback.md`.
+     The block also carries `handoffs: {open, returned, claimed}` (server
+     ≥ 2026-08-11) — the coordination inbox, since claiming a repo means
+     inheriting it. **Surface a non-empty `open` list**: another agent is
+     waiting on this session, and each item carries only a
+     `body_first_line`, so read the full request with `vault_handoff_get`
+     before acting (§ Agent coordination — handoffs). A non-empty
+     `returned` list is *your* earlier submission sent back for rework —
+     surface it too. Both empty (the normal single-agent case): stay
+     quiet.
 3. **Fallback (pre-bundle server).** A 404 / missing-tool error from the
    bundle means an older server — run the individual reads instead:
    `vault_lint`, `vault_suggestions_summary`, the two agent-workflow file
