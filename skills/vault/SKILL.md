@@ -33,6 +33,7 @@ in the same row.
 | Raw inbox, cleanup-lint, embed-pending, incremental-reindex, run-all | **`vault_raw_inbox` / `vault_cleanup_lint` / `vault_embed_pending` / `vault_incremental_reindex` / `vault_run_scans`** | `vault-curl /maintenance/…` |
 | Repo leases — list/events, claim/renew/release/transfer | **`vault_lease_*`** (adapter ≥ 0.4.0; § Agent coordination below) | `vault-curl /leases[/events]` + `POST /leases/claim\|renew\|release\|transfer` |
 | Handoffs — create/list/get/events, claim/resolve/resubmit/note | **`vault_handoff_*`** (adapter ≥ 0.5.0; § Agent coordination below) | `vault-curl /handoffs[/{id}\|/events]` + `POST /handoffs[/claim\|resolve\|resubmit\|note]` |
+| Handoff artifact — the git patch being handed over | **`vault_handoff_put_artifact`** (adapter ≥ 0.6.0); **read it to a file**, not into context: `vault-curl /handoffs/{id}/artifact -s > work.patch` | `vault-curl /handoffs/{id}/artifact -X PUT --data-binary @work.patch` |
 | `/commit`, snapshots, `cleanup-tag-aliases`, `release-embedder`, `folder-listing`, individual `find-*` scans | **`vault-curl`** | — deliberately not exposed on MCP |
 
 **Scripts cannot call MCP tools.** MCP is an agent-level surface, so
@@ -221,6 +222,23 @@ leases: a single-agent session that owns its cwd repo never files one.
   returns the original (`status: "existing"`) instead of filing twice. `from`
   is `{host, session, repo?}` — provenance only, nothing keys off it. **Keep
   your branch/worktree until the handoff resolves**; it is the backup copy.
+- **Attaching the work**: for anything the owner should *apply*, follow the
+  create with `vault_handoff_put_artifact({id, content})` — a patch from
+  `git format-patch --base=$(git merge-base main HEAD) main..HEAD --stdout`
+  (`format-patch` over a plain diff because it carries the commit message,
+  author and date, and `--base` records what it applies to). This is what
+  makes a handoff work across hosts, since agents cannot `git push` and the
+  singleton server's spool is the shared storage. 10 MB cap — past that,
+  reference a branch instead of shipping a blob; `ext: "bundle"` with
+  `encoding: "base64"` is the escape hatch for binary or multi-branch work.
+  The upload sets `ref` to `{type: "spool"}` itself. The artifact is captured
+  at submit time, so it no longer depends on your worktree surviving.
+- **Applying one** (you are the owner): stream it to a file rather than into
+  your context — `vault-curl /handoffs/<id>/artifact -s > work.patch` — then
+  **validation-first**: `git apply --check work.patch`, and only then
+  `git am --3way < work.patch`. A patch that will not apply is a `rejected`
+  resolution with the failure in `result`, never a silent drop; the submitter
+  wakes on the status, rebases, and resubmits the same handoff.
 - **Waiting on one**: poll `vault_handoff_get({id})` and watch `status`. When
   actively blocked, a `Bash(run_in_background: true)` `until` loop over the
   status is the wake mechanism — the harness re-invokes you when it exits.
