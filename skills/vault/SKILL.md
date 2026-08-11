@@ -165,6 +165,16 @@ Handoff tools: `vault_handoff_*` (adapter ≥ 0.5.0; on an older adapter,
 `vault-curl /handoffs[/{id}]` and
 `POST /handoffs[/claim|resolve|resubmit|note]`).
 
+**This is enforced, not advisory** (leg 4, 2026-08-10): the `PreToolUse` hook
+`hooks/vault-lease-gate.sh` resolves each `Edit`/`Write`/`NotebookEdit`
+target to its repo and blocks the call when someone else holds that lease,
+naming the holder and the worktree + handoff path. It **fails open** on every
+unknown — no vault env, unreachable server, non-repo path, unclaimed repo —
+so a blocked edit always means a real, current, someone-else lease, never
+infrastructure trouble. It reconstructs your holder id as
+`<hostname>/<session-prefix>`, so **claiming under a different string will
+block your own edits**; the message prints both sides when that happens.
+
 **Single-agent sessions: this whole section is a no-op.** Claim nothing;
 check nothing for work in the session's own cwd repo; an empty registry is
 the normal state and everything behaves exactly as it did before the
