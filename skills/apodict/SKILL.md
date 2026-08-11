@@ -60,6 +60,14 @@ re-probe a query whose answer you already know before trusting the next
 verdict. Fixing the oracle and then analysing code with it is the ordinary
 shape of an apodict session, not an edge case.
 
+**An MCP server death is never cross-session interference.** `bin/mcp.js` is
+a stdio server holding no port, no socket, no lockfile, and no filesystem
+write — concurrent sessions each launch their own process and share nothing,
+so "another session's apodict killed mine" is structurally impossible. When
+the server dies mid-call, check the query first — size (an over-bound
+enumeration), a runaway `simplify` budget — not the neighbours. The
+2026-08-08 run lost a round-trip to exactly that wrong hypothesis.
+
 ```bash
 # MCP absent — the CLI path
 node ~/Open/apodict/bin/query.js --help          # ops + request shape
