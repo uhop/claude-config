@@ -1,7 +1,7 @@
 ---
-name: apodict
+name: apodictum
 description: >-
-  Drive the apodict deterministic reasoning oracle from any project on the
+  Drive the apodictum deterministic reasoning oracle from any project on the
   fleet: abstract boolean-context code and statement structure into oracle
   queries (MCP tools where registered, the JSON CLI otherwise), interpret
   verdicts into advisory proposals, failing tests, or targeted questions.
@@ -11,7 +11,7 @@ description: >-
   — and to file the corpus note every real-code run owes back to the vault.
 ---
 
-# apodict — fleet front end
+# apodictum — fleet front end
 
 The oracle lives in the private checkout `~/Open/apodict` (repo
 `uhop/apodict`). If the checkout is missing on this machine, report it and
@@ -41,7 +41,7 @@ the five-kind output taxonomy (proposal / finding / question / certification
 
 ## 2. Query — MCP tools if present, the CLI otherwise
 
-**Check your own tool list first.** If `apodict_query` and `apodict_ops` are
+**Check your own tool list first.** If `apodictum_query` and `apodictum_ops` are
 there, the MCP server is registered on this machine — prefer them: no shell,
 no temp files, no permission prompt per call. If they are absent, shell out to
 `bin/query.js`. Both are the same dispatcher over the same ops, so the request
@@ -58,12 +58,12 @@ optimal: 'bound'` over the CLI. `/mcp` reconnect restarts a stdio server
 prompts you to reach for it. Treat MCP as stale after any `src/` change, and
 re-probe a query whose answer you already know before trusting the next
 verdict. Fixing the oracle and then analysing code with it is the ordinary
-shape of an apodict session, not an edge case.
+shape of an apodictum session, not an edge case.
 
 **An MCP server death is never cross-session interference.** `bin/mcp.js` is
 a stdio server holding no port, no socket, no lockfile, and no filesystem
 write — concurrent sessions each launch their own process and share nothing,
-so "another session's apodict killed mine" is structurally impossible. When
+so "another session's apodictum killed mine" is structurally impossible. When
 the server dies mid-call, check the query first — size (an over-bound
 enumeration), a runaway `simplify` budget — not the neighbours. The
 2026-08-08 run lost a round-trip to exactly that wrong hypothesis.
@@ -75,11 +75,11 @@ echo '{"op": "equivalent", "a": ["and", "p", "q"], "b": ["and", "q", "p"]}' |
   node ~/Open/apodict/bin/query.js
 ```
 
-Via MCP the same query is `apodict_query` with
-`{"request": {"op": "equivalent", "a": …, "b": …}}`, and `apodict_ops` lists
+Via MCP the same query is `apodictum_query` with
+`{"request": {"op": "equivalent", "a": …, "b": …}}`, and `apodictum_ops` lists
 every op with its parameters. Registering the server (once per machine, if it
 is missing) is Eugene's call:
-`claude mcp add --scope user apodict -- node ~/Open/apodict/bin/mcp.js`.
+`claude mcp add --scope user apodictum -- node ~/Open/apodict/bin/mcp.js`.
 
 - A request is `{"op": "<name>", ...parameters}`; op names mirror the library
   exports (`equivalent`, `implies`, `tautology`, `counterexample`,
@@ -101,7 +101,7 @@ is missing) is Eugene's call:
 
 ## 3. File the corpus note — every real-code run
 
-Runs on real code are the measurement apodict cannot get any other way; the
+Runs on real code are the measurement apodictum cannot get any other way; the
 observations feed the improvement queue. **File one vault note per analyzed
 unit** (a file, or one coherent multi-file run) at
 `projects/apodict/corpus/YYYY-MM-DD-<project>-<slug>.md` — internal use, no
