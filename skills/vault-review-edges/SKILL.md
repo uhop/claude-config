@@ -93,7 +93,7 @@ description: Triage N edge_type suggestions
 prompt: |
   Read ~/.claude/skills/vault-review-edges/SKILL.md. Using the vault-triage
   harness exactly as its Workflow section shows: prepare edge_type with
-  --claim --holder "$HOLDER" --limit $LIMIT, judge every worksheet item per
+  --claim --holder="$HOLDER" --limit=$LIMIT, judge every worksheet item per
   the skill's type table, write the decisions file, resolve. Don't pass --out
   with a fixed scratchpad filename: under --claim the harness auto-names the
   worksheet by holder, collision-proof when sibling agents share one scratchpad.

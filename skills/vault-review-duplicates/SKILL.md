@@ -115,7 +115,7 @@ description: Triage N duplicate suggestions
 prompt: |
   Read ~/.claude/skills/vault-review-duplicates/SKILL.md. Using the
   vault-triage harness exactly as its Workflow section shows: prepare
-  duplicate with --claim --holder "$HOLDER" --limit $LIMIT, judge every
+  duplicate with --claim --holder="$HOLDER" --limit=$LIMIT, judge every
   pair per the skill's Judgment table, write the decisions file, resolve.
   Don't pass --out with a fixed scratchpad filename: under --claim the harness
   auto-names the worksheet by holder, collision-proof when sibling agents share

@@ -151,7 +151,7 @@ description: Enrich N vault notes with agent: blocks
 prompt: |
   Read ~/.claude/skills/vault-enrich-all/SKILL.md. Using the enrich-batch
   harness exactly as its Workflow section shows: prepare (add --stale if
-  requested; --limit $LIMIT), write the enrichment content for every
+  requested; --limit=$LIMIT), write the enrichment content for every
   worksheet item per § Generate enrichment fields (its quality bar and
   biases are binding; null = skip only for notes you cannot judge), apply.
   The harness prints the worksheet to stdout — don't redirect it to a fixed

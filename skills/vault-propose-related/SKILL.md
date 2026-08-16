@@ -115,7 +115,7 @@ description: Propose related: entries for N source notes
 prompt: |
   Read ~/.claude/skills/vault-propose-related/SKILL.md. Using the
   related-batch harness exactly as its Workflow section shows: prepare
-  --limit $LIMIT, judge every candidate per § Judgment (its bands and
+  --limit=$LIMIT, judge every candidate per § Judgment (its bands and
   conservative bias are binding; flag anything you're <80% sure about as
   "ambiguous" rather than accepting), then run `review` (or `apply` only
   if explicitly requested). Return: the harness's JSON report plus a

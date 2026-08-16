@@ -123,7 +123,7 @@ description: Triage N tag suggestions
 prompt: |
   Read ~/.claude/skills/vault-review-tags/SKILL.md. Using the vault-triage
   harness exactly as its Workflow section shows: prepare kind $KIND with
-  --claim --holder "$HOLDER" --limit $LIMIT, judge every worksheet item per
+  --claim --holder="$HOLDER" --limit=$LIMIT, judge every worksheet item per
   the skill's Judgment section (its stated biases are binding), write the
   decisions file, resolve. Don't pass --out with a fixed scratchpad filename:
   under --claim the harness auto-names the worksheet by holder, collision-proof
