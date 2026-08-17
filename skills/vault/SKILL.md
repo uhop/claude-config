@@ -815,6 +815,18 @@ FM tags, new wikilink edges). The sweep leg is optional per session — queues
 accumulate safely (claims, hysteresis), sub-agents judge from the notes not
 from session context, so sweep on queue pressure, not on schedule.
 
+**Arc-closure is the user's call, not an inference from a pause
+(2026-08-16).** The rule above answers *how often* to wrap; this one answers
+*whether the arc is actually closed*. A lull, a `Pushed.`, or a finished
+sub-task is not evidence of closure — an open design thread is still open,
+and a discussion that paused is not a discussion that concluded. Propose a
+wrap when work demonstrably shipped, or when the user says so; never because
+the conversation reached a natural breath. (Origin: apodict 2026-08-16 —
+repeated wrap prompts through a live pricing-model discussion; Eugene: *"why
+do we wrap constantly?"*, then *"It is not the frequency, it is the why. For
+example, 'a wrap closes an arc, not a day' — why do you think the arc is
+closed? Why do you think we have finished discussing the pricing model?"*)
+
 ### /vault check [--update]
 
 Run the drift check standalone. Typically used mid-session to re-sync
