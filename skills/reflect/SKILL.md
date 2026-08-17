@@ -61,21 +61,38 @@ Read all three to dedupe; write only to vault + claude-config.
    ```json
    {
      "scan_window": {"since": "...", "start_iso": "...", "end_iso": "..."},
-     "totals": {"corrections": N, "confirmations": N, "stuck_loops": N, "repeated_failures": N, "surprises": N},
+     "totals": {"corrections": N, "confirmations": N, "stuck_loops": N, "repeated_failures": N, "surprises": N, "multi_release": N},
      "sessions_scanned": N,
      "transcripts_seen": N,
      "prior_report": "[[projects/agent-workflow/reports/<name>]] — this host's previous report, null on a first run or a pre-2026-08-09 cache",
      "live_sessions": [{project, session_id, path, mtime_iso, age_seconds, first_row_iso}],
      "state_watermark_iso": "...",
+     "session_git": [{project, session_id, start_iso, end_iso, repo, commits, correction_driven_commits, shas}],
      "signals": {
        "corrections":       [{kind, project, session_id, ts, excerpt, unlanded?}, ...],
        "confirmations":     [{...}],
        "stuck_loops":       [{kind, project, session_id, tool, repetitions, excerpt}],
        "repeated_failures": [{kind, occurrences, tool, project, session_id, excerpt}],
-       "surprises":         [{...}]
+       "surprises":         [{...}],
+       "multi_release":     [{kind, project, session_id, repo, count, span_min, releases: [{sha, subject, driver}], note}]
      }
    }
    ```
+
+   **Pass 4 — git correlation (`session_git`, `multi_release`).** Transcripts say
+   what was asked; git says what landed. The scanner joins them per session via
+   the shared correlator `skills/process-review/git-correlate.mjs`: the project
+   dir maps to a repo path, the session's row window selects the commits made
+   inside it, and each commit is attributed to the user turn that immediately
+   preceded it. This is enrichment and **fails open** — no repo, no git, no
+   transcript-to-repo match means no correlation, never a failed scan.
+
+   Two things it buys: `correction_driven_commits` per session (a commit whose
+   driving turn was classified a correction is rework, so a high ratio is a
+   direct measure of a session that needed steering), and the `multi_release`
+   signal below. Note the first is only as good as the correction classifier —
+   a session whose corrections arrive as *"fix the trailer too"* scores zero
+   corrections and therefore zero correction-driven commits.
 
 3. **Dedupe against existing memory.** For each candidate signal, check whether the rule is already captured. Read in parallel:
    - `~/Open/claude-config/CLAUDE.md` (global rules)
@@ -89,6 +106,16 @@ Read all three to dedupe; write only to vault + claude-config.
 
 4. **Classify by confidence.** For each non-covered candidate:
    - **high** — recurrence, OR singular but with decisive language ("never", "always", "we don't do that"). Per [[projects/agent-workflow/decisions]] D2 + D3. Recurrence is met when **either** (a) the signal fired in ≥ 2 sessions in *this* scan, **or** (b) it fired once here and a matching signal appears in another host's recent report from step 3 — that cross-machine hit counts as the second occurrence. Without (b) a once-per-machine signal never crosses the bar on either host, since each run sees only local transcripts. Matching is semantic (same underlying rule / behaviour), not string-identical; when the match is uncertain, treat it as medium, not high. **(c) `unlanded: true` on the signal counts as recurrence by itself** — the scanner sets it when the user's own words say the correction has not landed ("you still…", "why do you still…", "I still see…"), which makes that turn the second occurrence whether or not the first one was captured. Verify the antecedent before promoting: read back far enough to confirm what was corrected earlier, since a "still" turn is unintelligible on its own.
+   - **`multi_release` is always high.** Ruled 2026-08-17: more than one release
+     of a project in a single session is a signal that something went wrong, and
+     it needs no recurrence to qualify. Eugene: *"it is possible to have more
+     than 1 release per day, but it should be an exception, not a rule. I don't
+     want to churn versions needlessly and bother users."* The known-legitimate
+     case — publishing to debug a dependent repo (`tape-six` → `tape-six-*`) —
+     is itself a process gap, so the proposal there is **not** "stop releasing"
+     but "link the package locally (`npm link` or a file: install) and debug
+     without publishing". Read the `driver` on each release before proposing:
+     it usually says outright why the second one happened.
    - **medium** — singular, plausible signal, neutral language, no cross-machine corroboration.
    - **low / ambiguous** — multiple plausible interpretations, or possibly a one-off.
 
@@ -103,6 +130,7 @@ Read all three to dedupe; write only to vault + claude-config.
    | Stuck loop pattern (recurring across sessions) | `projects/agent-workflow/queue.md` Backlog with proposed mitigation |
    | Surprise / discovery worth preserving | vault `topics/<topic-name>.md` (new note) or extend an existing topic |
    | Confirmation of non-obvious approach | same destinations as corrections — captures "do this" rather than "don't do that" |
+   | `multi_release` — two releases, one session | vault `projects/<name>/feedback.md` when the fix is project-shaped (local-link workflow for its satellites); `CLAUDE.md` / [[topics/semver-and-release-cadence]] when it is a cadence rule |
 
 6. **Write the report.** Path: `projects/agent-workflow/reports/YYYY-MM-DD-<host>.md`, where `<host>` is the short hostname (`hostname -s`). The `-<host>` suffix disambiguates the per-machine runs done on each box — transcripts are local-only, so each host's run is distinct content, not a redundant overwrite. If that exact path already exists (a same-host re-run on the same day), append `-HHMM` → `YYYY-MM-DD-<host>-HHMM.md` rather than clobbering the earlier run. Write it with `mcp__vault__vault_write_file{path, frontmatter, body}` — it takes frontmatter as a JSON object and serializes the YAML server-side, which is what keeps the date fields from shadowing (fallback: the `vault-curl` JSON-PUT path, same reason). Body shape:
 

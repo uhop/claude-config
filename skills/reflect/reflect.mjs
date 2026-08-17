@@ -30,6 +30,7 @@ import {
 import {dirname, join} from 'node:path';
 import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
+import {correlateSession} from '../process-review/git-correlate.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -389,8 +390,13 @@ const signals = {
   confirmations: [],
   stuck_loops: [],
   repeated_failures: [],
-  surprises: []
+  surprises: [],
+  multi_release: []
 };
+
+// Per-session git correlation (Pass 4), reported alongside the signals so a
+// reader can see which sessions produced commits and which were talk only.
+const sessionGit = [];
 
 // Repeated-failure detection works across sessions: aggregate (toolName, errorSig) → count
 const failureBuckets = new Map();
@@ -633,6 +639,55 @@ for (const t of transcripts) {
       }
     }
   }
+
+  // Pass 4: git correlation. Transcripts say what was asked; git says what
+  // landed. Joining them turns a textual signal into a causal one — a commit
+  // whose driving turn was a correction is rework, and two releases inside one
+  // session is the cadence rule firing. Fails open: no repo, no git, no
+  // correlation — never an error, since most of the value is elsewhere.
+  const sessionStartMs = events[0].ts;
+  const sessionEndMs = events[events.length - 1].ts;
+  const correctionTs = new Set(
+    signals.corrections.filter(c => c.session_id === t.session_id).map(c => c.ts)
+  );
+  const turns = events
+    .filter(e => e.role === 'user' && e.userText)
+    .map(e => ({ts: e.ts, text: e.userText, isCorrection: correctionTs.has(e.ts)}));
+
+  let git = {repo: null, commits: [], correction_driven: 0, multi_release: null};
+  try {
+    git = correlateSession(t.project, sessionStartMs, sessionEndMs, turns);
+  } catch {
+    // correlation is enrichment; a broken repo must not fail the scan
+  }
+
+  sessionGit.push({
+    project: t.project,
+    session_id: t.session_id,
+    start_iso: new Date(sessionStartMs).toISOString(),
+    end_iso: new Date(sessionEndMs).toISOString(),
+    repo: git.repo,
+    commits: git.commits.length,
+    correction_driven_commits: git.correction_driven ?? 0,
+    shas: git.commits.map(c => c.sha)
+  });
+
+  if (git.multi_release) {
+    signals.multi_release.push({
+      kind: 'multi_release',
+      project: t.project,
+      session_id: t.session_id,
+      repo: git.repo,
+      ts: sessionStartMs,
+      ...git.multi_release,
+      note:
+        'More than one release in a single session. Possible, but it should be the ' +
+        'exception — usually a critical bug surfaced, or the first release was cut ' +
+        'early. Known-legitimate case: publishing to debug a dependent repo, which ' +
+        'is itself a process gap (link the package locally instead). See ' +
+        'topics/semver-and-release-cadence § Release timing.'
+    });
+  }
 }
 
 // Emit repeated_failures (≥ 3× across window), skipping suppressed sigs.
@@ -668,6 +723,7 @@ const output = {
   prior_report: priorReport,
   live_sessions: liveSessions,
   state_watermark_iso: new Date(Math.min(scanMs, ...liveFloorsMs)).toISOString(),
+  session_git: sessionGit,
   signals
 };
 
