@@ -100,7 +100,25 @@ rejected too — same sweep, next stage.
 |---|---|---|
 | **accept** | The tag accurately describes the record and matches how the tag is used elsewhere. | Server realizes it on FM `tags:`; row settles as `tag-realized`. |
 | **reject** | Tangential, redundant with an existing tag on the record, or misframes the content. | Row flips; candidate stripped from `agent.tags_suggested`. |
-| **defer** | Valid tag but not yet in the taxonomy, and you don't want to mint a canonical here. | Left pending (claim released). On server ≥ 2026-07-24 the taxonomy question already sits in the `new_tag` queue as a companion (`origin: proposed`) — triage that first (sweep stage order does this); if the companion was **rejected**, reject this too instead of deferring again (deferring forever was the 2026-07-20 stuck-floor bug). On an older server: mint via `POST /tags/taxonomy` directly, or reject. |
+| **defer** | Valid tag but not yet in the taxonomy, and you don't want to mint a canonical here. | Left pending (claim released). The taxonomy question already sits in the `new_tag` queue as a companion (`origin: proposed`) — triage that first (sweep stage order does this). **The worksheet now tells you its fate: read `companion_verdict`** (below) rather than recalling this rule. On an older server: mint via `POST /tags/taxonomy` directly, or reject. |
+
+**`companion_verdict` — read it before deciding.** Each `tag_suggestion`
+item carries the status of the `new_tag` row for the *same tag*, joined at
+`prepare` time (added 2026-08-18; the rule below existed and was binding long
+before, but the data it keys on never reached the worksheet, so agents could
+only recall it — and twice did not):
+
+| `companion_verdict` | Meaning | Do |
+|---|---|---|
+| `"rejected"` | The taxonomy question was already settled **no**, possibly minutes ago in this same sweep. | **Reject this too.** Never defer — that is the 2026-07-20 stuck-floor bug, and the tag is not coming. |
+| `"pending"` | The companion is still open, likely being triaged concurrently. | Defer is legitimate here; the next pass sees the resolved companion. |
+| `null` | No `rejected`/`pending` companion exists. | Judge on the taxonomy fields (`in_taxonomy`, `canonical`) as before — an **accepted** companion needs no row, because acceptance lands in the taxonomy and shows up there. |
+
+`companion_new_tags` carries the raw rows behind the verdict
+(`suggestion_id`, `resolved_by`, `resolved_at`) when you want to see who
+settled it. A `companion_scan_truncated: true` on the worksheet means the
+join hit its page cap and a verdict may be missing — treat `null` as
+unknown rather than absent in that case.
 
 **Bias toward accept** — `tags_suggested` was produced under
 suggest-only-confidently-relevant instructions. Reject only on clear

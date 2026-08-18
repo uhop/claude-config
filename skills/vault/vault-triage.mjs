@@ -215,6 +215,55 @@ const bodyHead = async path => {
 const stripWikilink = s => s.replace(/^\[\[/, '').replace(/\]\]$/, '');
 const pathKey = p => p.replace(/\.md$/, '');
 
+// A `tag_suggestion`'s companion is the `new_tag` row for the SAME tag. The
+// reject-the-companion rule in vault-review-tags keys on its status, but the
+// worksheet never carried it, so the agent could only recall the rule, never
+// apply it (agent-workflow queue, filed 2026-08-16). Accepted companions need
+// no lookup — acceptance lands in the taxonomy, which `in_taxonomy`/`canonical`
+// already report; only `rejected` and `pending` are opaque, and both are small
+// next to `accepted`. No server-side tag filter exists (supported params:
+// expand, kind, limit, offset, status, subject_id), hence the client-side join.
+const COMPANION_STATUSES = ['rejected', 'pending'];
+const COMPANION_PAGE_CAP = 40;
+
+const companionNewTags = async wanted => {
+  const want = new Set(wanted),
+    rows = new Map();
+  let truncated = false;
+  if (!want.size) return {rows, truncated};
+  for (const status of COMPANION_STATUSES) {
+    let offset = 0;
+    for (let page = 0; ; ++page) {
+      if (page >= COMPANION_PAGE_CAP) {
+        truncated = true;
+        break;
+      }
+      const response = await api(
+        'GET',
+        `/suggestions?kind=new_tag&status=${status}&limit=100&offset=${offset}`
+      );
+      const batch = response.items ?? [];
+      if (!batch.length) break;
+      for (const row of batch) {
+        const tag = row.payload?.tag;
+        if (!want.has(tag)) continue;
+        if (!rows.has(tag)) rows.set(tag, []);
+        rows.get(tag).push({
+          status: row.status,
+          suggestion_id: row.id,
+          record_id: row.payload?.record_id ?? null,
+          file_path: row.payload?.file_path ?? null,
+          resolved_by: row.resolved_by ?? null,
+          resolved_at: row.resolved_at ?? null
+        });
+      }
+      offset += batch.length; // advance by what came back, never the requested limit
+      if (offset >= (response.total ?? offset)) break;
+    }
+  }
+  return {rows, truncated};
+};
+
 // --- prepare -----------------------------------------------------------------
 
 const prepare = async () => {
@@ -306,6 +355,20 @@ const prepare = async () => {
         }
       };
     });
+    const {rows: companions, truncated: companionTruncated} = await companionNewTags(
+      worksheet.items.map(item => item.tag)
+    );
+    for (const item of worksheet.items) {
+      const found = companions.get(item.tag) ?? [];
+      item.companion_new_tags = found;
+      // rejected outranks pending: it is the status the documented rule acts on
+      item.companion_verdict = found.some(row => row.status === 'rejected')
+        ? 'rejected'
+        : found.some(row => row.status === 'pending')
+          ? 'pending'
+          : null;
+    }
+    if (companionTruncated) worksheet.companion_scan_truncated = true;
     for (const item of worksheet.items) worksheet.decisions_template[item.id] = null;
   } else if (kind === 'edge_type') {
     worksheet.items = items.map(item => {
