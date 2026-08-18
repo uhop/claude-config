@@ -1,36 +1,88 @@
 ---
 name: release-check
-description: Pre-release verification checklist for AI-doc-style projects (the AGENTS.md / llms.txt convention) across the fleet. Mechanical checks (sidecars, retired artifacts, package.json + tarball hygiene, LICENSE year, dep freshness, lockfile sync, test-matrix detection) run through the bundled `release-digest.mjs`; the skill covers the judgment — release-or-not, version tier, docs currency, release notes, and running the gates. Use before publishing a new version, when the user invokes /release-check, or asks whether a project is ready to ship. Companion to /ai-docs-update.
+description: Read-only release-readiness assessment for AI-doc-style projects (the AGENTS.md / llms.txt convention) across the fleet. Answers "are we ready to publish?" — runs the bundled `release-digest.mjs`, judges whether anything here is worth releasing, picks the tier, and audits docs currency, then reports a verdict and stops. Writes nothing: no version bump, no release notes, no dep bumps, no lockfile. Use when the user asks whether a project is ready to ship, invokes /release-check, or wants to know what a release would involve. The mutating half is /release-prep; companion to /ai-docs-update.
 ---
 
 # Release Check
 
-Run through this checklist before publishing a new version of any project that
-follows the AGENTS.md / llms.txt convention. The skill verifies and reports;
-it never commits, tags, or publishes on its own (see the final step).
+Answers one question — **is this project ready to publish, and what would the
+release be?** — for any project following the AGENTS.md / llms.txt convention.
 
-## Step 0 — Decide whether to release at all
+**This skill writes nothing.** No version bump, no release notes, no dependency
+edits, no lockfile regeneration, no index regeneration. It reads, judges, and
+reports. Every problem it finds is reported as a finding, never fixed in place —
+fixing is `/release-prep`'s job, and a question about readiness must never
+mutate the tree it is asking about.
 
-**Precondition: the user explicitly asked for a release (or invoked
-/release-check themselves).** An unreleased changeset on `main` is never, by
-itself, a reason to start release prep — the release decision (and its timing)
-is the user's; he may deliberately batch more work before cutting a version.
-If the ask isn't explicit, stop here and surface the unreleased state as
-information instead.
+That is the whole point of the split: "are we ready?" is a question, and it has
+to be safe to ask. If the user wants the release actually prepared, that is an
+explicit, separate ask — hand off to `/release-prep`.
+
+## Step 0 — Readiness: four questions, not one
+
+[[topics/semver-and-release-cadence]] is canonical for all of this — read it
+before answering, don't reconstruct it from memory. The four questions below
+are what "are we ready to release?" actually asks.
+
+### 0a — Is there enough material?
 
 A release at any tier — even patch — needs **something the user can observe as
 a benefit**: a bugfix, a perf improvement, new functionality, or a corrected
 behavior. Pure internal changes (CI updates, repackaging, dev-dep bumps,
 dependency syncs, fleet-conventions sweeps, internal refactors) accumulate
-**without** triggering a release. Internal-only ≠ patch; internal-only =
-**no release**.
+**without** triggering a release — downloading the new version would make no
+difference to anyone. Internal-only ≠ patch; internal-only = **no release**.
 
-The digest's `git.commits_since` block (below) is the change list. For each
-commit ask: is it user-observable as a benefit? If **none** are, don't propose
-a release — say so and stop. If at least one is, pick the tier per
-[[topics/semver-and-release-cadence]] (patch = safe-to-downgrade fix; minor =
-additive API; major = "practically a new project") — that note is the
-canonical tier + cadence reference.
+The digest's `git.commits_since` block (step 1) is the change list. If no commit
+is user-observable, the verdict is "nothing to release" — say so and stop; do
+not reach for a patch to justify the run. The note's § Negative form is the
+checklist for this.
+
+### 0b — What tier?
+
+Per the note's tier rule: patch = safe-to-downgrade fix; minor = additive
+advertised API; major = "practically a new project". Ask **what the contract
+requires**, not whether *an* argument exists for the higher tier — there always
+is one, so that question ratchets upward every time. Reachability is not API.
+
+### 0c — Is the work finished?
+
+**An exhausted queue is the trigger.** Releasing mid-body-of-work is the thing
+to avoid, so check the project's queue rather than assuming:
+
+```
+vault_queue_by_project({project: "<name>"})
+```
+
+- **Active must hold no actionable item.** One that is genuinely blocked or
+  deferred pending an external trigger does not block the release — say which,
+  and why, rather than reporting an empty check.
+- **Sweep the Backlog for ride-alongs.** If small items could land in the same
+  patch or minor, doing them first is better than a second release next week.
+- **A multi-phase change ships whole.** Don't release between phase 1 and
+  phase 2 unless phase 1 independently fixes something important and urgent on
+  its own.
+- **Two natural exceptions:** a "rewrite everything"-shaped Backlog item is a
+  wall to release *against*, not a blocker; and a planned major is a hard wall
+  — nothing rides along into it late.
+
+### 0d — What else should ride along, and what would churn?
+
+**Surface everything known-but-unqueued, now** — before the release, not after.
+Anything this session turned up and didn't file, any defect *class* only
+partially swept, any adjacent item you can see but nobody has written down:
+name it here and propose queueing it. The agent sitting on unfiled work at the
+moment the release decision is made is what manufactures a false "done", and
+the follow-up release lands within the hour.
+
+If you can see work that *should* exist but doesn't yet — a gap the release
+makes obvious, a sibling of the thing just fixed — **suggest it now**. Waiting
+until after the tag is what turns one release into three.
+
+The goal behind 0c and 0d is **avoiding version and package churn**. Batching
+beats a stream of releases; two releases of the same project in one day should
+be an exception that was surfaced in advance, never a same-day repeat caused by
+cutting the first one early.
 
 ## Step 1 — Run the digest
 
@@ -52,10 +104,13 @@ files absent — see [[topics/tarball-ai-docs-convention]] and
 [[topics/full-path-imports-for-runtime-portability]] for the rules the
 `pkg_files` / `pkg_exports` checks encode).
 
-**Fix every `action` before proceeding**, with two judgment notes:
+The digest is itself read-only — it probes and reports, so running it costs
+nothing but time.
+
+**Report every `action` as a finding**, with two judgment notes:
 
 - `pkg_exports.flagged` entries may be documented project deviations — check
-  `decisions.md` before "fixing" one.
+  `decisions.md` before calling one a problem.
 - `bin_modes` is tidy, not load-bearing — npm sets the executable bit on
   install; a `npx` "command not found" is almost never a mode-bit problem
   (usual real cause: running `npx <pkg>@<version>` from inside the package's
@@ -63,10 +118,14 @@ files absent — see [[topics/tarball-ai-docs-convention]] and
 
 ## Step 2 — Docs currency (judgment the digest can't do)
 
+Read and report; do not edit. A stale doc found here is a line item in the
+verdict, and `/release-prep` fixes it.
+
 - `ARCHITECTURE.md` reflects structural changes; `AGENTS.md` reflects rule /
   workflow changes.
-- `llms.txt` / `llms-full.txt` are current with the API (run `/ai-docs-update`
-  if not). If the project has a wiki, `wiki/Home.md` links all relevant pages.
+- `llms.txt` / `llms-full.txt` are current with the API (`/ai-docs-update`
+  refreshes them). If the project has a wiki, `wiki/Home.md` links all relevant
+  pages.
 - `description` / `keywords` in `package.json` still describe the project
   (the digest only checks presence).
 - **Grep the docs for absolutes this release's features falsified.** Presence
@@ -98,7 +157,11 @@ files absent — see [[topics/tarball-ai-docs-convention]] and
   set and not one of them named the tier. Caught only on the *second*
   /release-check of that session, because the fix landed between the two runs
   — a first run that is clean before the last commit proves nothing about the
-  docs after it.)
+  docs after it.) A second instance, 2026-08-18: `install-artifact-from-github`
+  narrowed the mirror exemption so a mirror pointed back at the release
+  location keeps its integrity check, and three files still enumerated "a
+  custom mirror ⇒ not checked" — one of them directly above a paragraph that
+  said the opposite.
 - **Read every runnable snippet as someone pasting it, not as someone
   proofreading it.** Ask what the reader gets if they copy it verbatim: does it
   mount where they expect, is every identifier either defined or obviously a
@@ -120,83 +183,25 @@ files absent — see [[topics/tarball-ai-docs-convention]] and
   still dev-depending on the private `apodict` **and** with a README pointing at
   its local path; both were caught by eye, not by this checklist.)
 
-## Step 3 — Version bump
+## Step 3 — Verdict, then stop
 
-Bump `version` in `package.json` per the tier picked in step 0.
+Report:
 
-## Step 4 — Release history (two-tier) + version-tied docs
+- **Ready or not**, in the first line.
+- **Recommended tier** and the one-line reason, or "nothing user-observable —
+  no release" when 0a came up empty.
+- **Queue state** (0c): what is Active, what in the Backlog is actionable, and
+  for each item left behind, why it does not block — never a bare "queue is
+  clean".
+- **Ride-alongs and unqueued work** (0d): what could land in this release
+  instead of the next one, and anything known-but-unfiled, stated as a proposal
+  to queue.
+- **What `/release-prep` would do**: the version it would land on, the digest
+  `action` items it would clear, the docs it would fix, the deps it would bump.
+- **Blockers** that `/release-prep` cannot clear on its own (failing gates, a
+  private-dependency pointer, an undecided design question, an unfinished phase).
 
-Check **both** locations and update each one that exists — they serve
-different audiences ([[topics/two-tier-release-notes]]):
-
-- `README.md` — **cliff-notes**: the 1–2–3 most memorable items for users,
-  comma-separated. Optional `Thx [Contributor](https://github.com/handle)`
-  credit. No internal changes, devDep bumps, test counts, or CI moves. **One
-  footer line at the bottom of the section** (after the bullet list, blank
-  line before it, once per section) linking the wiki release notes — omit the
-  footer entirely when no wiki Release-notes page exists.
-- `wiki/Release-notes.md` — the canonical longer-form history: a paragraph per
-  substantive release with **bold** feature names, internal changes,
-  calibration notes, credits; per-release date in the heading (dates from
-  `git for-each-ref --sort=-creatordate --format='%(refname:short)
-  %(creatordate:short)' refs/tags`). The wiki submodule gets its own commit +
-  parent-pointer bump. If the page doesn't exist yet, create it starting with
-  the *current* release, reproduce older README entries under "Earlier
-  releases" (don't backfill detail you don't have), then trim the README entry
-  to cliff-notes density. Never update only the README.
-
-**Version-tied user docs default to docs-lead**: if any change in this release
-inverts a claim in other published-version-tied docs (wiki API/guide pages,
-migration guides, perf claims), update those ahead of the tag too — a claim
-wrong about the *direction* of a change misleads worse than a dated one.
-Avoid version-specific numbers when the bump isn't final. Docs-follow is the
-exception (release uncertain/far-off, or the lead would actively mislead
-published-version users). See [[topics/docs-lead-vs-follow-release]].
-
-**Regenerate the wiki search index** after wiki edits (the digest's
-`wiki_search_index` check flags staleness): from the wiki dir,
-`npx wiki-search-index --wiki . --repo OWNER/REPO`.
-
-## Step 5 — Dependency sweep (hand-edit, then regen)
-
-For every `deps_outdated` item, **hand-edit `package.json`** to the latest —
-majors included, in-range patches included (leaving them ships stale deps and
-the next release-check sees the same diff). Land these edits alongside step
-3's version bump as one reviewable batch. Do **not** use `npm install
-<pkg>@latest --save*` — it interleaves a `package.json` rewrite with an
-implicit lockfile regen; the hand-edit-then-regen order is the pipeline this
-skill assumes. Full rationale: [[dep-version-freshness]].
-
-## Step 6 — Regenerate the lockfile (unconditional)
-
-After all `package.json` edits: `npm install` (or `--package-lock-only`).
-Unconditional even with nothing bumped — the lockfile records the package
-version at root + self entries, and step 3 alone made those stale. Verify the
-diff is minimal when no deps changed. Then re-run `npm run lint` — toolchain
-patches occasionally introduce new style rules; `npm run lint:fix` and review.
-
-## Step 7 — Run the test matrix
-
-Run every gate the digest's `test_matrix.gates` lists: `npm test` is the
-floor; `test:bun`, `test:deno`, `test:browser`, `ts-check`, `js-check` where
-present ([[topics/js-runtime-matrix]]). Skip a runner only on a documented
-project deviation (note it in the report).
-
-## Step 8 — Re-run the digest
-
-After all edits, the digest must come back clean (`summary.clean: true`) —
-this re-verifies the tarball against the bumped version and the regenerated
-lockfile in one shot.
-
-## Step 9 — Project-specific release steps
-
-If the digest flags `agents_releasing_section` or `release_check_local`,
-perform those steps too — they extend this checklist rather than replacing it
-(the project carries only its delta; no fork to drift). Example: a
-native-addon project verifying its tag-triggered CI binary build.
-
-## Step 10 — Stop and report
-
-Report the digest summary, gates run, and notes written. Do **not** commit,
-tag, or publish — the user commits, tags, and publishes after their own
-review.
+Then **stop**. Do not bump the version, write release notes, touch
+dependencies, regenerate the lockfile or the wiki index, or run the gates as a
+side effect. If the report makes the release look obviously right, say so and
+name `/release-prep` — the decision is still the user's to make out loud.

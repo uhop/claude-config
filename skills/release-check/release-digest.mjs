@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// release-digest — deterministic probe layer for /release-check (skills-
+// release-digest — deterministic probe layer for /release-check + /release-prep (skills-
 // restructuring program, filed 2026-07-18). Runs every mechanical check of
 // the release checklist against the cwd project and prints one JSON digest;
 // the agent reads it and does only the judgment: release-or-not, tier,
