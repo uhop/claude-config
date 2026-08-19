@@ -114,10 +114,11 @@ cliff-notes).
   immediately follows, period if something intervenes. Never a fragment the items complete
   ("To get the driver, follow these steps:", not "To get the driver:"). Don't restate the heading.
 - Numbered lists for sequence, bullets otherwise, description lists (bold run-in term) for
-  term-description pairs. Run-in terms end with a colon or a period, consistently, **never a
-  dash**. Parallel structure; capitalize each item; end with a period unless the item is a single
-  word, has no verb, is entirely code, or is entirely a link. No one-item lists. No _etc._ or _and
-  so on_: introduce the list as non-exhaustive instead ("data like …").
+  term-description pairs. Run-in terms end with a colon, a period, or the house spaced em dash
+  (`**term** — description`), consistently within one list. Parallel structure; capitalize each
+  item; end with a period unless the item is a single word, has no verb, is entirely code, or is
+  entirely a link. No one-item lists. No _etc._ or _and so on_: introduce the list as
+  non-exhaustive instead ("data like …").
 - Procedures: one action per step, imperative verb in the first sentence, location or goal before
   the action, result in the same paragraph after the action. A single-step procedure is one
   bulleted sentence. Optional steps start with `Optional:`. Instead of "run the following
@@ -189,10 +190,25 @@ cliff-notes).
 - **Serial comma, always.** Comma after an introductory phrase; before a coordinating conjunction
   joining two independent clauses; before nonrestrictive _which_; none before _because_ unless the
   clause is nonrestrictive.
-- **Em dash with no spaces on either side** (word—word) for a break in flow. **No en dash**; a
-  hyphen or the word _to_ for ranges (`2012-2016`, "-40 °C to 85 °C": repeat the unit and use _to_
-  when units are involved). Never a spaced dash between an item and its description: use a colon or a
-  period. (See House decisions below for the existing spaced-dash corpus.)
+- **Three dashes, three jobs** (house rule, ruled 2026-08-19; it overrides Google here). A
+  **hyphen** joins a constructed word or a compound modifier, no spaces (_close-knit_,
+  _well-designed app_). An **en dash** marks a range, no spaces (_1–4 items_, _2012–2016_,
+  _§8.2–8.3_); spaces around it only when the second endpoint starts with a minus sign
+  (_-10 – -4_); with units, repeat the unit (_-40 °C – -10 °C_) or write _to_. An **em dash with
+  a space on each side** separates a phrase or sub-phrase (_No tip — it is already included_),
+  and it is the dash to ration: it marks a break in flow, not a connector, so a comma,
+  parentheses, a colon, or a sentence split usually reads better (the blog calibration budgets
+  about 1.3 per 100 words). Google closes the em dash and bans the en dash; the house rule wins.
+- **Dash encoding follows the medium** (Eugene, 2026-08-19; the TeX convention for ASCII). In
+  HTML, and in Markdown that renders to HTML (README, wiki, `dev-docs/`, `AGENTS.md`, release
+  notes, GitHub issue and PR bodies, the blog): `-`, `&ndash;`, `&mdash;` — entities, not raw
+  Unicode (`word &mdash; word` keeps the spaces). The blog additionally prefers Goldmark's `--` /
+  `---` shortcuts, per the blog voice note; GitHub does not convert those, so there the entity is
+  the only form. In ASCII (code and comments, `.d.ts` JSDoc, commit messages, plain-text files
+  such as `llms.txt`, CLI output, GitHub issue titles, anything inside a code span or block):
+  `-`, `--`, `---`. Chat replies and vault notes are internal surfaces: raw Unicode `–` / `—` is
+  fine there. Forward-looking: don't sweep an existing document's raw Unicode dashes to entities;
+  match the document you are editing, and raise a sweep as its own question.
 - Hyphenate compound modifiers before a noun (_well-designed app_, _Android-specific_), not after
   a verb; never after _-ly_ adverbs; prefixes close up (_metadata_, _preprocessing_) except
   _self-_, _cross-_, before capitals or numbers (_non-Google_, _post-2000_), or to avoid misreading.
@@ -238,15 +254,14 @@ cliff-notes).
 
 Where Google is silent or house practice differs; each is a decision, not an oversight.
 
-- **Em dash spacing.** Google: closed (word—word). The existing corpus (global `CLAUDE.md`, vault
-  notes, most fleet READMEs) uses spaced dashes (word — word). Rule: follow Google in new
-  documents; when editing an existing document, match its dominant form (consistency within a
-  document beats consistency with the guide); don't sweep a document to change only its dashes.
-  Restraint matters more than spacing: a dash is a break in flow, not a connector, so prefer a comma,
-  parentheses, a colon, or a sentence split.
+- **Dashes.** Ruled by Eugene 2026-08-19: the three-dash rule in § Punctuation and mechanics is
+  the house standard on every surface — new documents included — and it replaces the skill's
+  first-day default of closing the em dash in new documents. Existing prose already follows it,
+  so there is nothing to sweep; the docs pass's en-dash-to-hyphen range conversions in apodict
+  were reverted the same day. What still needs judgment is density, not spacing.
 - **AI tells are banned in all prose** (from the blog calibration, vault
   `projects/blog/writing-voice` § AI-tell calibration): the contrast-correction move ("it isn't
-  X; it's Y", "not X—Y", "X is not A; it is B"; state the positive claim directly), warm-up
+  X; it's Y", "not X — Y", "X is not A; it is B"; state the positive claim directly), warm-up
   openers ("To be clear,", "Here's the thing"), staccato fragment pairs ("Fast. Simple."),
   self-clap closers ("And that matters."), "less a hammer, more a scalpel" comparatives, and
   em-dash pileups. Google doesn't name them; its "key point first, plain statement" rule produces
@@ -262,8 +277,11 @@ Where Google is silent or house practice differs; each is a decision, not an ove
   markers, table alignment, per the fleet `.prettierrc`) and Google otherwise: `**` not `__`, `_` not
   `*`, `#` hierarchy without skipped levels, fenced code with a language hint, no hard line breaks
   inside sentences beyond what the formatter wraps.
-- **Typography in the blog** (HTML entities, Goldmark shortcuts, never raw Unicode punctuation in
-  prose) is the blog voice note's rule and stays there; it doesn't apply to README, wiki, or chat.
+- **Typography in the blog** (HTML entities or Goldmark shortcuts, never raw Unicode punctuation
+  in prose, and never retro-converting a published post) is the blog voice note's rule; the
+  dash-encoding bullet in § Punctuation and mechanics is its fleet-wide generalization (entities
+  wherever Markdown renders to HTML, TeX `--` / `---` in ASCII, raw Unicode only in chat and
+  vault notes).
 
 ## High-frequency word list
 
@@ -322,7 +340,7 @@ developer prose, preferred form first:
 
 When asked to review, edit, or polish prose (the `docs-review` skill delegates here):
 
-1. Read the whole document first; note its audience, its dominant conventions (dash form, heading
+1. Read the whole document first; note its audience, its dominant conventions (dash density, heading
    style, import form), and the project's `AGENTS.md` / `dev-docs/` rules.
 2. Structure: headings (case, form, levels), list and table introductions, procedure shape,
    notices, link text.
@@ -346,7 +364,8 @@ When asked to review, edit, or polish prose (the `docs-review` skill delegates h
 - [ ] Link text descriptive; "For more information, see …"; punctuation outside links.
 - [ ] Code font for code things, none for product names; code items not inflected; placeholders
       `LIKE_THIS` and explained; commands copy-pasteable; samples introduced.
-- [ ] Serial comma; closed em dash (or the document's form); hyphenated compound modifiers;
+- [ ] Serial comma; house dashes (hyphen compound, en-dash range, spaced and rationed em dash);
+      hyphenated compound modifiers;
       straight quotes; sentence-case table headers.
 - [ ] Zero through nine spelled out, numerals from 10 (technical quantities always numerals); `YYYY-MM-DD`;
       space before units, none before `%`.
@@ -370,7 +389,7 @@ Per-section digests of the guide, each condensed from the fetched pages with the
 - `references/code-and-ui.md`: code in text, code samples, command-line syntax, placeholders, UI
   elements, API reference comments, example domains and names, filenames, product names,
   trademarks.
-- `references/word-list.md`: the guide's A-Z word list in full, plus the high-frequency subset.
+- `references/word-list.md`: the guide's A–Z word list in full, plus the high-frequency subset.
 - `references/microsoft-delta.md`: what the Microsoft Writing Style Guide adds or changes, for
   questions Google doesn't answer.
 
