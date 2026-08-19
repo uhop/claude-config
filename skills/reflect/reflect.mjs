@@ -167,6 +167,27 @@ const UNLANDED_CORRECTION_PATTERNS = [
   /\bdid\s+you\s+(?:do|check|handle|finish|address)\b[^"'`\n]{0,40}["'`][^"'`\n]{3,}["'`]/i
 ];
 
+// Scope extensions: a short user turn that appends a sibling target to a fix
+// just reported done — "fix the trailer too", "do the other two drafts' dashes
+// too", "do the rest", "finish wiki-search, then do double-meh", "Did you fix
+// the bail-out bug in browser?". No corrective vocabulary at all, which is why
+// the two richest transcripts of the 2026-08-16 run scored zero while carrying
+// the whole "fix the class" finding, and why the same shape scored zero again
+// on 2026-08-18. Gated on turn length (SCOPE_EXTENSION_MAX_CHARS) so content
+// turns that merely end in "too" stay out. Measured 2026-08-18 over 30 days on
+// nuke: 1,780 user turns, the tail-"too" cue fires on 36 (~28 real; the misses
+// are planning talk — "Node started to work on it too"), the three companions
+// on 4 more, all real. Recall-over-precision, same footing as OBSERVATIONAL.
+// A cluster of these in one session is direct evidence for CLAUDE.md § Fix the
+// class — the flag rides along so step 4 can count it.
+const SCOPE_EXTENSION_MAX_CHARS = 160;
+const SCOPE_EXTENSION_PATTERNS = [
+  /\b(?:too|as well)\s*[.!?]?\s*$/im,
+  /^(?:do|fix|finish|sweep|update)\s+(?:the\s+)?(?:rest|others?|remaining|other\s+\w+)\b/im,
+  /^(?:finish|and)\b[^,\n]{0,60},?\s*then\s+(?:do|fix|the)\b/im,
+  /\bdid\s+you\s+(?:also\s+)?(?:fix|do|update|apply|handle|change)\b[^?\n]{0,60}\b(?:in|for|on)\b[^?\n]{1,40}\?/i
+];
+
 const CONFIRMATION_PATTERNS = [
   /\byes,?\s*(exactly|right|that'?s right|perfect|good|correct)\b/i,
   /\b(perfect|exactly right|nailed it|spot on)\b/i,
@@ -517,10 +538,20 @@ for (const t of transcripts) {
     const hasNegation = NEGATION_PATTERNS.some(re => re.test(text));
     const hasObservational = OBSERVATIONAL_CORRECTION_PATTERNS.some(re => re.test(text));
     const hasUnlanded = UNLANDED_CORRECTION_PATTERNS.some(re => re.test(text));
+    const hasScopeExtension =
+      text.length <= SCOPE_EXTENSION_MAX_CHARS &&
+      SCOPE_EXTENSION_PATTERNS.some(re => re.test(text));
     const hasConfirmation = CONFIRMATION_PATTERNS.some(re => re.test(text));
     const hasSurprise = SURPRISE_PATTERNS.some(re => re.test(text));
 
-    if (!hasNegation && !hasObservational && !hasUnlanded && !hasConfirmation && !hasSurprise)
+    if (
+      !hasNegation &&
+      !hasObservational &&
+      !hasUnlanded &&
+      !hasScopeExtension &&
+      !hasConfirmation &&
+      !hasSurprise
+    )
       continue;
 
     const ctxStart = Math.max(0, i - 3);
@@ -541,8 +572,14 @@ for (const t of transcripts) {
 
     // `unlanded` rides along so step 4 can score one hit as recurrence: the
     // user saying "you still…" is telling you this is the second time.
-    if ((hasNegation || hasObservational || hasUnlanded) && prevAssistant)
-      signals.corrections.push({...base, kind: 'correction', ...(hasUnlanded && {unlanded: true})});
+    // `scope_extension` rides along so step 4 can count a cluster of them.
+    if ((hasNegation || hasObservational || hasUnlanded || hasScopeExtension) && prevAssistant)
+      signals.corrections.push({
+        ...base,
+        kind: 'correction',
+        ...(hasUnlanded && {unlanded: true}),
+        ...(hasScopeExtension && {scope_extension: true})
+      });
     if (hasConfirmation && prevAssistant)
       signals.confirmations.push({...base, kind: 'confirmation'});
     if (hasSurprise) signals.surprises.push({...base, kind: 'surprise'});

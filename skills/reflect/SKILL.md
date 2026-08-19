@@ -69,7 +69,7 @@ Read all three to dedupe; write only to vault + claude-config.
      "state_watermark_iso": "...",
      "session_git": [{project, session_id, start_iso, end_iso, repo, commits, correction_driven_commits, shas}],
      "signals": {
-       "corrections":       [{kind, project, session_id, ts, excerpt, unlanded?}, ...],
+       "corrections":       [{kind, project, session_id, ts, matched_text, excerpt, unlanded?, scope_extension?}, ...],
        "confirmations":     [{...}],
        "stuck_loops":       [{kind, project, session_id, tool, repetitions, excerpt}],
        "repeated_failures": [{kind, occurrences, tool, project, session_id, excerpt}],
@@ -91,8 +91,26 @@ Read all three to dedupe; write only to vault + claude-config.
    driving turn was classified a correction is rework, so a high ratio is a
    direct measure of a session that needed steering), and the `multi_release`
    signal below. Note the first is only as good as the correction classifier —
-   a session whose corrections arrive as *"fix the trailer too"* scores zero
-   corrections and therefore zero correction-driven commits.
+   a session whose corrections arrive as *"fix the trailer too"* scored zero
+   corrections and therefore zero correction-driven commits until 2026-08-18,
+   when the `scope_extension` cue below was added; the classifier is still the
+   floor of what git correlation can see.
+
+   **`scope_extension: true`** marks a correction fired by the short-turn
+   scope-extension cue (`…too`, `do the rest`, `finish X, then do Y`, `Did you
+   fix … in …?` — turn ≤ 160 chars, after an assistant turn). These carry no
+   corrective vocabulary; they are the user appending the sibling the agent
+   left out. Read them as a *cluster*: several in one session on one defect
+   class is the CLAUDE.md § Fix the class signal ("sweep means fix, not file"),
+   and one alone is usually just the next task. Precision ≈ 75 % by the
+   2026-08-18 measurement — the misses are planning talk that happens to end in
+   "too".
+
+   **Read `matched_text`, not `excerpt`, to see what fired.** `excerpt` is the
+   preceding context (mostly the assistant's tool output); the user turn that
+   tripped the classifier is `matched_text`. Then read the transcript rows
+   around `ts` for the reply — the 2026-08-18 run first read `excerpt` alone
+   and saw nothing but tool results.
 
 3. **Dedupe against existing memory.** For each candidate signal, check whether the rule is already captured. Read in parallel:
    - `~/Open/claude-config/CLAUDE.md` (global rules)
@@ -105,7 +123,7 @@ Read all three to dedupe; write only to vault + claude-config.
    If the candidate's rule overlaps an existing entry, mark it `already_covered` — it goes in the report's "Already covered" section, not the proposals.
 
 4. **Classify by confidence.** For each non-covered candidate:
-   - **high** — recurrence, OR singular but with decisive language ("never", "always", "we don't do that"). Per [[projects/agent-workflow/decisions]] D2 + D3. Recurrence is met when **either** (a) the signal fired in ≥ 2 sessions in *this* scan, **or** (b) it fired once here and a matching signal appears in another host's recent report from step 3 — that cross-machine hit counts as the second occurrence. Without (b) a once-per-machine signal never crosses the bar on either host, since each run sees only local transcripts. Matching is semantic (same underlying rule / behaviour), not string-identical; when the match is uncertain, treat it as medium, not high. **(c) `unlanded: true` on the signal counts as recurrence by itself** — the scanner sets it when the user's own words say the correction has not landed ("you still…", "why do you still…", "I still see…"), which makes that turn the second occurrence whether or not the first one was captured. Verify the antecedent before promoting: read back far enough to confirm what was corrected earlier, since a "still" turn is unintelligible on its own.
+   - **high** — recurrence, OR singular but with decisive language ("never", "always", "we don't do that"). Per [[projects/agent-workflow/decisions]] D2 + D3. Recurrence is met when **either** (a) the signal fired in ≥ 2 sessions in *this* scan, **or** (b) it fired once here and a matching signal appears in another host's recent report from step 3 — that cross-machine hit counts as the second occurrence. Without (b) a once-per-machine signal never crosses the bar on either host, since each run sees only local transcripts. Matching is semantic (same underlying rule / behaviour), not string-identical; when the match is uncertain, treat it as medium, not high. **(c) `unlanded: true` on the signal counts as recurrence by itself** — the scanner sets it when the user's own words say the correction has not landed ("you still…", "why do you still…", "I still see…"), which makes that turn the second occurrence whether or not the first one was captured. Verify the antecedent before promoting: read back far enough to confirm what was corrected earlier, since a "still" turn is unintelligible on its own. **(d) A cluster of `scope_extension: true` turns — ≥ 2 in one session on one defect class — is recurrence** for the fix-the-class family (each turn is the user re-asking for a sibling the agent left out); a single one is not, and the cluster still wants the transcript read to name the class.
    - **`multi_release` is always high.** Ruled 2026-08-17: more than one release
      of a project in a single session is a signal that something went wrong, and
      it needs no recurrence to qualify. Eugene: *"it is possible to have more
