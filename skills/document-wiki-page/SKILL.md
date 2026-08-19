@@ -9,6 +9,10 @@ Generate a comprehensive documentation page for the specified component, formatt
 
 This skill replaces the per-project `prompts/doc.md` files that historically lived in Eugene's repos (deprecated 2026-05-05). Project-specific conventions are detected at invocation time rather than hardcoded.
 
+> **Prose follows the `writing-style` skill** (Google developer documentation style) — read it before
+> drafting: second person, present tense, sentence-case headings, descriptive link text, code font
+> for code items (never inflected), reference descriptions as third-person fragments ("Returns …").
+>
 > **Conventions are authoritative in the vault — read `topics/project-wiki-convention` first** (naming, the `wiki/` submodule, link style). The wiki is a submodule; edit in `wiki/` and let the user push. Never create a sibling `<repo>.wiki` clone.
 
 ## Detect project context first

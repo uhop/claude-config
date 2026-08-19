@@ -9,6 +9,10 @@ Refresh all AI-facing files after changes to the public API, modules, or
 project structure. Works on any project following the AGENTS.md / llms.txt
 convention.
 
+Prose in every file touched here follows the `writing-style` skill (Google developer documentation
+style): present tense, third-person fragments for API descriptions, code font for code items, no
+_e.g._ / _etc._, no _new_ / _currently_ in capability descriptions.
+
 ## Steps
 
 1. Read the entry-point source files (e.g. `src/index.js` and key modules) to

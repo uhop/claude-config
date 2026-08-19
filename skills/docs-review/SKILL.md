@@ -7,6 +7,10 @@ description: Review and improve English in documentation files for brevity and c
 
 Review markdown documentation files for brevity and clarity.
 
+> **Read the `writing-style` skill first** (`~/.claude/skills/writing-style/SKILL.md`) and follow its
+> § Review procedure — the Google developer documentation style guide is the house standard, and
+> this skill's steps below are the mechanics of the pass, not the style rules.
+
 ## Steps
 
 1. List all markdown files in the target directory (e.g., `wiki/`, `docs/`) and note `README.md`.
