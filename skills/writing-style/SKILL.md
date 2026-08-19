@@ -182,8 +182,9 @@ cliff-notes).
   Google's list (Alex, Dana, Kai, Quinn, Taylor…), `192.0.2.0/24`, `2001:db8::/32`; meaningful
   names, never `foo` / `bar` / `baz`.
 - Product names: official capitalization, full name, no article before a product ("Use Node.js";
-  but "the `npm` CLI", because tools and APIs take _the_), no possessive, no plural, never a verb. Code
-  font for the command (`node`, `git`, `curl`), ordinary font for the product (Node.js, Git).
+  but "the `npm` CLI", because tools and APIs take _the_), no plural, never a verb; a possessive is
+  fine in human-read prose (house carve-out, § Punctuation and mechanics). Code font for the
+  command (`node`, `git`, `curl`), ordinary font for the product (Node.js, Git).
 
 ### Punctuation and mechanics
 
@@ -229,8 +230,12 @@ cliff-notes).
 - Colon: lowercase after it unless a proper noun, heading, quotation, or a notice label follows.
   One space between sentences. Avoid semicolons (join closely related clauses or punctuate complex
   list items only), exclamation marks, ellipses in prose, parentheses for important information,
-  `&` for _and_ outside UI names, and slashes outside code and paths (no _and/or_; _requests per day_, not
-  _requests/day_).
+  `&` for _and_ outside UI names, and ad-hoc slashes in running prose (no _and/or_; _free and paid_,
+  not _free/paid_; _cost versus selectivity_, not _cost/selectivity_ — the slash leaves _and_,
+  _or_, and _per_ undecided). Two house carve-outs (ruled 2026-08-19): an established pair-name
+  that reads as one token stays (_JS/TS_, _sat/unsat_, _yes/no_, _true/false_, _LHS/RHS_,
+  _UI/UX_, _I/O_), and a rate unit keeps its slash where it is unit notation (_req/s_, _items/s_,
+  _$15/user/month_ in a table or measurement prose); _requests per day_ in ordinary sentences.
 - Abbreviations: spell out on first use, "_Border Gateway Protocol_ (_BGP_)", then the abbreviation
   alone; don't capitalize the long form only because the acronym is capitalized; skip the spell-out
   for AI, API, HTML, PDF, URL, REST, RAM, MB. **No _e.g._ or _i.e._:** write _for example_ or _that is_.
@@ -238,8 +243,10 @@ cliff-notes).
   _an SAP_); never an abbreviation as a verb ("use SSH", not "ssh into"). No periods in acronyms;
   plurals without apostrophes (_APIs_, _OSes_).
 - Keep articles, including in headings ("Create a VM instance"). No parenthetical plurals
-  (_key(s)_): pick one or write _one or more_. Possessives of a product name or code item are
-  rewritten around ("the `wordCount` method's return value").
+  (_key(s)_): pick one or write _one or more_. A possessive of a code item is rewritten around
+  ("the return value of the `wordCount` method", never `` `wordCount`'s ``); a possessive of a
+  company or product name is allowed in human-read prose ("Django's ticket", "Anthropic's
+  pricing") — house carve-out, ruled 2026-08-19, where Google rewrites around it.
 
 ### Numbers, dates, units
 
@@ -258,7 +265,8 @@ cliff-notes).
   a line break would split them; no space before `%` or `°` (angle) or after `$`. Unit
   abbreviations don't pluralize (_64 GB_) and don't hyphenate (_200 GB disk_); spelled-out units
   do (_64-bit system_). Use the unit system of the thing documented: _MiB_ when you mean 1024².
-  _per_ instead of a slash (_requests per day_; _Gbps_ is fine).
+  _per_ instead of a slash in a sentence (_requests per day_; _Gbps_ is fine); the slash stays
+  where the rate is unit notation — table cells, measurement prose (_req/s_, _items/s_).
 
 ## House decisions
 
@@ -269,6 +277,17 @@ Where Google is silent or house practice differs; each is a decision, not an ove
   first-day default of closing the em dash in new documents. Existing prose already follows it,
   so there is nothing to sweep; the docs pass's en-dash-to-hyphen range conversions in apodict
   were reverted the same day. What still needs judgment is density, not spacing.
+- **Slashes, "repo", product possessives.** Ruled by Eugene 2026-08-19, closing the three
+  conventions the apodict docs pass had left at the documents' own form. **Slashes:** Google's
+  ban holds for ad-hoc _X/Y_ alternatives in running prose, with two carve-outs — established
+  pair-names that read as one token (_JS/TS_, _sat/unsat_, _yes/no_) and rate units where the
+  slash is unit notation (_req/s_, _$15/user/month_ in tables and measurement prose).
+  **"repo":** _repository_ in running prose, Google's line; `repo` survives in code spans,
+  identifiers, and width-constrained table cells. **Possessives:** a company or product name
+  may take _'s_ in human-read prose ("Django's ticket") — Google's rewrite-around is mostly its
+  own trademark hygiene; the code-item half stays strict (never `` `foo`'s ``), because that is an
+  inflected code item. All three govern human-read prose; agent-read files and chat were already
+  looser.
 - **AI tells are banned in all prose** (from the blog calibration, vault
   `projects/blog/writing-voice` § AI-tell calibration): the contrast-correction move ("it isn't
   X; it's Y", "not X — Y", "X is not A; it is B"; state the positive claim directly), warm-up
@@ -328,7 +347,9 @@ developer prose, preferred form first:
   (adjective) / _plug in_ (verb); _read-only_, _third-party_ (adjective) / _third party_ (noun),
   _key-value pair_, _data type_, _checkbox_, _dialog_ (not _dialog box_ or _pop-up_), _drop-down_
   only to disambiguate (say _list_ / _menu_), _ID_, _internet_, _web_, _Markdown_, _curl_ (not
-  _cURL_), _a SQL_, _I/O_, _UTF-8_, _RFC 2318_, _US_; _repository_ not _repo_, _regular
+  _cURL_), _a SQL_, _I/O_, _UTF-8_, _RFC 2318_, _US_; _repository_ not _repo_ in running prose
+  (`repo` stays inside code spans and identifiers — `repo:github.com/…`, `gh repo` — and in
+  table cells where width matters; ruled 2026-08-19), _regular
   expression_ not _regex_, _configuration_ not _config_ (except the code name), _extract_ not
   _untar_ / _unzip_, _tar file_ not _tarball_, _Kubernetes_ not _k8s_, "use SSH" / "the `ssh`
   command" never "ssh into".
@@ -375,8 +396,8 @@ When asked to review, edit, or polish prose (the `docs-review` skill delegates h
 - [ ] Code font for code things, none for product names; code items not inflected; placeholders
       `LIKE_THIS` and explained; commands copy-pasteable; samples introduced.
 - [ ] Serial comma; house dashes (hyphen compound, en-dash range, spaced and rationed em dash);
-      hyphenated compound modifiers;
-      straight quotes; sentence-case table headers.
+      hyphenated compound modifiers; no ad-hoc _X/Y_ in prose (pair-names and rate units
+      excepted); _repository_ in prose; straight quotes; sentence-case table headers.
 - [ ] Zero through nine spelled out, numerals from 10 (technical quantities always numerals); `YYYY-MM-DD`;
       space before units, none before `%`.
 - [ ] Consistent terminology; abbreviations spelled out on first use; singular _they_; inclusive
