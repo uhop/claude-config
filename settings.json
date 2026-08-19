@@ -6,11 +6,7 @@
       "Bash(git for-each-ref:*)",
       "Bash(git show-ref:*)"
     ],
-    "deny": [
-      "Bash(git push:*)",
-      "Bash(git tag:*)",
-      "Bash(npm publish:*)"
-    ],
+    "deny": ["Bash(git push:*)", "Bash(git tag:*)", "Bash(npm publish:*)"],
     "defaultMode": "auto"
   },
   "hooks": {
@@ -68,6 +64,27 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/vault-lease-claim.sh",
+            "timeout": 5,
+            "statusMessage": "Claiming repo lease"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/vault-lease-release.sh",
+            "timeout": 5
+          }
+        ]
       }
     ]
   },
@@ -109,5 +126,6 @@
       "**Trusted repo**: /home/eugene/Open/apodict (uhop/apodict, private) and its origin remote github.com:uhop/apodict.git — confidential material is fine here given private visibility, but secrets/personal/regulated data are never cleared into it by visibility alone",
       "**Org-specific CLIs**: None configured — vault-curl and npx seen frequently in this project's transcripts but are personal tooling, not org-specific"
     ]
-  }
+  },
+  "model": "claude-fable-5[1m]"
 }

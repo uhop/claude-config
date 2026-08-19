@@ -175,45 +175,62 @@ infrastructure trouble. It reconstructs your holder id as
 `<hostname>/<session-prefix>`, so **claiming under a different string will
 block your own edits**; the message prints both sides when that happens.
 
-**Single-agent sessions: this whole section is a no-op.** Claim nothing;
-check nothing for work in the session's own cwd repo; an empty registry is
-the normal state and everything behaves exactly as it did before the
-registry existed. The protocol engages only around cross-repo work and
-multi-agent fleets:
+**Your own repo is claimed for you — mechanically (ruled 2026-08-18).**
+`hooks/vault-lease-claim.sh` (SessionStart) claims the cwd repo with
+`priority: "cwd"` under the holder id below; `hooks/vault-lease-gate.sh`
+renews it on every edit burst (and re-claims after a TTL lapse when the
+edited repo is your own); `hooks/vault-lease-release.sh` (SessionEnd)
+releases every lease this holder has; TTL (4 h) covers a crash. Sub-agents
+never claim — the parent owns the repo. All fail-open. The result arrives
+as a `[vault] lease: …` line at session start, which is how you know your
+standing: **held by you** (edit freely), **unclaimed** (the vault was
+unreachable or the hook is not installed — behave as held-by-you, nothing
+else changes), or **held by another cwd session** — then you are
+**subordinate**: read and analyze freely, route every edit through a
+worktree + a handoff to `repo:X` (below), and ping the holder with
+`SendMessage` when `ListAgents` shows it reachable. Taking the lease is the
+operator's act, never yours: he transfers, force-releases in the UI, or says
+*"take the lease"* — only then `vault_lease_release({resource, holder:
+<theirs>, force: true})` + your own claim. **Never `force` unbidden**; the
+flag is exposed to every token holder, so this is a rule, not a permission.
+Before that ruling the section said single-agent sessions claim nothing;
+that left the registry unable to tell "nobody is there" from "nobody
+claimed", which is why the claim moved into a hook.
 
 - **Before editing a repo outside the session's cwd** (the CLAUDE.md
-  § Cross-repo work path), read the lease first:
+  § Cross-repo work path), read the lease and the tree:
   `vault_lease_list({resource: "repo:<normalized-remote-url>"})` — e.g.
   `repo:github.com/uhop/deep6`; a repo with no remote keys as
-  `repo:<host>:<path>`. Empty `items` = not held → proceed exactly as
-  before (disposable worktree, branch/patch handover to the user). Held by
-  someone else → don't race it: name the holder to the user, work in a
-  worktree, and file the result as a handoff (below) rather than editing the
-  tree they hold. Registry unreachable → proceed as before too: the worktree
-  discipline is already collision-safe, so the check fails open, never blocks
-  work.
-- **Claim only with a reason** — the user directed coordination, another
-  agent is known to be active on the fleet, or a long direct-edit arc
-  should be reserved. A session whose cwd *is* the repo claims with
-  `priority: "cwd"` (preempts an agent-held side lease; nothing preempts a
-  human holder). A side claim requires **no current holder** and **a clean
-  target checkout** — modified, staged, or untracked-unignored files are
-  dirt (ignored files never count; stash entries: mention to the user,
-  don't block); pass `attestation: "clean at <short-sha>"`. Dirty tree →
-  do not claim: tell the user and use a worktree. The check is client-side
-  by design — the server cannot see any host's working tree.
+  `repo:<host>:<path>` — then `git -C <repo> status --porcelain`.
+  - **Unclaimed and clean → side-claim, edit directly, release, tell the
+    user.** `vault_lease_claim({resource, holder, priority: "side",
+    attestation: "clean at <short-sha>"})`, edit the working tree, run
+    that repo's gates, `vault_lease_release`, then report "mods done in
+    `<repo>` — review, commit, push". No worktree, no branch — the daily
+    no-other-agents case, ruled 2026-08-18. Clean = no modified, staged, or
+    untracked-unignored files (ignored never count; stash entries: mention,
+    don't block). The check is client-side by design — the server cannot
+    see any host's working tree — and the attestation goes in the event log.
+  - **Held by someone else → don't race it**: name the holder to the user,
+    work in a disposable worktree, commit there, file the result as a
+    handoff (below) with the patch, doorbell via `SendMessage` if the holder
+    is reachable. Keep the branch until it resolves.
+  - **Unclaimed but dirty → do not claim**: someone's in-flight state is
+    present (possibly the user's); worktree + handover, and say so.
+  - **Registry unreachable → assume held**: worktree + handover, as before.
+    An outage costs throughput, never correctness.
 - **Holder id**: `<hostname>/<session-prefix>`, e.g. `nuke/59bd32b6` —
   unique per session, readable in `/ui/agents.html`. The operator holds as
   `kind: "human"` (no TTL, never preempted) and claims via the UI;
   `vault_lease_transfer` with `to_kind: "human"` is the "please review and
   commit" handover.
-- **While holding**: re-claim at the start of each work burst (idempotent
-  re-claim = renew, safe retry); after a long gap or any vault error,
-  verify the lease still names you before the next mutating burst — losing
-  a lease is demotion, not damage (D23): downgrade to worktree + handover.
-  **Release at session end**; don't leave TTL expiry to say what an
-  explicit release states. Leases are cleared on server restart by design —
-  re-claim on the next burst if still needed.
+- **While holding a side lease**: it is yours for the burst — release it
+  when the burst is done rather than at session end (SessionEnd releases
+  it anyway as a backstop). After a long gap or any vault error, verify the
+  lease still names you before the next mutating burst — losing a lease is
+  demotion, not damage (D23): downgrade to worktree + handover. Leases are
+  cleared on server restart by design — the gate re-claims your own repo on
+  the next edit; re-claim a side lease yourself if still needed.
 
 **Handoffs — asking another agent to do the work.** A handoff is addressed to
 a **role** (`to: "repo:<normalized-remote-url>"`), never a session, so it

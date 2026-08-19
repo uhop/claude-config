@@ -16,8 +16,16 @@
 # check may only *redirect* work, never deny it on infrastructure trouble.
 # A blocked edit is therefore always a real, current, someone-else lease.
 #
+# Liveness rides here too (2026-08-18): when the lease is ours, an edit
+# renews it (throttled to once per RENEW_EVERY seconds), and when the edited
+# repo is the session's own cwd repo and nobody holds it — the TTL lapsed, or
+# the server restarted — the edit re-claims it (`priority: cwd`). Both are
+# best-effort and never block; they exist so `renewed_at` means "still
+# active" and a lapsed own-repo lease heals on the next touch instead of
+# leaving the next session unable to tell a live neighbour from a ghost.
+#
 # Hook contract:
-#   - stdin: JSON {tool_name, tool_input: {file_path|notebook_path}, session_id}
+#   - stdin: JSON {tool_name, tool_input: {file_path|notebook_path}, session_id, cwd}
 #   - exit 0: allow. exit 2: block, stderr shown to the agent.
 
 set -u
@@ -95,8 +103,59 @@ if ((fresh == 0)); then
   fi
 fi
 
-[[ -n "$holder" ]] || exit 0
-[[ "$holder" == "$me" ]] && exit 0
+# Liveness. `own_repo` = the edited repo is the session's cwd repo (a
+# sub-agent's `isolation: worktree` resolves to the same remote, so it counts).
+own_repo=0
+cwd=$(jq -r '.cwd // ""' <<<"$payload" 2>/dev/null)
+if [[ -n "$cwd" && -d "$cwd" ]]; then
+  cwd_root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || true)
+  [[ -n "$cwd_root" && "$cwd_root" == "$root" ]] && own_repo=1
+fi
+RENEW_EVERY=900
+renew_stamp="$cache_file.renew"
+auth=(-H "Authorization: Bearer $VAULT_API_TOKEN" -H 'Content-Type: application/json')
+
+if [[ -z "$holder" ]]; then
+  ((own_repo == 1)) || exit 0
+  # Nobody holds our own repo — the SessionStart claim lapsed (TTL, server
+  # restart) or never ran. Re-claim; a 409 here means someone took it in the
+  # gap, which is exactly the case the block below is for.
+  body=$(jq -cn --arg r "$resource" --arg h "$me" \
+    '{resource: $r, holder: $h, kind: "agent", priority: "cwd"}') || exit 0
+  raw=$(curl -s --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
+    -w $'\n%{http_code}' "$VAULT_API_URL/leases/claim") || exit 0
+  code=${raw##*$'\n'}
+  resp=${raw%$'\n'*}
+  case "$code" in
+    200)
+      printf '%s\n%s\n%s\n' "$now" "$me" "agent" >"$cache_file" 2>/dev/null || true
+      printf '%s\n' "$now" >"$renew_stamp" 2>/dev/null || true
+      exit 0
+      ;;
+    409)
+      parsed=$(jq -r '(.details.current // {}) | "\(.holder // "")\n\(.holder_kind // "")"' \
+        <<<"$resp" 2>/dev/null) || exit 0
+      holder=$(head -n1 <<<"$parsed")
+      kind=$(tail -n1 <<<"$parsed")
+      [[ -n "$holder" ]] || exit 0
+      printf '%s\n%s\n%s\n' "$now" "$holder" "$kind" >"$cache_file" 2>/dev/null || true
+      ;;
+    *) exit 0 ;;
+  esac
+fi
+
+if [[ "$holder" == "$me" ]]; then
+  last=0
+  [[ -f "$renew_stamp" ]] && read -r last <"$renew_stamp" 2>/dev/null
+  [[ ${last:-0} =~ ^[0-9]+$ ]] || last=0
+  if ((now - last >= RENEW_EVERY)); then
+    body=$(jq -cn --arg r "$resource" --arg h "$me" '{resource: $r, holder: $h}') || exit 0
+    curl -s -o /dev/null --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
+      "$VAULT_API_URL/leases/renew" || true
+    printf '%s\n' "$now" >"$renew_stamp" 2>/dev/null || true
+  fi
+  exit 0
+fi
 
 if [[ "$kind" == "human" ]]; then
   cat >&2 <<EOF
@@ -125,9 +184,14 @@ Do this instead:
   3. git format-patch --base=\$(git merge-base main HEAD) main..HEAD --stdout
   4. vault_handoff_create({... to: "$resource" ...}), then vault_handoff_put_artifact
 
-If this repo IS your session's working directory, the holder is a side agent
-and you may take it back — a cwd claim preempts an agent-held side lease:
+If this repo IS your session's working directory: a cwd claim preempts an
+agent-held SIDE lease, so try
 
   vault_lease_claim({resource: "$resource", holder: "$me", priority: "cwd"})
+
+— but if that returns 409, the holder is another cwd session and you are
+SUBORDINATE (ruled 2026-08-18): read freely, route edits through the worktree
++ handoff above, SendMessage the holder if ListAgents shows it. Taking the
+lease is the operator's call — only on an explicit "take the lease".
 EOF
 exit 2
