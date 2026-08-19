@@ -188,7 +188,13 @@ unreachable or the hook is not installed — behave as held-by-you, nothing
 else changes), or **held by another cwd session** — then you are
 **subordinate**: read and analyze freely, route every edit through a
 worktree + a handoff to `repo:X` (below), and ping the holder with
-`SendMessage` when `ListAgents` shows it reachable. Taking the lease is the
+`SendMessage` when `ListAgents` shows it reachable. **Address the doorbell
+by repo, not by holder id**: `ListAgents` names a peer
+`<cwd-basename>-<xx> [<ref>]` and neither part is the session prefix in the
+holder id (verified 2026-08-19: holder `nuke/36eb0a3e` was
+`claude-config-ca [51bbb5]`) — send to the peer(s) named after the repo's
+basename and put the resource + holder id in the text so a non-holder can
+tell and ignore it. Record first, ring second. Taking the lease is the
 operator's act, never yours: he transfers, force-releases in the UI, or says
 *"take the lease"* — only then `vault_lease_release({resource, holder:
 <theirs>, force: true})` + your own claim. **Never `force` unbidden**; the
