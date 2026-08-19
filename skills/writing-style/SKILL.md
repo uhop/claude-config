@@ -199,16 +199,26 @@ cliff-notes).
   and it is the dash to ration: it marks a break in flow, not a connector, so a comma,
   parentheses, a colon, or a sentence split usually reads better (the blog calibration budgets
   about 1.3 per 100 words). Google closes the em dash and bans the en dash; the house rule wins.
-- **Dash encoding follows the medium** (Eugene, 2026-08-19; the TeX convention for ASCII). In
-  HTML, and in Markdown that renders to HTML (README, wiki, `dev-docs/`, `AGENTS.md`, release
-  notes, GitHub issue and PR bodies, the blog): `-`, `&ndash;`, `&mdash;` — entities, not raw
-  Unicode (`word &mdash; word` keeps the spaces). The blog additionally prefers Goldmark's `--` /
-  `---` shortcuts, per the blog voice note; GitHub does not convert those, so there the entity is
-  the only form. In ASCII (code and comments, `.d.ts` JSDoc, commit messages, plain-text files
-  such as `llms.txt`, CLI output, GitHub issue titles, anything inside a code span or block):
-  `-`, `--`, `---`. Chat replies and vault notes are internal surfaces: raw Unicode `–` / `—` is
-  fine there. Forward-looking: don't sweep an existing document's raw Unicode dashes to entities;
-  match the document you are editing, and raise a sweep as its own question.
+- **Dash encoding follows the consumer** (Eugene, 2026-08-19; the TeX convention for ASCII).
+  Three classes, decided by who reads the bytes, not by where a file could render:
+  - **Humans through a browser** — HTML, and Markdown that is read rendered: README, wiki,
+    `dev-docs/`, release notes, GitHub issue and PR bodies, the blog. Write `-`, `&ndash;`,
+    `&mdash;` — entities, not raw Unicode (`word &mdash; word` keeps the spaces). The blog
+    additionally prefers Goldmark's `--` / `---` shortcuts, per the blog voice note; GitHub does
+    not convert those, so there the entity is the only form.
+  - **Compilers, terminals, and logs** — code and comments, `.d.ts` JSDoc, commit messages, CLI
+    output, GitHub issue titles, anything inside a code span or block. Write `-`, `--`, `---`.
+  - **Models and internal notes (agent-read files)** — `AGENTS.md`, `ARCHITECTURE.md`,
+    `CLAUDE.md`, any `SKILL.md`, `llms.txt` / `llms-full.txt`, vault notes, chat replies. Write
+    raw Unicode `–` / `—`: the model reads source bytes, so an entity is seven characters of
+    noise for one, and the TeX forms collide with what these files are full of (`--summary` is
+    a flag; `---` at a line start is a rule or a frontmatter fence). That a GitHub page also
+    renders the file is incidental — raw Unicode renders fine; the entity form exists for typing
+    ergonomics and the blog's HTML pipeline. (Ruled 2026-08-19 after an `AGENTS.md` /
+    `ARCHITECTURE.md` sweep to entities was reverted: the first draft of this rule classified
+    by render surface and got both wrong.)
+  Forward-looking: don't sweep an existing document's dashes to another encoding; match the
+  document you are editing, and raise a sweep as its own question.
 - Hyphenate compound modifiers before a noun (_well-designed app_, _Android-specific_), not after
   a verb; never after _-ly_ adverbs; prefixes close up (_metadata_, _preprocessing_) except
   _self-_, _cross-_, before capitals or numbers (_non-Google_, _post-2000_), or to avoid misreading.
@@ -280,8 +290,8 @@ Where Google is silent or house practice differs; each is a decision, not an ove
 - **Typography in the blog** (HTML entities or Goldmark shortcuts, never raw Unicode punctuation
   in prose, and never retro-converting a published post) is the blog voice note's rule; the
   dash-encoding bullet in § Punctuation and mechanics is its fleet-wide generalization (entities
-  wherever Markdown renders to HTML, TeX `--` / `---` in ASCII, raw Unicode only in chat and
-  vault notes).
+  for human-read HTML and Markdown, TeX `--` / `---` for code and logs, raw Unicode for
+  agent-read files, vault notes, and chat).
 
 ## High-frequency word list
 
