@@ -234,11 +234,27 @@ check('ai_docs', {
       : {status: 'skip', reason: 'no exports map'}
   );
 
-  check('pkg_meta', {
-    status: pkg.description && pkg.keywords?.length ? 'ok' : 'action',
-    description_present: !!pkg.description,
-    keywords_present: !!pkg.keywords?.length
-  });
+  // repository / homepage / bugs are what npm renders as the links back to the
+  // project; without repository the package page has no source link at all, and
+  // npm provenance has nothing to attest against. Measured 2026-08-20 across the
+  // fleet: 34/35 published repos carry all three — more universal than `funding`
+  // (30/35), which is already a bundle slice. invariants-sidecar shipped 0.0.1
+  // and 0.1.0 without them precisely because this check looked only at
+  // description/keywords; a consumer found it, not the release check.
+  {
+    const meta = {
+      description_present: !!pkg.description,
+      keywords_present: !!pkg.keywords?.length,
+      repository_present: !!pkg.repository,
+      homepage_present: !!pkg.homepage,
+      bugs_present: !!pkg.bugs,
+      funding_present: !!pkg.funding
+    };
+    const absent = Object.entries(meta)
+      .filter(([, present]) => !present)
+      .map(([key]) => key.replace(/_present$/, ''));
+    check('pkg_meta', {status: absent.length ? 'action' : 'ok', ...meta, absent});
+  }
 
   const bins = typeof pkg.bin === 'string' ? {[pkg.name]: pkg.bin} : (pkg.bin ?? {});
   const modes = Object.values(bins).map(target => {

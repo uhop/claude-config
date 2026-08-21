@@ -96,7 +96,9 @@ anything needs attention (run it solo or `|| true` in parallel Bash batches).
 commits since (step 0's input), `.d.ts` sidecar pairing + `@ts-self-types`
 directives, the retired-artifact removable set (mirrors, uppercase COPILOT,
 `.windsurf/`, promoted-skill `.claude/commands/` copies), AI-docs presence,
-`package.json` `files` / `exports` / `description` / `keywords` / `bin` modes,
+`package.json` `files` / `exports` / `bin` modes, project metadata
+(`description`, `keywords`, and the npm-link fields `repository` / `homepage` /
+`bugs` / `funding` — `pkg_meta.absent` names any that are missing),
 LICENSE year, release-notes surfaces, wiki search-index staleness,
 dependency freshness (both `npm outdated`'s installed-behind class **and**
 stale declared range floors, which `npm outdated` structurally cannot see —
@@ -131,7 +133,11 @@ verdict, and `/release-prep` fixes it.
   refreshes them). If the project has a wiki, `wiki/Home.md` links all relevant
   pages.
 - `description` / `keywords` in `package.json` still describe the project
-  (the digest only checks presence).
+  (the digest only checks presence, not accuracy — that judgment is yours).
+  A `pkg_meta` action naming `repository` / `homepage` / `bugs` is not
+  cosmetic: `repository` is what npm renders as the source link and what
+  provenance attests against, so without it the package page points nowhere.
+  Measured 2026-08-20: 34 of 35 published fleet repos carry all three.
 - **Grep the docs for absolutes this release's features falsified.** Presence
   is not currency: adding a capability and documenting it *somewhere* leaves
   every sentence written when the old behaviour was the only behaviour, and
