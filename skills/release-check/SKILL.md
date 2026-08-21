@@ -98,7 +98,11 @@ directives, the retired-artifact removable set (mirrors, uppercase COPILOT,
 `.windsurf/`, promoted-skill `.claude/commands/` copies), AI-docs presence,
 `package.json` `files` / `exports` / `description` / `keywords` / `bin` modes,
 LICENSE year, release-notes surfaces, wiki search-index staleness,
-`npm outdated`, lockfile-version sync, which test gates exist, and the
+dependency freshness (both `npm outdated`'s installed-behind class **and**
+stale declared range floors, which `npm outdated` structurally cannot see —
+each item carries `reason: "installed_behind" | "declared_floor_behind"` and
+the `declared` range; see [[topics/dep-version-freshness]]),
+lockfile-version sync, which test gates exist, and the
 `npm pack --dry-run` tarball diff (required contents present, authoring-side
 files absent — see [[topics/tarball-ai-docs-convention]] and
 [[topics/full-path-imports-for-runtime-portability]] for the rules the

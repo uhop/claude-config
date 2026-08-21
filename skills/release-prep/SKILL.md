@@ -92,6 +92,9 @@ published-version users). See [[topics/docs-lead-vs-follow-release]].
 ## Step 4 — Dependency sweep (hand-edit, then regen)
 
 For every `deps_outdated` item, **hand-edit `package.json`** to the latest —
+including the `reason: "declared_floor_behind"` ones, where the installed tree
+is already current and only the declared range lags; raise the floor to the
+version in `latest` —
 majors included, in-range patches included (leaving them ships stale deps and
 the next release-check sees the same diff). Land these edits alongside step 2's
 version bump as one reviewable batch. Do **not** use `npm install <pkg>@latest

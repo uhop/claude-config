@@ -57,6 +57,16 @@ const run = (cmd, argv, opts = {}) => {
 };
 
 const exists = rel => existsSync(path.join(root, rel));
+
+// Installed version of a dependency, or null when it is not on disk.
+const readInstalledVersion = name => {
+  try {
+    return JSON.parse(readFileSync(path.join(root, 'node_modules', name, 'package.json'), 'utf8'))
+      .version;
+  } catch {
+    return null;
+  }
+};
 const walk = (dir, files = []) => {
   for (const entry of readdirSync(dir, {withFileTypes: true})) {
     if (entry.name === 'node_modules' || entry.name.startsWith('.git')) continue;
@@ -292,6 +302,17 @@ check('ai_docs', {
 }
 
 // --- dependency freshness (bump EVERYTHING reported, majors included) -------
+//
+// Two independent staleness mechanisms, both reported here (see the vault's
+// topics/dep-version-freshness):
+//   installed_behind      — npm outdated's whole remit: the resolved tree lags.
+//   declared_floor_behind — the manifest range's floor lags while the install
+//                           is already current. npm outdated compares INSTALLED
+//                           against the registry and never looks at the declared
+//                           range, so this class is invisible to it.
+// The floor pass costs no extra registry calls: npm outdated stays silent about
+// a package exactly when current === wanted === latest, so for anything it did
+// not report, latest is the installed version.
 {
   if (noNetwork) check('deps_outdated', {status: 'skip', reason: '--no-network'});
   else {
@@ -307,14 +328,44 @@ check('ai_docs', {
       });
     else {
       const dev = new Set(Object.keys(pkg.devDependencies ?? {}));
+      const declared = {...pkg.dependencies, ...pkg.devDependencies};
       const items = Object.entries(parsed).map(([name, info]) => ({
         name,
+        declared: declared[name] ?? null,
         current: info.current,
         wanted: info.wanted,
         latest: info.latest,
         dev: dev.has(name),
-        major: info.latest?.split('.')[0] !== info.current?.split('.')[0]
+        major: info.latest?.split('.')[0] !== info.current?.split('.')[0],
+        reason: 'installed_behind'
       }));
+
+      // Only the range forms the fleet actually writes. Anything else — a URL,
+      // a tag, a disjunction, a bare `*` — yields null: unknown, not "current",
+      // since guessing would report a stale floor as fresh.
+      const floorOf = range =>
+        /^[\^~]?(\d+\.\d+\.\d+)$/.exec(String(range ?? '').trim())?.[1] ?? null;
+      const reported = new Set(Object.keys(parsed));
+      for (const [name, range] of Object.entries(declared)) {
+        if (reported.has(name)) continue; // already an item, on the stronger reason
+        const floor = floorOf(range);
+        if (!floor) continue;
+        // Silent in npm outdated ⇒ current === wanted === latest, so the
+        // installed version IS latest. Read it rather than re-querying.
+        const installed = readInstalledVersion(name);
+        if (!installed || floor === installed) continue;
+        items.push({
+          name,
+          declared: range,
+          current: installed,
+          wanted: installed,
+          latest: installed,
+          dev: dev.has(name),
+          major: installed.split('.')[0] !== floor.split('.')[0],
+          reason: 'declared_floor_behind'
+        });
+      }
+
       check('deps_outdated', {status: items.length ? 'action' : 'ok', count: items.length, items});
     }
   }
