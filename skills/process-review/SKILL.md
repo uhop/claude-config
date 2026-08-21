@@ -150,13 +150,23 @@ finds *shapes*; only the commits, and sometimes only the person, supply the
 meaning. Treating a structural hit as a verdict is the failure this skill would
 otherwise cause.
 
-Two more limits worth stating:
+Three more limits worth stating:
 
 - **Squashed or rewritten history hides the signal.** A repo whose branches land
   as single squashed commits shows no bursts and no churn by construction.
 - **Renames break content matching.** `git log --follow` is per-path and does not
   compose with the whole-history diff walk, so a file renamed mid-window reads as
   two files.
+- **Unwrapping a block re-indents its survivors, which reads as a `split_change`.**
+  Removing a `try`/`catch` (or an `if`) around existing lines rewrites them at a
+  shallower indent, so they appear as *additions* in the later commit and match
+  the earlier file. The churn detector filters same-commit add+remove as moves;
+  `split_change` has no equivalent across commits. **Read `shared lines` before
+  `% overlap`** — a 2-shared-line hit at 50–67% is the tiny-denominator shape and
+  is usually this artifact or boilerplate, while the real hits carry either many
+  shared lines or a recognizably class-shaped change. Measured on tape-six
+  2026-08-20: 4 of 7 `split_change` hits were rename + reindent artifacts, all
+  four at 2 shared lines.
 
 ## Related
 
