@@ -130,5 +130,6 @@
       "**Trusted repo**: /home/eugene/Open/apodict (uhop/apodict, private) and its origin remote github.com:uhop/apodict.git — confidential material is fine here given private visibility, but secrets/personal/regulated data are never cleared into it by visibility alone",
       "**Org-specific CLIs**: None configured — vault-curl and npx seen frequently in this project's transcripts but are personal tooling, not org-specific"
     ]
-  }
+  },
+  "model": "claude-fable-5[1m]"
 }
