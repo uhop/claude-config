@@ -57,6 +57,13 @@ WORK=$(mktemp -d)
   public, not archived, not a fork; 51 repositories on 2026-08-28. The project name is the
   repository name; 15 of the 51 had no `projects/<name>/` folder that day, and the first
   `commit` creates their `state.md`.
+- `--show` prints the text view after collecting: one block per repository — stars, forks,
+  watchers, open counts, CI; alert counts; every advisory with its CVE or `no CVE`; open
+  issues, PRs, and discussions with author, comments, reactions, and the last commenter; the
+  latest release; then `changes since <baseline time>` as event lines, or `none`. Without
+  `--out` it replaces the JSON on stdout, so `fleet-status.mjs collect --cwd --show` is the
+  one-command look at a repository. `fleet-status.mjs show FILE` renders a collected file the
+  same way, with no GitHub or vault access.
 - `--since-days N` (default 30) sets the window for closed items on a first run; afterwards the
   window is the baseline's `collected_at`. Open items are read in full every run, because a
   reaction doesn't bump `updated_at`.

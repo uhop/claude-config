@@ -795,7 +795,9 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
    `~/.claude/skills/fleet-status/fleet-status.mjs collect --cwd --out "$WORK/github.json"`
    as its **own** Bash call (`WORK=$(mktemp -d)` first), then read the digest
    without its snapshots:
-   `jq '{totals, repos: [.repos[] | {repo, first_run, summary, errors, events}]}' "$WORK/github.json"`.
+   `jq '{totals, repos: [.repos[] | {repo, first_run, summary, errors, events}]}' "$WORK/github.json"`
+   — or `fleet-status.mjs show "$WORK/github.json"` for the text view, which
+   is what goes under the `GitHub:` heading.
    - `skipped: true` — the remote isn't github.com, or there is none. That
      is the safety gate: no line in the resume output, no error.
    - Exit `3` with `error: "gh_auth"` — `gh` has no valid login on this

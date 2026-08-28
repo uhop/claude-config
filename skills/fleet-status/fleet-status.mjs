@@ -11,6 +11,8 @@
 //   fleet-status.mjs collect --cwd [--project NAME] [--out FILE] [--since-days N] [--star-logins]
 //   fleet-status.mjs collect --repo OWNER/NAME [--project NAME] [...]
 //   fleet-status.mjs collect --fleet [--owner LOGIN] [...]
+//   fleet-status.mjs collect ... --show                       # also print the text view
+//   fleet-status.mjs show FILE                                # text view of a collected file
 //   fleet-status.mjs commit FILE [--dry-run]
 //   fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--dry-run]
 //
@@ -36,7 +38,8 @@ if (!import.meta.main)
 
 const usage = `Usage:
   fleet-status.mjs collect (--cwd | --repo OWNER/NAME | --fleet) [--project NAME] [--owner LOGIN]
-                           [--out FILE] [--since-days N] [--star-logins]
+                           [--out FILE] [--since-days N] [--star-logins] [--show]
+  fleet-status.mjs show FILE
   fleet-status.mjs commit FILE [--dry-run]
   fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--dry-run]
 
@@ -58,7 +61,15 @@ const VALUE_FLAGS = new Set([
   '--title',
   '--body-file'
 ]);
-const BOOL_FLAGS = new Set(['--cwd', '--fleet', '--star-logins', '--dry-run', '--help', '-h']);
+const BOOL_FLAGS = new Set([
+  '--cwd',
+  '--fleet',
+  '--star-logins',
+  '--show',
+  '--dry-run',
+  '--help',
+  '-h'
+]);
 
 const parseArgs = argv => {
   const opts = {_: []};
@@ -775,9 +786,11 @@ const collect = async () => {
     const r = resolveCwd();
     if (r.skipped) {
       // The github.com safety gate: silent for the caller, explicit in the JSON.
-      const out = JSON.stringify({skipped: true, mode, ...r}, null, 2);
+      const payload = {skipped: true, mode, ...r};
+      const out = JSON.stringify(payload, null, 2);
       if (opts.out) writeFileSync(opts.out, out + '\n');
-      else console.log(out);
+      if (opts.show) console.log(renderDigest(payload));
+      else if (!opts.out) console.log(out);
       process.exit(0);
     }
     targets = [r];
@@ -835,7 +848,9 @@ const collect = async () => {
   if (opts.out) {
     writeFileSync(opts.out, out + '\n');
     console.error(`written: ${opts.out}`);
-  } else console.log(out);
+  }
+  if (opts.show) console.log(renderDigest(digest));
+  else if (!opts.out) console.log(out);
 };
 
 const commitRepo = async entry => {
@@ -1041,6 +1056,97 @@ const fileItem = async () => {
   console.log(`${docPath}: Active section appended with the item`);
 };
 
-const commands = {collect, commit, file: fileItem};
+// ─── Show ────────────────────────────────────────────────────────────────────
+
+const plural = (n, word, words = `${word}s`) => `${n} ${n === 1 ? word : words}`;
+const short = iso => (iso ?? '').replace(/T(\d\d:\d\d).*$/, ' $1');
+const byDesc = key => (a, b) => (key(b) ?? '').localeCompare(key(a) ?? '');
+
+const renderRepo = entry => {
+  if (entry.error) return `${entry.repo}: ERROR ${entry.error.message}`;
+  const s = entry.snapshot,
+    m = s.meta;
+  const open = Object.entries(s.items).filter(([, it]) => it.state === 'open');
+  const openIssues = open.filter(([, it]) => !it.is_pr),
+    openPrs = open.filter(([, it]) => it.is_pr);
+  const openDiscussions = Object.entries(s.discussions).filter(([, d]) => !d.closed);
+  const advisories = Object.entries(s.advisories).sort(byDesc(([, a]) => a.published_at));
+  const lines = [];
+  lines.push(
+    `${entry.repo} — ${plural(m.stars, 'star')}, ${plural(m.forks, 'fork')}, ${plural(m.watchers, 'watcher')}; ${plural(openIssues.length, 'open issue')}, ${plural(openPrs.length, 'open PR')}${m.has_discussions ? `, ${plural(openDiscussions.length, 'open discussion')}` : ''}; CI ${s.ci ? `${s.ci.conclusion ?? s.ci.status} (${s.ci.name}, ${short(s.ci.updated_at)})` : 'none'}`
+  );
+  const alertText = kind => {
+    const a = s.alerts?.[kind];
+    if (!a) return 'n/a';
+    if (a.unavailable) return 'off';
+    const bySeverity = Object.entries(a.by_severity ?? {})
+      .map(([k, n]) => `${n} ${k}`)
+      .join(', ');
+    return `${a.open}${a.truncated ? '+' : ''}${bySeverity ? ` (${bySeverity})` : ''}`;
+  };
+  lines.push(
+    `  alerts: dependabot ${alertText('dependabot')}, code scanning ${alertText('code_scanning')}; collected ${short(s.collected_at)}${s.window.first_run ? ' (first run)' : ''}`
+  );
+  if (advisories.length) {
+    lines.push(`  advisories (${advisories.length}):`);
+    for (const [id, a] of advisories)
+      lines.push(
+        `    ${id}  ${a.state}  ${a.severity ?? '-'}  ${a.cve_id ?? 'no CVE'}  ${short(a.published_at)}  ${a.summary}`
+      );
+  }
+  if (open.length) {
+    lines.push(`  open items (${open.length}):`);
+    for (const [n, it] of open.sort(byDesc(([, it]) => it.updated_at)))
+      lines.push(
+        `    ${it.is_pr ? 'PR' : 'issue'} #${n}  ${it.title}  — ${it.author}${it.bot ? ' (bot)' : ''}, ${plural(it.comments + it.review_comments, 'comment')}, ${plural(it.reactions + (it.comment_reactions ?? 0), 'reaction')}${it.last_comment ? `, last comment ${it.last_comment.author} ${short(it.last_comment.at)}` : ''}${it.draft ? ', draft' : ''}`
+      );
+  }
+  if (openDiscussions.length) {
+    lines.push(`  open discussions (${openDiscussions.length}):`);
+    for (const [n, d] of openDiscussions.sort(byDesc(([, d]) => d.updated_at)))
+      lines.push(
+        `    #${n}  ${d.title}  — ${d.author}, ${d.category ?? '-'}, ${plural(d.comments, 'comment')}, ${plural(d.reactions + d.comment_reactions, 'reaction')}${d.last_comment ? `, last comment ${d.last_comment.author} ${short(d.last_comment.at)}` : ''}${d.answered ? ', answered' : ''}`
+      );
+  }
+  const release = Object.values(s.releases).sort(byDesc(r => r.published_at))[0];
+  if (release)
+    lines.push(
+      `  latest release: ${release.tag_name}${release.name ? ` — ${release.name}` : ''}${release.draft ? ' (draft)' : ''}${release.prerelease ? ' (prerelease)' : ''} ${short(release.published_at)}`
+    );
+  if (entry.first_run)
+    lines.push('  changes: none — first run; the baseline is recorded on commit');
+  else if (!entry.events.length) lines.push(`  changes since ${short(s.window.since)}: none`);
+  else {
+    lines.push(`  changes since ${short(s.window.since)} (${entry.events.length}):`);
+    for (const e of entry.events) lines.push(`    ${eventLine(e)}`);
+  }
+  if (entry.errors?.length)
+    lines.push(
+      `  partial errors (${entry.errors.length}): ${entry.errors.map(e => `${e.where}: ${e.message}`).join('; ')}`
+    );
+  return lines.join('\n');
+};
+
+const renderDigest = digest => {
+  if (digest.skipped)
+    return `skipped: ${digest.reason}${digest.remote ? ` (${digest.remote})` : ''}`;
+  if (digest.error) return `${digest.error}: ${digest.message} — ${digest.hint}`;
+  const parts = digest.repos.map(renderRepo);
+  if (digest.mode === 'fleet') {
+    const t = digest.totals;
+    parts.push(
+      `total: ${plural(t.repos, 'repository', 'repositories')}, ${plural(t.events, 'event')}, ${t.first_run} first-run, ${plural(t.errors, 'error')}`
+    );
+  }
+  return parts.join('\n\n');
+};
+
+const show = async () => {
+  const file = opts._[1];
+  if (!file) fail(1, `show needs the JSON file collect wrote\n\n${usage}`);
+  console.log(renderDigest(JSON.parse(readFileSync(file, 'utf8'))));
+};
+
+const commands = {collect, show, commit, file: fileItem};
 if (!commands[command]) fail(1, `Unknown command: ${command}\n\n${usage}`);
 commands[command]().catch(err => fail(1, err.stack ?? String(err)));
