@@ -13,6 +13,7 @@
 //   fleet-status.mjs collect --fleet [--owner LOGIN] [...]
 //   fleet-status.mjs collect ... --show                       # also print the text view
 //   fleet-status.mjs show FILE                                # text view of a collected file
+//   fleet-status.mjs show (--cwd | --repo OWNER/NAME | --project NAME)   # the stored baseline, no GitHub
 //   fleet-status.mjs commit FILE [--dry-run]
 //   fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--dry-run]
 //
@@ -40,6 +41,7 @@ const usage = `Usage:
   fleet-status.mjs collect (--cwd | --repo OWNER/NAME | --fleet) [--project NAME] [--owner LOGIN]
                            [--out FILE] [--since-days N] [--star-logins] [--show]
   fleet-status.mjs show FILE
+  fleet-status.mjs show (--cwd | --repo OWNER/NAME | --project NAME)    # stored baseline, no GitHub access
   fleet-status.mjs commit FILE [--dry-run]
   fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--dry-run]
 
@@ -567,11 +569,16 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
     code_scanning: alertSet(`${R}/code-scanning/alerts?state=open`, a => a.rule?.severity)
   };
 
+  // The newest run on a default branch is often Dependabot's updater
+  // (`event: "dynamic"`, named "github_actions in /. - Update #n"); the CI
+  // conclusion wanted is the newest run of a real workflow.
   const lastRun = guard(
     'ci',
     () =>
-      ghApi(`${R}/actions/runs?branch=${encodeURIComponent(meta.default_branch)}&per_page=1`)
-        .workflow_runs?.[0] ?? null,
+      (
+        ghApi(`${R}/actions/runs?branch=${encodeURIComponent(meta.default_branch)}&per_page=10`)
+          .workflow_runs ?? []
+      ).find(r => r.event !== 'dynamic') ?? null,
     null
   );
   const ci = lastRun
@@ -1085,7 +1092,7 @@ const renderRepo = entry => {
     return `${a.open}${a.truncated ? '+' : ''}${bySeverity ? ` (${bySeverity})` : ''}`;
   };
   lines.push(
-    `  alerts: dependabot ${alertText('dependabot')}, code scanning ${alertText('code_scanning')}; collected ${short(s.collected_at)}${s.window.first_run ? ' (first run)' : ''}`
+    `  alerts: dependabot ${alertText('dependabot')}, code scanning ${alertText('code_scanning')}; collected ${short(s.collected_at)}${s.window.first_run && !entry.stored ? ' (first run)' : ''}`
   );
   if (advisories.length) {
     lines.push(`  advisories (${advisories.length}):`);
@@ -1113,7 +1120,11 @@ const renderRepo = entry => {
     lines.push(
       `  latest release: ${release.tag_name}${release.name ? ` — ${release.name}` : ''}${release.draft ? ' (draft)' : ''}${release.prerelease ? ' (prerelease)' : ''} ${short(release.published_at)}`
     );
-  if (entry.first_run)
+  if (entry.stored)
+    lines.push(
+      `  stored baseline as collected ${short(s.collected_at)} — run collect for the changes since`
+    );
+  else if (entry.first_run)
     lines.push('  changes: none — first run; the baseline is recorded on commit');
   else if (!entry.events.length) lines.push(`  changes since ${short(s.window.since)}: none`);
   else {
@@ -1143,8 +1154,51 @@ const renderDigest = digest => {
 
 const show = async () => {
   const file = opts._[1];
-  if (!file) fail(1, `show needs the JSON file collect wrote\n\n${usage}`);
-  console.log(renderDigest(JSON.parse(readFileSync(file, 'utf8'))));
+  if (file) {
+    console.log(renderDigest(JSON.parse(readFileSync(file, 'utf8'))));
+    return;
+  }
+  // No file: render the baseline stored in the vault, without touching GitHub.
+  let project = opts.project ?? null,
+    repo = null;
+  if (opts.cwd) {
+    const r = resolveCwd();
+    if (r.skipped) {
+      console.log(`skipped: ${r.reason}${r.remote ? ` (${r.remote})` : ''}`);
+      return;
+    }
+    project = r.project;
+    repo = `${r.owner}/${r.name}`;
+  } else if (opts.repo) {
+    const m = /^([^/\s]+)\/([^/\s]+)$/.exec(opts.repo);
+    if (!m) fail(1, '--repo takes OWNER/NAME');
+    project ??= m[2];
+    repo = opts.repo;
+  }
+  if (!project)
+    fail(
+      1,
+      `show needs a collected FILE, or --cwd / --repo OWNER/NAME / --project NAME for the stored baseline\n\n${usage}`
+    );
+  requireVault();
+  const {baseline} = await readBaseline(project);
+  if (!baseline) {
+    console.log(
+      `${repo ?? project}: no stored baseline in ${stateDocPath(project)} — run collect, then commit`
+    );
+    return;
+  }
+  console.log(
+    renderRepo({
+      repo: baseline.repo ?? repo ?? project,
+      project,
+      stored: true,
+      first_run: false,
+      events: [],
+      errors: [],
+      snapshot: baseline
+    })
+  );
 };
 
 const commands = {collect, show, commit, file: fileItem};

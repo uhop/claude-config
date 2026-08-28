@@ -30,8 +30,9 @@ Per repository, all read-only through `gh api`:
 - **Releases** — the GitHub release object (new, draft published), not tags: tags and npm
   publishes are the drift check's.
 - **Alerts and checks** — open Dependabot and code-scanning alert counts by severity, and the
-  default branch's last workflow-run conclusion. A repository with the feature turned off reports
-  `unavailable`, not an error.
+  conclusion of the default branch's newest workflow run that isn't Dependabot's updater (those
+  run as `event: dynamic` and are often the newest run). A repository with the feature turned
+  off reports `unavailable`, not an error.
 
 Not tracked, by ruling: commits and pushes (`git` and `check-drift.sh` cover them), private
 repositories, and dependents ("Used by" — no REST or GraphQL surface exists, and scraping the
@@ -63,7 +64,10 @@ WORK=$(mktemp -d)
   latest release; then `changes since <baseline time>` as event lines, or `none`. Without
   `--out` it replaces the JSON on stdout, so `fleet-status.mjs collect --cwd --show` is the
   one-command look at a repository. `fleet-status.mjs show FILE` renders a collected file the
-  same way, with no GitHub or vault access.
+  same way, with no GitHub or vault access. `fleet-status.mjs show --cwd` (or `--repo OWNER/NAME`,
+  or `--project NAME`) renders the **stored** baseline from the vault instead — the state as of
+  the last commit, marked `stored baseline as collected <time>`, with no GitHub access — and
+  says so when a project has no baseline yet.
 - `--since-days N` (default 30) sets the window for closed items on a first run; afterwards the
   window is the baseline's `collected_at`. Open items are read in full every run, because a
   reaction doesn't bump `updated_at`.
