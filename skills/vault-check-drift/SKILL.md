@@ -34,7 +34,7 @@ Exit code `0` means clean; `1` means drift detected. The `--update` flag re-writ
 
 ## Baseline storage
 
-One file per project at `projects/<name>/state.md` in the vault. Frontmatter + a single fenced `json` block the script reads & writes:
+One file per project at `projects/<name>/state.md` in the vault. Frontmatter + a single fenced `json` block the script reads & writes. Since 2026-08-28 the same file can carry a second section, `## GitHub`, owned by the `fleet-status` skill (the GitHub-side baseline, always last); `--update` rewrites only its own block and carries that section over verbatim, and `fleet-status.mjs commit` creates the file with this frontmatter when a project has none yet. The drift-check shape:
 
 ```yaml
 ---

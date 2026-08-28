@@ -284,6 +284,12 @@ if $UPDATE; then
   # text — the server serializes YAML itself, so no quoting concerns here.
   # mktemp avoids clobbering between co-resident sessions sharing /tmp.
   body=$(printf 'Auto-maintained by the `vault-check-drift` skill. Refresh: run `/vault check --update`\nfrom the project directory, or re-run `/vault resume`.\n\n## Baseline snapshot\n\n```json\n%s\n```\n' "$(jq . <<<"$current_json")")
+  # The `## GitHub` section is the fleet-status baseline (always last —
+  # fleet-status.mjs appends it); a drift refresh must carry it over.
+  github_section=$(printf '%s\n' "$raw_state" | awk '/^## GitHub$/{cap=1} cap{print}')
+  if [ -n "$github_section" ]; then
+    body="${body}"$'\n\n'"${github_section}"
+  fi
   payload=$(mktemp /tmp/vault-state-XXXXXX.json)
   jq --null-input \
     --arg title "$PROJECT — state snapshot" \

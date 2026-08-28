@@ -732,9 +732,9 @@ never a substitute: it carries no bodies, so feedback rules, logs, and the
 drift check still come from this workflow. On a pre-brief server (404) the
 hook injects nothing, silently.
 
-This workflow is **MCP-native** — steps 2 and 4 are tool calls, not shell. The
-only Bash is `check-drift.sh`, which runs alone anyway (step 1), so the
-parallel-batch `jq`-guard hazard does not arise here at all.
+This workflow is **MCP-native** — steps 2 and 5 are tool calls, not shell. The
+Bash is `check-drift.sh` (step 1) and `fleet-status.mjs` (step 3), each run
+alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
 
 1. **Drift check first.** Run `~/.claude/skills/vault-check-drift/check-drift.sh`
    from the current project directory (see the `vault-check-drift` skill for
@@ -789,7 +789,29 @@ parallel-batch `jq`-guard hazard does not arise here at all.
      `returned` list is *your* earlier submission sent back for rework —
      surface it too. Both empty (the normal single-agent case): stay
      quiet.
-3. **Fallback (pre-bundle server).** A 404 / missing-tool error from the
+3. **GitHub status for the current repository** — the same information the
+   fleet sweep collects, every class, not a one-line digest (ruled
+   2026-08-28; the `fleet-status` skill is the reference). Run
+   `~/.claude/skills/fleet-status/fleet-status.mjs collect --cwd --out "$WORK/github.json"`
+   as its **own** Bash call (`WORK=$(mktemp -d)` first), then read the digest
+   without its snapshots:
+   `jq '{totals, repos: [.repos[] | {repo, first_run, summary, errors, events}]}' "$WORK/github.json"`.
+   - `skipped: true` — the remote isn't github.com, or there is none. That
+     is the safety gate: no line in the resume output, no error.
+   - Exit `3` with `error: "gh_auth"` — `gh` has no valid login on this
+     host. Tell the operator (`gh auth login`) and continue the resume
+     without GitHub data; never pass over it silently.
+   - `first_run: true` — no baseline yet. Report the snapshot summary in one
+     line (open items, stars, forks, published advisories without a CVE)
+     and file nothing.
+   - Otherwise surface every event under a `GitHub:` heading with full
+     detail; file or update review items for the attention-worthy ones per
+     the `fleet-status` skill § Review items (`fleet-status.mjs file …` —
+     same title, updated in place, never duplicated); and only then
+     `fleet-status.mjs commit "$WORK/github.json"`, so the baseline
+     advances after the items exist. Partial `errors` are reported inline.
+   Never block the resume on GitHub: offline degrades to the baseline view.
+4. **Fallback (pre-bundle server).** A 404 / missing-tool error from the
    bundle means an older server — run the individual reads instead:
    `vault_lint`, `vault_suggestions_summary`, the two agent-workflow file
    reads (`projects/agent-workflow/queue.md` § Active, `clarify-queue.md`
@@ -799,12 +821,13 @@ parallel-batch `jq`-guard hazard does not arise here at all.
    on adapter 0.1.0+; on an older one it stays
    `vault-curl /maintenance/incremental-reindex -X POST -s` — guard its `jq`
    pipe with `|| true` if you batch it with anything.
-4. Summarize current state and what's left to do. If `check-drift` flagged
+5. Summarize current state and what's left to do. If `check-drift` flagged
    new commits / tags / publishes that aren't reflected in `projects/<name>`
    notes, update those notes to match (or at minimum flag the divergence in
    the summary).
-5. After syncing, run `check-drift --update` so the baseline captures the
-   refreshed view and the next resume starts from a clean slate.
+6. After syncing, run `check-drift --update` so the baseline captures the
+   refreshed view and the next resume starts from a clean slate. It
+   preserves the `## GitHub` section step 3 committed (since 2026-08-28).
 
 ### /vault wrap [optional log slug]
 
