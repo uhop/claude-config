@@ -812,6 +812,9 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      same title, updated in place, never duplicated); and only then
      `fleet-status.mjs commit "$WORK/github.json"`, so the baseline
      advances after the items exist. Partial `errors` are reported inline.
+   - No events and not a first run — print nothing: no heading, no `none`
+     line (ruled 2026-08-29, less fluff; the one-line summary of a quiet
+     repository belongs to `fleet-status.mjs show`, not to a resume).
    Never block the resume on GitHub: offline degrades to the baseline view.
 4. **Fallback (pre-bundle server).** A 404 / missing-tool error from the
    bundle means an older server — run the individual reads instead:
