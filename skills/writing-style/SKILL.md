@@ -85,7 +85,8 @@ cliff-notes).
 
 ### Sentences and paragraphs
 
-- Short sentences: aim under 26 words. One idea per paragraph; more than five or six sentences is a
+- Short sentences: aim under 26 words, and a document mean of 18 or fewer (the house cadence
+  budget; `references/ai-tells.md`). One idea per paragraph; more than five or six sentences is a
   smell. Key point first; readers don't read every word.
 - Subject early, subject-verb-object; keep helper words conversational English drops (_that_,
   _then_, _of_); don't omit the relative pronoun ("the rules that you defined"). Put _only_ right
@@ -288,13 +289,24 @@ Where Google is silent or house practice differs; each is a decision, not an ove
   own trademark hygiene; the code-item half stays strict (never `` `foo`'s ``), because that is an
   inflected code item. All three govern human-read prose; agent-read files and chat were already
   looser.
-- **AI tells are banned in all prose** (from the blog calibration, vault
-  `projects/blog/writing-voice` § AI-tell calibration): the contrast-correction move ("it isn't
-  X; it's Y", "not X — Y", "X is not A; it is B"; state the positive claim directly), warm-up
-  openers ("To be clear,", "Here's the thing"), staccato fragment pairs ("Fast. Simple."),
-  self-clap closers ("And that matters."), "less a hammer, more a scalpel" comparatives, and
-  em-dash pileups. Google doesn't name them; its "key point first, plain statement" rule produces
-  the same text.
+- **AI tells are banned in all prose** — every surface in § Scope, blog and articles included
+  (Eugene, 2026-08-29: _"make sure that updated language rules are used in general for all
+  external texts in all projects"_). Calibrated twice against the blog's pre-LLM corpus, never
+  against a generic list (vault `projects/blog/writing-voice` § AI-tell calibration; fleet rule
+  `topics/ai-writing-tells-calibrated`); the full families, replacements, and budgets are in
+  `references/ai-tells.md`. The families: the contrast-correction move ("it isn't X; it's Y",
+  "not X — Y", "X is not A; it is B", "not just X, but Y"; state the positive claim directly),
+  the stranded-auxiliary reversal ("The tool died; the data didn't."; complete the verb),
+  self-claps ("And that matters.", "what matters", "that's the whole point", "worth naming"),
+  warm-up and reveal openers ("To be clear,", "Here's the thing", "That said,", "Turns out",
+  "Let's unpack"), staccato fragment pairs ("Fast. Simple."), headcounts ("most developers"),
+  and Claude's own register words (_reach for_, _genuinely_, _quietly_, _seam_, _the shape of_,
+  _lever_, _load-bearing_ …; § High-frequency word list). Cadence is budgeted at Eugene's
+  pre-LLM 90th percentile per document: mean sentence length ≤ 18 words, em dashes ≤ 1.3 per
+  100 words, semicolons ≤ 2.8, _never_ / _nothing_ / _nobody_ ≤ 0.3, _rather than_ ≤ 0.1.
+  Google doesn't name the tells; its "key point first, plain statement" rule produces the same
+  text. Mechanical check for any Markdown file: `prose-tells --check <file>` in this skill's
+  directory (a shim over `blog-hugo/tools/prose-tells`).
 - **Audience calibration.** Public libraries: a capable developer who hasn't read the source. Fleet or
   personal tooling: the programmer-operator: document the _why_ and the gotchas, skip
   onboarding scaffolding (vault `topics/personal-tools-not-public-doc-defaults`). Either way, name
@@ -330,6 +342,13 @@ developer prose, preferred form first:
   _e.g._ → _for example_, _i.e._ → _that is_, _etc._ → rephrase as non-exhaustive (_such as_),
   _for instance_ → _for example_, _learnings_ → _knowledge_, _pros_ / _cons_ → _advantages_ /
   _disadvantages_.
+- **Register words to cut (Claude's own vocabulary, measured 2026-08-29; full table in
+  `references/ai-tells.md`):** _reach for_ → _use_ / _pick_; _genuinely_, _plainly_, _honestly_,
+  _outright_, _merely_, _deliberately_ → drop; _quietly_ / _silently_ → drop or say what happens;
+  _seam_ → _boundary_; _the shape of X_ → the concrete noun; _lever_ → _option_; _buys you_ /
+  _pays for itself_ / _earns its keep_ → _gets_ / _is worth it_; _the moment X_ → _when X_;
+  _halves_ → _cuts in half_; _whoever_ → _anyone who_; _load-bearing_ → _the part everything
+  depends on_; _through-line_ → _thread_; _papers over_ → _hides_.
 - **Modals:** _can_ = ability or optional; _might_ = possibility; _must_ = required; _may_ only for
   permission in a policy or legal sense; avoid _should_, _could_, _would_, _will_.
 - **Time and position words:** _after_ not _once_; _because_ not _since_ / _as_; _although_ not
@@ -376,7 +395,9 @@ When asked to review, edit, or polish prose (the `docs-review` skill delegates h
 2. Structure: headings (case, form, levels), list and table introductions, procedure shape,
    notices, link text.
 3. Sentences: person, voice, tense, condition-first, modals, sentence length, paragraph
-   focus, pronoun antecedents, AI tells.
+   focus, pronoun antecedents, AI tells and cadence (`references/ai-tells.md`; on a Markdown
+   file, run `prose-tells --check` from this skill's directory and treat each finding as a
+   judgment call).
 4. Words and mechanics: word list, abbreviations, numbers, dates, units, punctuation, code
    font, placeholders, inflected code items.
 5. Don't touch code blocks, signatures, identifiers, tables' data, or links' targets; keep every
@@ -389,7 +410,10 @@ When asked to review, edit, or polish prose (the `docs-review` skill delegates h
 - [ ] _You_ / imperative; active; present; condition before instruction; one recommended path.
 - [ ] No _please_, _simply_, _just_, _easy_, _should_ (for requirements), _currently_ / _new_ /
       _soon_, _e.g._ / _i.e._ / _etc._, _click on_, _above_ / _below_, superlatives, exclamation
-      marks, AI tells.
+      marks, AI tells (`references/ai-tells.md`: contrast-correction, stranded auxiliary,
+      self-clap, warm-up, staccato pair, headcount, Claude's register words).
+- [ ] Cadence within budget: mean sentence ≤ 18 words, em dashes ≤ 1.3 per 100 words, semicolons
+      ≤ 2.8, _never_ / _nothing_ / _nobody_ ≤ 0.3, _rather than_ ≤ 0.1 (`prose-tells --check`).
 - [ ] Headings sentence case, no _-ing_ opener, no skipped levels; lists introduced, parallel,
       punctuated consistently; procedures one action per step.
 - [ ] Link text descriptive; "For more information, see …"; punctuation outside links.
@@ -421,6 +445,9 @@ Per-section digests of the guide, each condensed from the fetched pages with the
   elements, API reference comments, example domains and names, filenames, product names,
   trademarks.
 - `references/word-list.md`: the guide's A–Z word list in full, plus the high-frequency subset.
+- `references/ai-tells.md`: the banned AI-tell families with replacement moves, Claude's register
+  words, the cadence budgets, what is not a tell, and the `prose-tells` check (house, calibrated
+  on the blog corpus 2026-08-14 and 2026-08-29).
 - `references/microsoft-delta.md`: what the Microsoft Writing Style Guide adds or changes, for
   questions Google doesn't answer.
 

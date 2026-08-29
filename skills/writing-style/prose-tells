@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# writing-style/prose-tells — fleet shim for blog-hugo's calibrated AI-tell checker.
+# The tool and its tests live in blog-hugo (tools/prose-tells); this only finds it.
+
+set -euo pipefail
+
+TOOL="${BLOG_HUGO_DIR:-$HOME/Open/blog-hugo}/tools/prose-tells/index.mjs"
+if [[ ! -f "$TOOL" ]]; then
+  echo "prose-tells: $TOOL not found; clone uhop/blog-hugo or set BLOG_HUGO_DIR" >&2
+  exit 2
+fi
+exec node "$TOOL" "$@"
