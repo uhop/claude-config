@@ -434,7 +434,10 @@ const failureExamples = new Map();
 const SUPPRESSED_FAILURE_SUBSTRINGS = [
   // Q-2026-05-17-001 — accepted as noise. Tool description already says
   // "must Read before Edit/Write"; recovery is one Read call.
-  'file has not been read yet'
+  'file has not been read yet',
+  // 2026-08-29 (reports/2026-08-29-nuke P3) — the CLAUDE.md § Background shells
+  // registry probe: the error text is the enumeration, not a failure.
+  'no task found with id: probe-no-such-task'
 ];
 
 let sessionsAnalyzed = 0;
