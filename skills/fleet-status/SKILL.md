@@ -1,6 +1,6 @@
 ---
 name: fleet-status
-description: Collect the GitHub-side state of fleet repositories — security advisories (a CVE landing on a known GHSA), issues, PRs, discussions and the movement on them (comments, reactions), forks with the forker's login, star and watcher counts, releases, Dependabot and code-scanning alert counts, the last CI conclusion — diff it against the per-project baseline in the vault, file review-the-change items on each project's queue, and advance the baseline. Use when the user invokes /fleet-status (the fleet sweep), /fleet-status OWNER/NAME (one repository), or as the GitHub step of /vault resume for the current repository. Backed by `fleet-status.mjs` (read-only `gh api`; github.com only; public repositories only).
+description: Collect the GitHub-side state of fleet repositories — security advisories (a CVE landing on a known GHSA), issues, PRs, discussions and the movement on them (comments, reactions), forks with the forker's login, star and watcher counts, releases, Dependabot and code-scanning alert counts, the last CI conclusion — diff it against the per-project baseline in the vault, file review-the-change items on each project's queue, and advance the baseline. Use when the user invokes /fleet-status (the fleet sweep), /fleet-status OWNER/NAME (one repository), or /fleet-status show (the dashboard in chat: the stored state and movement of one repository or the fleet, no GitHub access), or as the GitHub step of /vault resume for the current repository. Backed by `fleet-status.mjs` (read-only `gh api`; github.com only; public repositories only).
 user_invocable: true
 ---
 
@@ -52,22 +52,33 @@ WORK=$(mktemp -d)
 
 - `--cwd` resolves the repository from `origin`, and the vault project from `--project`, a
   `.claude/vault-project` file at the repository root, or the directory name — the same order
-  `check-drift.sh` uses. **Safety gate:** a remote that isn't github.com, or no remote, writes
+  `check-drift.sh` uses. **Safety gate:** a remote that isn't github.com, no remote, or a private
+  repository (read from the repository metadata; `--fleet` filters those at enumeration) writes
   `{skipped: true, reason}` and exits `0`. Say nothing about it in a resume.
 - `--fleet` enumerates `gh repo list` for the authenticated account (`--owner` to override):
   public, not archived, not a fork; 51 repositories on 2026-08-28. The project name is the
   repository name; 15 of the 51 had no `projects/<name>/` folder that day, and the first
   `commit` creates their `state.md`.
-- `--show` prints the text view after collecting: one block per repository — stars, forks,
-  watchers, open counts, CI; alert counts; every advisory with its CVE or `no CVE`; open
-  issues, PRs, and discussions with author, comments, reactions, and the last commenter; the
-  latest release; then `changes since <baseline time>` as event lines, or `none`. Without
-  `--out` it replaces the JSON on stdout, so `fleet-status.mjs collect --cwd --show` is the
-  one-command look at a repository. `fleet-status.mjs show FILE` renders a collected file the
-  same way, with no GitHub or vault access. `fleet-status.mjs show --cwd` (or `--repo OWNER/NAME`,
-  or `--project NAME`) renders the **stored** baseline from the vault instead — the state as of
-  the last commit, marked `stored baseline as collected <time>`, with no GitHub access — and
-  says so when a project has no baseline yet.
+- `--show` prints the full text view after collecting: one block per repository — stars, forks,
+  watchers, open counts, CI; alert counts; every advisory with its CVE or `no CVE`; open issues,
+  PRs, and discussions with author, comments, reactions, and the last commenter; the latest
+  release; then `changes since <baseline time>` as event lines, or `none`. `--brief` prints the
+  brief (§ The brief). Without `--out` either replaces the JSON on stdout, so
+  `fleet-status.mjs collect --cwd --brief` is the one-command look at a repository.
+  `fleet-status.mjs show FILE [--brief]` renders a collected file the same way, with no GitHub
+  or vault access.
+- **Stored views, no GitHub access.** `fleet-status.mjs show --cwd` (or `--repo OWNER/NAME`, or
+  `--project NAME`) renders the stored baseline — the state as of the last commit, marked
+  `stored baseline as collected <time>` — followed by that repository's movement from the stored
+  runs (§ Baseline storage), and says so when a project has no baseline yet.
+  `fleet-status.mjs show --fleet` renders the brief over every stored run in the window, and
+  `show --fleet --table` a Markdown table of standing counts per repository from every baseline:
+  open issues, PRs, and discussions, stars, forks, published advisories (and how many lack a
+  CVE), open alert counts, the last CI conclusion, and when it was collected. `--since WHEN` (an
+  ISO date or time, or days back such as `7d`; default `7d` for the fleet, `30d` for one
+  repository) or `--runs N` picks the runs.
+- The dotfiles shim `fleet-status` (`private_dot_local/bin/executable_fleet-status`) runs the
+  same script from any shell on a host with claude-config installed.
 - `--since-days N` (default 30) sets the window for closed items on a first run; afterwards the
   window is the baseline's `collected_at`. Open items are read in full every run, because a
   reaction doesn't bump `updated_at`.
@@ -77,6 +88,31 @@ WORK=$(mktemp -d)
 
 Run `collect` as its own Bash call — it exits non-zero on the auth and usage paths, and a
 non-zero sibling cancels a parallel batch.
+
+## The brief
+
+The executive view: what moved, at a glance. One line per repository with movement, the
+action-worthy events only, ordered by weight — advisories; then new issues, PRs, and discussions
+by a person; then comments by someone else, state changes, releases, CI regressions, and alert
+counts that rose — and one `counters` line for the rest: stars, forks with the forker's login,
+watchers, reactions, bot items, and alert counts that fell. Then `first run`, `errors`, and
+`quiet: N repositories`. Your own single comment on a thread and plain edits stay in the JSON.
+Titles are quoted; a new item and a comment carry an excerpt — the first meaningful line of the
+body, at most 120 characters (80 in the brief) — so a line reads as a summary without a click.
+The output is similar to the following:
+
+```
+Fleet movement since 2026-08-28 20:42 — 51 repositories, 3 with movement
+- node-re2: advisory GHSA-aaaa-bbbb-cccc got CVE-2026-1234; new issue #1346 by alice "Add a prebuilt for musl arm64" — Alpine containers on Graviton fall back to a source build, which takes 11…; issue #1345 "Segfault on Node 26 with unicode classes when…" +1 comment by bob: "Confirmed on arm64 too, trace attached. It goes away with…"
+- stream-chain: new PR #88 by carol "Add AbortSignal support"; release 3.2.0 published
+- deep6: CI Node.js CI: success → failure
+- counters: stars +3 (node-re2 +3); forks +1 (stream-chain +1: dave); reactions +2 (stream-chain#88 +2); bots: PR deep6#41 by dependabot[bot]
+- quiet: 47 repositories
+```
+
+The brief is the sweep's last word: `/fleet-status` ends the reply with it verbatim, after the
+events and the review items. It is also what `commit` writes into the fleet digest, and what the
+stored views render.
 
 ## Procedure
 
@@ -96,7 +132,8 @@ non-zero sibling cancels a parallel batch.
    stars, forks, published advisories without a CVE — and file nothing. The baseline is the
    deliverable of a first run.
 4. For every other repository, surface **every** event with full detail (an `/vault resume`
-   prints them under a `GitHub:` heading), then write the review items per the next section.
+   prints them under a `GitHub:` heading), write the review items per § Review items, and end
+   the reply with the brief, verbatim: `"$S" show "$WORK/github.json" --brief`.
 5. Commit, after the items exist, so the baseline advances only for changes that have been
    filed:
 
@@ -104,9 +141,28 @@ non-zero sibling cancels a parallel batch.
    "$S" commit "$WORK/github.json"
    ```
 
-   In `--fleet` mode `commit` also prepends the run to the fleet digest
-   `projects/agent-workflow/fleet-status.md` (one section per run, the last 10 runs kept). Add
+   `commit` also prepends the run to the fleet digest `projects/agent-workflow/fleet-status.md`
+   whenever it carried events, and always for a fleet run: one section per run — the brief, then
+   a `json` block of the events — the last 30 kept. That block is what the stored views read
+   back, so the events a resume consumed are still there for the next fleet look. Add
    `--dry-run` to see the writes without making them.
+
+## The dashboard in chat
+
+`/fleet-status show …` is a read, never a sweep: it advances no baseline and files nothing. Run
+the form and put its output in the reply verbatim — the terminal shows the user only a few lines
+of a tool's output, so the paste is the deliverable.
+
+| Ask | Command |
+| --- | --- |
+| `/fleet-status show` | `"$S" show --cwd` — the repository you are in: stored baseline, then its stored movement |
+| `/fleet-status show OWNER/NAME` | `"$S" show --repo OWNER/NAME` — the same for one repository |
+| `/fleet-status show --fleet` | `"$S" show --fleet` — the brief over the stored runs of the last 7 days; `--since WHEN` or `--runs N` widens or narrows it |
+| `/fleet-status show --fleet --table` | `"$S" show --fleet --table` — standing counts per repository |
+| `/fleet-status show --live` | `"$S" collect --cwd --brief` (`--show` for the full view) — a fresh read of GitHub that is not committed, so the next sweep still sees the events |
+
+A quiet repository in a `/vault resume` prints nothing (ruled 2026-08-29, less fluff); the
+one-line summary is `show --cwd`'s job.
 
 ## Review items
 
@@ -150,6 +206,15 @@ Fleet-shared by construction: Eugene works from seven hosts, and a resume on one
 what it saw not-new to the next sweep anywhere. That is the intended meaning of a shared
 baseline.
 
+The fleet digest `projects/agent-workflow/fleet-status.md` is the second store, written by
+`commit` for every run that carried events (and every fleet run): one section per run, newest
+first, the last 30 kept — the brief, then a `json` block
+`{collected_at, mode, gh_user, totals, repos: [{repo, project, first_run, since, events, summary, errors}]}`,
+events only, no snapshots. `show --fleet` and `show --repo` merge the blocks in the window into
+one brief; sections written before 2026-08-29 have no block and are skipped. A baseline answers
+"what is the state", the digest answers "what moved since when" — which is what lets collection
+move to a schedule without consuming what a later look needs.
+
 ## Output shape
 
 The digest is `{collected_at, mode, gh_user, repos, totals}`; each entry in `repos` is
@@ -168,7 +233,10 @@ repository could not be read, `{repo, project, error, events: [], summary}`. Eve
 
 Every event carries `kind` and `repo`; item events carry `number`, `title`, `author`, `bot`, and
 `url`. An item that is not in the baseline but predates it comes as `.updated` with
-`note: "not in baseline"`, not as `.new`.
+`note: "not in baseline"`, not as `.new`. `.new` and those `.updated` events carry `excerpt` — the
+first meaningful line of the body, Markdown links reduced to their text, HTML comments dropped,
+at most 120 characters — and `.comments` events carry `last_comment: {author, at, excerpt}`;
+snapshot items and discussions store the same two fields.
 
 ## Limits worth knowing
 

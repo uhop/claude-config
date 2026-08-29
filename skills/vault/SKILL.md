@@ -811,7 +811,9 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      the `fleet-status` skill § Review items (`fleet-status.mjs file …` —
      same title, updated in place, never duplicated); and only then
      `fleet-status.mjs commit "$WORK/github.json"`, so the baseline
-     advances after the items exist. Partial `errors` are reported inline.
+     advances after the items exist — a run with events is also recorded
+     in the fleet digest, where `fleet-status.mjs show --fleet` reads it
+     back (2026-08-29). Partial `errors` are reported inline.
    - No events and not a first run — print nothing: no heading, no `none`
      line (ruled 2026-08-29, less fluff; the one-line summary of a quiet
      repository belongs to `fleet-status.mjs show`, not to a resume).

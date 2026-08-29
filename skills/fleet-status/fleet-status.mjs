@@ -11,9 +11,12 @@
 //   fleet-status.mjs collect --cwd [--project NAME] [--out FILE] [--since-days N] [--star-logins]
 //   fleet-status.mjs collect --repo OWNER/NAME [--project NAME] [...]
 //   fleet-status.mjs collect --fleet [--owner LOGIN] [...]
-//   fleet-status.mjs collect ... --show                       # also print the text view
-//   fleet-status.mjs show FILE                                # text view of a collected file
-//   fleet-status.mjs show (--cwd | --repo OWNER/NAME | --project NAME)   # the stored baseline, no GitHub
+//   fleet-status.mjs collect ... --show | --brief             # also print the full view, or the brief
+//   fleet-status.mjs show FILE [--brief]                      # a collected file: full view, or the brief
+//   fleet-status.mjs show (--cwd | --repo OWNER/NAME | --project NAME) [--since WHEN | --runs N]
+//                                                             # stored baseline + stored movement, no GitHub
+//   fleet-status.mjs show --fleet [--since WHEN | --runs N]   # stored movement across the fleet (the brief)
+//   fleet-status.mjs show --fleet --table                     # standing counts per repository, from the baselines
 //   fleet-status.mjs commit FILE [--dry-run]
 //   fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--dry-run]
 //
@@ -24,6 +27,14 @@
 // read; the GraphQL query is fixed text and asserted mutation-free. A missing or
 // expired `gh` login is reported to the operator (exit 3), never a silent empty
 // result. Stars are count-only unless --star-logins; forks always carry logins.
+//
+// Brief and stored runs (2026-08-29): `--brief` is the executive view — one line
+// per repository with movement, action-worthy events only, counters folded into
+// a tail line. `commit` records every run that carries events (any mode; a fleet
+// run always) as a json block in the fleet digest, so `show --fleet` and
+// `show --repo` answer "what moved since WHEN" from the vault alone, and
+// collection can move to a schedule without consuming the events a later look
+// needs. Items and comments carry an `excerpt` (first line of the body) for it.
 //
 // Exit codes: 0 ok · 1 usage/HTTP error · 2 missing tool · 3 gh not authenticated.
 
@@ -39,12 +50,16 @@ if (!import.meta.main)
 
 const usage = `Usage:
   fleet-status.mjs collect (--cwd | --repo OWNER/NAME | --fleet) [--project NAME] [--owner LOGIN]
-                           [--out FILE] [--since-days N] [--star-logins] [--show]
-  fleet-status.mjs show FILE
-  fleet-status.mjs show (--cwd | --repo OWNER/NAME | --project NAME)    # stored baseline, no GitHub access
+                           [--out FILE] [--since-days N] [--star-logins] [--show] [--brief]
+  fleet-status.mjs show FILE [--brief]                         # a collected file: full view, or the brief
+  fleet-status.mjs show (--cwd | --repo OWNER/NAME | --project NAME) [--since WHEN | --runs N]
+                                                               # stored baseline + stored movement, no GitHub access
+  fleet-status.mjs show --fleet [--since WHEN | --runs N]      # stored movement across the fleet (the brief)
+  fleet-status.mjs show --fleet --table                        # standing counts per repository, from the baselines
   fleet-status.mjs commit FILE [--dry-run]
   fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--dry-run]
 
+WHEN is an ISO date or time, or days back such as 7d (default 7d for --fleet, 30d for one repository).
 Exit codes: 0 ok · 1 usage/HTTP error · 2 missing tool · 3 gh not authenticated (run: gh auth login)`;
 
 const fail = (code, message) => {
@@ -61,13 +76,17 @@ const VALUE_FLAGS = new Set([
   '--since-days',
   '--repo',
   '--title',
-  '--body-file'
+  '--body-file',
+  '--since',
+  '--runs'
 ]);
 const BOOL_FLAGS = new Set([
   '--cwd',
   '--fleet',
   '--star-logins',
   '--show',
+  '--brief',
+  '--table',
   '--dry-run',
   '--help',
   '-h'
@@ -173,13 +192,13 @@ const DISCUSSIONS_QUERY = `query($owner: String!, $name: String!, $after: String
     discussions(first: 100, after: $after, orderBy: {field: UPDATED_AT, direction: DESC}) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        number title url createdAt updatedAt closed isAnswered
+        number title url body createdAt updatedAt closed isAnswered
         author { login }
         category { name }
         reactions { totalCount }
         comments(first: 100) {
           totalCount
-          nodes { updatedAt author { login } reactions { totalCount } }
+          nodes { updatedAt body author { login } reactions { totalCount } }
         }
       }
     }
@@ -360,11 +379,32 @@ const countBy = (list, key) =>
 
 const isBot = login => /\[bot\]$/.test(login ?? '');
 
+// First meaningful line of a body, for the brief; the full text stays on GitHub.
+const EXCERPT_LEN = 120;
+const clip = (text, n) => {
+  if (!text || text.length <= n) return text;
+  const cut = text.slice(0, n - 1),
+    at = cut.lastIndexOf(' ');
+  return `${(at > n / 2 ? cut.slice(0, at) : cut).trimEnd()}…`;
+};
+const excerptOf = text => {
+  if (!text) return null;
+  const line = text
+    .replace(/\r/g, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .split('\n')
+    .map(l => l.replace(/^[\s>#*-]+/, '').trim())
+    .find(l => l && !/^(```|\||!\[)/.test(l));
+  return line ? clip(line, EXCERPT_LEN) : null;
+};
+
 const latestComment = comments => {
   let last = null;
   for (const c of comments) {
     const at = c.updated_at ?? c.updatedAt;
-    if (!last || at > last.at) last = {author: c.user?.login ?? c.author?.login ?? null, at};
+    if (!last || at > last.at)
+      last = {author: c.user?.login ?? c.author?.login ?? null, at, excerpt: excerptOf(c.body)};
   }
   return last;
 };
@@ -387,6 +427,10 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
   const since = baseline?.collected_at ?? new Date(Date.now() - sinceDays * 864e5).toISOString();
 
   const repoMeta = ghApi(R);
+  // Private repositories are out by ruling; --fleet filters them at enumeration,
+  // the single-repository forms find out here.
+  if (repoMeta.private)
+    return {repo, project, skipped: true, reason: 'private', events: [], summary: {events: 0}};
   const meta = {
     stars: repoMeta.stargazers_count,
     forks: repoMeta.forks_count,
@@ -436,6 +480,7 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
     const record = {
       is_pr: isPr,
       title: it.title,
+      excerpt: excerptOf(it.body),
       state: isPr && it.pull_request?.merged_at ? 'merged' : it.state,
       author: it.user?.login ?? null,
       bot: isBot(it.user?.login),
@@ -494,6 +539,7 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
           for (const d of conn.nodes)
             discussions[d.number] = {
               title: d.title,
+              excerpt: excerptOf(d.body),
               closed: d.closed,
               answered: d.isAnswered,
               author: d.author?.login ?? null,
@@ -667,13 +713,14 @@ const diff = (b, s, repo) => {
         prevReactions = o ? (o.reactions ?? 0) + (o.comment_reactions ?? 0) : 0;
       if (!o) {
         if (it.created_at >= b.collected_at)
-          push(`${type}.new`, {...ref, state, comments, reactions});
+          push(`${type}.new`, {...ref, state, comments, reactions, excerpt: it.excerpt ?? null});
         else
           push(`${type}.updated`, {
             ...ref,
             state,
             comments,
             reactions,
+            excerpt: it.excerpt ?? null,
             note: 'not in baseline',
             last_comment: it.last_comment ?? null
           });
@@ -779,6 +826,16 @@ const diff = (b, s, repo) => {
 
 // ─── Commands ────────────────────────────────────────────────────────────────
 
+// The safety gates (not github.com, no remote, private): silent for the
+// caller, explicit in the JSON, exit 0.
+const emitSkipped = payload => {
+  const out = JSON.stringify(payload, null, 2);
+  if (opts.out) writeFileSync(opts.out, out + '\n');
+  if (opts.show || opts.brief) console.log(renderDigest(payload));
+  else if (!opts.out) console.log(out);
+  process.exit(0);
+};
+
 const collect = async () => {
   requireVault();
   const modes = ['cwd', 'repo', 'fleet'].filter(m => opts[m]);
@@ -791,15 +848,7 @@ const collect = async () => {
   let targets = [];
   if (mode === 'cwd') {
     const r = resolveCwd();
-    if (r.skipped) {
-      // The github.com safety gate: silent for the caller, explicit in the JSON.
-      const payload = {skipped: true, mode, ...r};
-      const out = JSON.stringify(payload, null, 2);
-      if (opts.out) writeFileSync(opts.out, out + '\n');
-      if (opts.show) console.log(renderDigest(payload));
-      else if (!opts.out) console.log(out);
-      process.exit(0);
-    }
+    if (r.skipped) emitSkipped({skipped: true, mode, ...r});
     targets = [r];
   } else if (mode === 'repo') {
     const m = /^([^/\s]+)\/([^/\s]+)$/.exec(opts.repo ?? '');
@@ -825,6 +874,18 @@ const collect = async () => {
         events: [],
         summary: {events: 0}
       };
+    }
+    if (entry.skipped) {
+      if (mode !== 'fleet')
+        emitSkipped({
+          skipped: true,
+          mode,
+          reason: entry.reason,
+          repo: entry.repo,
+          project: t.project
+        });
+      console.error(`${entry.repo}: skipped (${entry.reason})`);
+      continue;
     }
     repos.push(entry);
     const s = entry.summary ?? {};
@@ -857,7 +918,8 @@ const collect = async () => {
     console.error(`written: ${opts.out}`);
   }
   if (opts.show) console.log(renderDigest(digest));
-  else if (!opts.out) console.log(out);
+  if (opts.brief) console.log(renderBrief(digest));
+  if (!opts.show && !opts.brief && !opts.out) console.log(out);
 };
 
 const commitRepo = async entry => {
@@ -886,8 +948,10 @@ const commitRepo = async entry => {
   return found ? 'block added' : 'section added';
 };
 
-const DIGEST_PATH = 'projects/agent-workflow/fleet-status.md';
-const DIGEST_RUNS_KEPT = 10;
+// FLEET_STATUS_DIGEST_PATH: the test seam — point a commit at a scratch note.
+const DIGEST_PATH =
+  process.env.FLEET_STATUS_DIGEST_PATH || 'projects/agent-workflow/fleet-status.md';
+const DIGEST_RUNS_KEPT = 30;
 
 const eventLine = e => {
   const who = e.author ? ` by ${e.author}${e.bot ? ' (bot)' : ''}` : '';
@@ -898,11 +962,11 @@ const eventLine = e => {
       const detail = e.kind.endsWith('.state')
         ? `${e.from} → ${e.to}`
         : e.kind.endsWith('.comments')
-          ? `+${e.delta} comment${e.delta === 1 ? '' : 's'}${e.last_comment ? ` (last: ${e.last_comment.author})` : ''}`
+          ? `+${e.delta} comment${e.delta === 1 ? '' : 's'}${e.last_comment ? `, last ${e.last_comment.author}${e.last_comment.excerpt ? `: "${e.last_comment.excerpt}"` : ''}` : ''}`
           : e.kind.endsWith('.reactions')
             ? `${e.delta > 0 ? '+' : ''}${e.delta} reaction${Math.abs(e.delta) === 1 ? '' : 's'}`
             : (e.note ?? '');
-      return `${e.kind} #${e.number}${who} — ${e.title}${detail ? ` (${detail})` : ''}`;
+      return `${e.kind} #${e.number}${who} — ${e.title}${detail ? ` (${detail})` : ''}${e.excerpt ? ` — ${e.excerpt}` : ''}`;
     }
     case e.kind === 'fork.new' || e.kind === 'fork.removed':
       return `${e.kind} ${e.login} (${e.full_name})`;
@@ -921,36 +985,45 @@ const eventLine = e => {
   }
 };
 
+// One run of the digest note: the brief, then a json block of the run's events
+// (snapshots stay in state.md) for `show --fleet` / `show --repo` to read back.
+const runRecord = digest => ({
+  collected_at: digest.collected_at,
+  mode: digest.mode,
+  gh_user: digest.gh_user ?? null,
+  totals: digest.totals,
+  repos: digest.repos.map(r =>
+    r.error
+      ? {repo: r.repo, project: r.project, error: r.error, events: [], summary: r.summary}
+      : {
+          repo: r.repo,
+          project: r.project,
+          first_run: Boolean(r.first_run),
+          since: r.since ?? r.snapshot?.window?.since ?? null,
+          events: r.events,
+          summary: r.summary,
+          errors: r.errors ?? []
+        }
+  )
+});
+
 const writeDigest = async digest => {
   const stamp = digest.collected_at.replace(/\.\d+Z$/, 'Z');
   const lines = [
     `## ${stamp}`,
     '',
     `Mode: ${digest.mode}; repositories: ${digest.totals.repos}; events: ${digest.totals.events}; first-run baselines: ${digest.totals.first_run}; errors: ${digest.totals.errors}.`,
-    ''
+    '',
+    renderBrief(digest, {header: false}),
+    '',
+    '```json',
+    JSON.stringify(runRecord(digest), null, 2),
+    '```'
   ];
-  for (const r of digest.repos) {
-    if (r.error) {
-      lines.push(`- **${r.repo}** — error: ${r.error.message}`);
-      continue;
-    }
-    if (r.first_run) {
-      lines.push(
-        `- **${r.repo}** — first run: baseline recorded (${r.summary.open_items} open items, ${r.summary.stars} stars, ${r.summary.forks} forks${r.summary.advisories_without_cve ? `, ${r.summary.advisories_without_cve} published advisories without a CVE` : ''}).`
-      );
-      continue;
-    }
-    if (r.events.length === 0) continue;
-    lines.push(`- **${r.repo}** — ${r.events.length} event${r.events.length === 1 ? '' : 's'}:`);
-    for (const e of r.events.slice(0, 40)) lines.push(`  - ${eventLine(e)}`);
-    if (r.events.length > 40)
-      lines.push(`  - … ${r.events.length - 40} more in the collected JSON`);
-  }
-  const quiet = digest.repos.filter(r => !r.error && !r.first_run && r.events.length === 0).length;
-  if (quiet) lines.push(`- ${quiet} repositor${quiet === 1 ? 'y' : 'ies'} with no change.`);
   const runText = lines.join('\n') + '\n';
+  if (dryRun) console.log(runText);
 
-  const intro = `Fleet-wide GitHub digest written by the \`fleet-status\` skill — one section per run, newest\nfirst, the last ${DIGEST_RUNS_KEPT} runs kept. Review items are filed on each project's own \`queue.md\`;\nthis page is the one-screen view.\n\n`;
+  const intro = `Fleet-wide GitHub digest written by the \`fleet-status\` skill — one section per run that carried\nevents (any mode; a fleet run always), newest first, the last ${DIGEST_RUNS_KEPT} kept. A section is the brief\nfollowed by a \`json\` block of the run's events, which \`fleet-status.mjs show --fleet\` and \`show --repo\`\nread back as "movement since WHEN". Review items are filed on each project's own \`queue.md\`.\n\n`;
   const doc = await vaultGet(DIGEST_PATH);
   let runs = [];
   if (doc) {
@@ -994,7 +1067,7 @@ const commit = async () => {
     ++written;
     console.log(`${entry.repo}: baseline ${result} in ${stateDocPath(entry.project)}`);
   }
-  if (digest.mode === 'fleet') {
+  if (digest.mode === 'fleet' || digest.totals?.events > 0) {
     await writeDigest(digest);
     console.log(`digest: ${DIGEST_PATH}`);
   }
@@ -1152,13 +1225,356 @@ const renderDigest = digest => {
   return parts.join('\n\n');
 };
 
+// ─── Brief ───────────────────────────────────────────────────────────────────
+// The executive view. Weights order the phrases; a number is action-worthy,
+// 'counter' folds into the tail line, null stays in the JSON (the account's own
+// single comment, an edit or label change).
+
+const shortRepo = (repo, ghUser) =>
+  ghUser && repo.startsWith(`${ghUser}/`) ? repo.slice(ghUser.length + 1) : repo;
+const signed = n => (n > 0 ? `+${n}` : String(n));
+const itemWord = kind =>
+  kind.startsWith('pr.') ? 'PR' : kind.startsWith('discussion.') ? 'discussion' : 'issue';
+
+const isItemKind = kind => /^(issue|pr|discussion)\./.test(kind);
+
+const briefWeight = (e, ghUser) => {
+  const k = e.kind;
+  if (k.startsWith('advisory.')) return 0;
+  if (isItemKind(k)) {
+    if (k.endsWith('.new')) return e.bot ? 'counter' : 1;
+    if (k.endsWith('.comments'))
+      return e.last_comment?.author && e.last_comment.author === ghUser && e.delta === 1 ? null : 2;
+    if (k.endsWith('.state')) return 3;
+    if (k.endsWith('.updated')) return e.note ? 2 : null;
+    return 'counter';
+  }
+  if (k.startsWith('release.') || k === 'ci.conclusion') return 4;
+  if (k.startsWith('alerts.')) return e.to > e.from ? 4 : 'counter';
+  return 'counter';
+};
+
+const quoteExcerpt = (text, n) => (text ? `: "${clip(text, n)}"` : '');
+
+const briefPhrase = e => {
+  const k = e.kind;
+  if (k === 'advisory.new')
+    return `advisory ${e.id} (${e.state}${e.severity ? `, ${e.severity}` : ''}${e.cve_id ? `, ${e.cve_id}` : ''}) "${e.summary}"`;
+  if (k === 'advisory.cve_assigned') return `advisory ${e.id} got ${e.cve_id}`;
+  if (k === 'advisory.state') return `advisory ${e.id} ${e.from} → ${e.to}`;
+  if (k === 'advisory.updated') return `advisory ${e.id} updated`;
+  if (k === 'release.new')
+    return `release ${e.tag}${e.draft ? ' (draft)' : ''}${e.prerelease ? ' (prerelease)' : ''}`;
+  if (k === 'release.published') return `release ${e.tag} published`;
+  if (k === 'ci.conclusion') return `CI ${e.name}: ${e.from} → ${e.to}`;
+  if (k.startsWith('alerts.'))
+    return `${k === 'alerts.dependabot' ? 'Dependabot' : 'code scanning'} alerts ${e.from} → ${e.to}`;
+  if (!isItemKind(k)) return eventLine(e);
+  if (k.endsWith('.new'))
+    return `new ${itemWord(k)} #${e.number} by ${e.author} "${e.title}"${e.excerpt ? ` — ${clip(e.excerpt, 80)}` : ''}`;
+  if (k.endsWith('.comments')) {
+    const lc = e.last_comment;
+    return `${itemWord(k)} #${e.number} "${clip(e.title, 50)}" +${plural(e.delta, 'comment')}${lc ? ` by ${lc.author}${quoteExcerpt(lc.excerpt, 80)}` : ''}`;
+  }
+  if (k.endsWith('.state'))
+    return `${itemWord(k)} #${e.number} "${clip(e.title, 50)}" ${e.from} → ${e.to}`;
+  if (k.endsWith('.updated'))
+    return `${itemWord(k)} #${e.number} "${clip(e.title, 50)}" active, not in the baseline (${plural(e.comments ?? 0, 'comment')}${e.last_comment ? `, last by ${e.last_comment.author}${quoteExcerpt(e.last_comment.excerpt, 80)}` : ''})`;
+  return eventLine(e);
+};
+
+const briefCounters = (repos, ghUser) => {
+  const stars = new Map(),
+    forks = new Map(),
+    forkLogins = new Map(),
+    watchers = new Map(),
+    reactions = new Map(),
+    bots = [],
+    alertsDown = [];
+  const add = (m, key, n) => m.set(key, (m.get(key) ?? 0) + n);
+  for (const r of repos) {
+    const name = shortRepo(r.repo, ghUser);
+    for (const e of r.events) {
+      const k = e.kind;
+      if (k === 'stars.count') add(stars, name, e.delta ?? e.to - e.from);
+      else if (k === 'star.new') add(stars, name, 1);
+      else if (k === 'star.removed') add(stars, name, -1);
+      else if (k === 'fork.new') {
+        add(forks, name, 1);
+        forkLogins.set(name, [...(forkLogins.get(name) ?? []), e.login]);
+      } else if (k === 'fork.removed') add(forks, name, -1);
+      else if (k === 'forks.count') add(forks, name, e.to - e.from);
+      else if (k === 'watchers.count') add(watchers, name, e.to - e.from);
+      else if (isItemKind(k) && k.endsWith('.reactions'))
+        add(reactions, `${name}#${e.number}`, e.delta);
+      else if (isItemKind(k) && k.endsWith('.new') && e.bot)
+        bots.push(`${itemWord(k)} ${name}#${e.number} by ${e.author}`);
+      else if (k.startsWith('alerts.') && e.to < e.from)
+        alertsDown.push(`${name} ${k.slice(7).replace('_', ' ')} ${e.from} → ${e.to}`);
+    }
+  }
+  const total = m => [...m.values()].reduce((a, b) => a + b, 0);
+  const list = (m, fmt) => [...m].map(fmt).join(', ');
+  const parts = [];
+  if (stars.size)
+    parts.push(`stars ${signed(total(stars))} (${list(stars, ([k, v]) => `${k} ${signed(v)}`)})`);
+  if (forks.size)
+    parts.push(
+      `forks ${signed(total(forks))} (${list(forks, ([k, v]) => `${k} ${signed(v)}${forkLogins.has(k) ? `: ${forkLogins.get(k).join(', ')}` : ''}`)})`
+    );
+  if (watchers.size)
+    parts.push(
+      `watchers ${signed(total(watchers))} (${list(watchers, ([k, v]) => `${k} ${signed(v)}`)})`
+    );
+  if (reactions.size)
+    parts.push(
+      `reactions ${signed(total(reactions))} (${list(reactions, ([k, v]) => `${k} ${signed(v)}`)})`
+    );
+  if (bots.length) parts.push(`bots: ${bots.join(', ')}`);
+  if (alertsDown.length) parts.push(`alerts down (${alertsDown.join('; ')})`);
+  return parts;
+};
+
+const renderBrief = (digest, {header = true} = {}) => {
+  if (digest.skipped)
+    return `skipped: ${digest.reason}${digest.remote ? ` (${digest.remote})` : ''}`;
+  if (digest.error) return `${digest.error}: ${digest.message} — ${digest.hint}`;
+  const ghUser = digest.gh_user ?? null;
+  const fleet = digest.mode === 'fleet';
+  const live = digest.repos.filter(r => !r.error && !r.first_run && !r.skipped);
+  const moved = [];
+  let active = 0;
+  for (const r of live) {
+    const weighted = r.events.map(e => ({w: briefWeight(e, ghUser), e})).filter(x => x.w !== null);
+    if (weighted.length) ++active;
+    const lead = weighted.filter(x => typeof x.w === 'number').sort((a, b) => a.w - b.w);
+    if (lead.length)
+      moved.push({
+        name: shortRepo(r.repo, ghUser),
+        weight: lead[0].w,
+        phrases: lead.map(x => briefPhrase(x.e))
+      });
+  }
+  moved.sort((a, b) => a.weight - b.weight || a.name.localeCompare(b.name));
+  const sinces = live
+    .map(r => r.since ?? r.snapshot?.window?.since)
+    .filter(Boolean)
+    .sort();
+  const since = digest.stored?.since ?? sinces[0] ?? null;
+  const stamp = since ? short(since) : 'the baseline';
+  const stored = digest.stored
+    ? ` (${plural(digest.stored.runs, 'stored run')}, newest ${short(digest.collected_at)})`
+    : '';
+  const lines = [];
+  if (header) {
+    if (fleet)
+      lines.push(
+        `Fleet movement since ${stamp} — ${plural(digest.totals?.repos ?? digest.repos.length, 'repository', 'repositories')}, ${moved.length} with movement${stored}`
+      );
+    else
+      lines.push(
+        `${digest.repos.map(r => shortRepo(r.repo, ghUser)).join(', ')} — movement since ${stamp}${stored}`
+      );
+  }
+  for (const m of moved) lines.push(`- ${m.name}: ${m.phrases.join('; ')}`);
+  const counters = briefCounters(live, ghUser);
+  if (counters.length) lines.push(`- counters: ${counters.join('; ')}`);
+  const firstRuns = digest.repos.filter(r => r.first_run);
+  if (firstRuns.length)
+    lines.push(
+      fleet
+        ? `- first run: ${plural(firstRuns.length, 'repository', 'repositories')} (baseline recorded)`
+        : `- first run — baseline recorded (${plural(firstRuns[0].summary.open_items, 'open item')}, ${plural(firstRuns[0].summary.stars, 'star')}, ${plural(firstRuns[0].summary.forks, 'fork')}${firstRuns[0].summary.advisories_without_cve ? `, ${firstRuns[0].summary.advisories_without_cve} published advisories without a CVE` : ''})`
+    );
+  const errors = digest.repos.filter(r => r.error);
+  if (errors.length)
+    lines.push(
+      `- errors: ${errors.map(r => `${shortRepo(r.repo, ghUser)}: ${r.error.message}`).join('; ')}`
+    );
+  const partial = live.reduce((n, r) => n + (r.errors?.length ?? 0), 0);
+  if (partial) lines.push(`- partial errors: ${partial} (details in the collected JSON)`);
+  const fleetSize = digest.stored ? digest.stored.fleet_size : live.length;
+  const quiet = fleet && fleetSize !== null ? fleetSize - active : 0;
+  if (quiet > 0) lines.push(`- quiet: ${plural(quiet, 'repository', 'repositories')}`);
+  if (lines.length === (header ? 1 : 0)) lines.push('- none');
+  return lines.join('\n');
+};
+
+// ─── Stored runs ─────────────────────────────────────────────────────────────
+
+const parseWhen = text => {
+  const m = /^(\d+)d$/.exec(text);
+  if (m) return new Date(Date.now() - Number(m[1]) * 864e5).toISOString();
+  const t = Date.parse(text);
+  if (Number.isNaN(t))
+    fail(1, `--since takes an ISO date or time, or days back such as 7d: ${text}`);
+  return new Date(t).toISOString();
+};
+
+// The json blocks of the digest note, newest first; prose-only sections (before
+// 2026-08-29) are skipped.
+const readRuns = async () => {
+  const doc = await vaultGet(DIGEST_PATH);
+  if (!doc) return [];
+  const runs = [];
+  for (const section of doc.text.split(/\n(?=## )/)) {
+    const m = /```json\n([\s\S]*?)\n```/.exec(section);
+    if (!m) continue;
+    try {
+      runs.push(JSON.parse(m[1]));
+    } catch {}
+  }
+  return runs.sort(byDesc(r => r.collected_at));
+};
+
+// Movement for one repository (or the fleet) merged from the stored runs that
+// --since / --runs select, as a digest renderBrief takes.
+const storedMovement = async (repo, defaultDays) => {
+  const all = await readRuns();
+  let runs,
+    cutoff = null;
+  if (opts.runs) {
+    const n = Number(opts.runs);
+    if (!(n > 0)) fail(1, '--runs must be a positive number');
+    runs = all.filter(r => !repo || r.repos?.some(x => x.repo === repo)).slice(0, n);
+  } else {
+    cutoff = parseWhen(opts.since ?? `${defaultDays}d`);
+    runs = all.filter(r => r.collected_at >= cutoff);
+  }
+  const byRepo = new Map();
+  let fleetSize = null;
+  for (const run of [...runs].reverse()) {
+    if (run.mode === 'fleet' && run.totals?.repos)
+      fleetSize = run.totals.repos - (run.totals.first_run ?? 0) - (run.totals.errors ?? 0);
+    for (const r of run.repos ?? []) {
+      if (repo && r.repo !== repo) continue;
+      if (r.error || r.first_run || r.skipped || !r.events?.length) continue;
+      const cur = byRepo.get(r.repo) ?? {
+        repo: r.repo,
+        project: r.project,
+        first_run: false,
+        since: r.since ?? null,
+        events: [],
+        errors: []
+      };
+      if (r.since && (!cur.since || r.since < cur.since)) cur.since = r.since;
+      cur.events.push(...r.events);
+      byRepo.set(r.repo, cur);
+    }
+  }
+  const repos = [...byRepo.values()].map(r => ({...r, summary: {events: r.events.length}}));
+  return {
+    runs,
+    cutoff,
+    digest: {
+      collected_at: runs[0]?.collected_at ?? null,
+      mode: repo ? 'repo' : 'fleet',
+      gh_user: runs[0]?.gh_user ?? null,
+      stored: {runs: runs.length, since: cutoff, fleet_size: fleetSize},
+      repos,
+      totals: {
+        repos: fleetSize ?? repos.length,
+        events: repos.reduce((n, r) => n + r.events.length, 0)
+      }
+    }
+  };
+};
+
+// Standing counts per repository from every stored baseline: a Markdown table.
+const renderTable = async () => {
+  const r = await vaultFetch('/vault/projects/');
+  if (!r.ok) throw new Error(`GET /vault/projects/: ${r.status} ${r.statusText}`);
+  const folders = ((await r.json()).files ?? [])
+    .filter(f => f.endsWith('/'))
+    .map(f => f.slice(0, -1));
+  const rows = [];
+  const sum = {issues: 0, prs: 0, stars: 0, forks: 0};
+  for (const project of folders) {
+    const {baseline: b} = await readBaseline(project);
+    if (!b) continue;
+    const open = Object.values(b.items ?? {}).filter(i => i.state === 'open');
+    const issues = open.filter(i => !i.is_pr).length,
+      prs = open.length - issues;
+    const discussions = Object.values(b.discussions ?? {}).filter(d => !d.closed).length;
+    const published = Object.values(b.advisories ?? {}).filter(a => a.state === 'published');
+    const noCve = published.filter(a => !a.cve_id).length;
+    const alert = kind => {
+      const a = b.alerts?.[kind];
+      return !a || a.unavailable ? 'off' : `${a.open}${a.truncated ? '+' : ''}`;
+    };
+    sum.issues += issues;
+    sum.prs += prs;
+    sum.stars += b.meta?.stars ?? 0;
+    sum.forks += b.meta?.forks ?? 0;
+    rows.push([
+      b.repo ?? project,
+      issues,
+      prs,
+      b.meta?.has_discussions ? discussions : '-',
+      b.meta?.stars ?? '-',
+      b.meta?.forks ?? '-',
+      published.length ? `${published.length}${noCve ? ` (${noCve} no CVE)` : ''}` : '0',
+      alert('dependabot'),
+      alert('code_scanning'),
+      b.ci ? (b.ci.conclusion ?? b.ci.status) : 'none',
+      short(b.collected_at)
+    ]);
+  }
+  rows.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const head = [
+    'Repository',
+    'Issues',
+    'PRs',
+    'Discussions',
+    'Stars',
+    'Forks',
+    'Advisories',
+    'Dependabot',
+    'Scanning',
+    'CI',
+    'Collected'
+  ];
+  rows.push([
+    `Total (${rows.length})`,
+    sum.issues,
+    sum.prs,
+    '',
+    sum.stars,
+    sum.forks,
+    '',
+    '',
+    '',
+    '',
+    ''
+  ]);
+  return [head, head.map(() => '---'), ...rows].map(r => `| ${r.join(' | ')} |`).join('\n');
+};
+
 const show = async () => {
   const file = opts._[1];
   if (file) {
-    console.log(renderDigest(JSON.parse(readFileSync(file, 'utf8'))));
+    const digest = JSON.parse(readFileSync(file, 'utf8'));
+    console.log(opts.brief ? renderBrief(digest) : renderDigest(digest));
     return;
   }
-  // No file: render the baseline stored in the vault, without touching GitHub.
+  requireVault();
+  if (opts.fleet) {
+    if (opts.table) {
+      console.log(await renderTable());
+      return;
+    }
+    const {digest, runs, cutoff} = await storedMovement(null, 7);
+    if (!runs.length) {
+      console.log(
+        `no stored runs${cutoff ? ` since ${short(cutoff)}` : ''} in ${DIGEST_PATH} — run collect --fleet, then commit`
+      );
+      return;
+    }
+    console.log(renderBrief(digest));
+    return;
+  }
+  // One repository: the baseline stored in the vault, then its stored movement —
+  // no GitHub access either way.
   let project = opts.project ?? null,
     repo = null;
   if (opts.cwd) {
@@ -1178,9 +1594,8 @@ const show = async () => {
   if (!project)
     fail(
       1,
-      `show needs a collected FILE, or --cwd / --repo OWNER/NAME / --project NAME for the stored baseline\n\n${usage}`
+      `show needs a collected FILE, --fleet, or --cwd / --repo OWNER/NAME / --project NAME for the stored baseline\n\n${usage}`
     );
-  requireVault();
   const {baseline} = await readBaseline(project);
   if (!baseline) {
     console.log(
@@ -1188,9 +1603,10 @@ const show = async () => {
     );
     return;
   }
+  repo = baseline.repo ?? repo ?? project;
   console.log(
     renderRepo({
-      repo: baseline.repo ?? repo ?? project,
+      repo,
       project,
       stored: true,
       first_run: false,
@@ -1199,6 +1615,13 @@ const show = async () => {
       snapshot: baseline
     })
   );
+  const {digest, runs, cutoff} = await storedMovement(repo, 30);
+  console.log('');
+  if (runs.length && digest.repos.length) console.log(renderBrief(digest));
+  else
+    console.log(
+      `${repo} — no stored movement${cutoff ? ` since ${short(cutoff)}` : ` in the last ${opts.runs} runs`}`
+    );
 };
 
 const commands = {collect, show, commit, file: fileItem};
