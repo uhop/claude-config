@@ -105,6 +105,8 @@ herdr pane split --current --direction right --cwd "$PWD" --no-focus
 
 Replace `right` with `down` when appropriate. Read the new pane ID from `.result.pane.pane_id`.
 
+`--cwd "$PWD"` is not a formality. A pane opened in another directory runs `PROMPT_COMMAND` there, which calls `~/.local/bin/herdr-tab-label` and renames the **tab** after that directory; closing the pane does not restore the label, because nothing re-runs the labeller in the surviving pane and an agent pane never reaches a bash prompt. When a command needs a different directory, `cd` inside the command string instead of opening the pane there. To repair a tab already renamed this way, run `~/.local/bin/herdr-tab-label` from the repository root: it derives `host:owner/repo` and overwrites only a bare number or a label it wrote itself, so hand-typed labels are safe.
+
 An available shell pane must be at its interactive prompt, with the shell itself in the foreground and no foreground command, editor, or agent running. Start a supported agent in that pane with a useful unique name:
 
 ```bash
