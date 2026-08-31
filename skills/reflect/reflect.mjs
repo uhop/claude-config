@@ -436,8 +436,10 @@ const SUPPRESSED_FAILURE_SUBSTRINGS = [
   // "must Read before Edit/Write"; recovery is one Read call.
   'file has not been read yet',
   // 2026-08-29 (reports/2026-08-29-nuke P3) — the CLAUDE.md § Background shells
-  // registry probe: the error text is the enumeration, not a failure.
-  'no task found with id: probe-no-such-task'
+  // registry probe: the error text is the enumeration, not a failure. The id is
+  // whatever the agent types (probe-no-such-task, probe-none, …), so match the
+  // prefix (2026-08-30, reports/2026-08-30-nuke P2).
+  'no task found with id: probe'
 ];
 
 let sessionsAnalyzed = 0;
@@ -627,6 +629,8 @@ for (const t of transcripts) {
   }
   for (const [key, tsList] of loopBuckets) {
     if (tsList.length < 3) continue;
+    const keyLower = key.toLowerCase();
+    if (SUPPRESSED_FAILURE_SUBSTRINGS.some(s => keyLower.includes(s))) continue;
     const [name] = key.split('::', 1);
     signals.stuck_loops.push({
       kind: 'stuck_loop',

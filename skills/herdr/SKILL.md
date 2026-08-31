@@ -192,6 +192,7 @@ After that failed read, ask the agent to write its complete response as Markdown
 - Use `--current`, an explicit pane ID, or a unique agent name. Do not rely on another client's focused pane.
 - Parse IDs from JSON responses. Do not derive them from sidebar order or examples.
 - Do not close workspaces, tabs, panes, or sessions you did not create unless the user explicitly asked.
+- Close a pane you created once its work ends, after reading its tail; reuse an idle pane you own instead of splitting another. These panes are in the user's window, so an orphan is his cleanup, not yours.
 - Never run `herdr server stop` from an active session unless the user explicitly intends to stop the server and its pane processes.
 - Never kill the main Herdr process. Use named test sessions for experiments that need an isolated server.
 - CLI server errors are JSON on stderr with exit status 1. CLI syntax errors exit with status 2.
