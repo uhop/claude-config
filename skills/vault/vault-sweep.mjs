@@ -13,7 +13,7 @@
 //   vault-sweep next  --state=FILE
 //
 // Stage DAG (data-flow constraints — see the /vault skill § Ordering):
-//   0 one-shots: cleanup-lint ∥ embed-pending   (run by this script)
+//   0 one-shots: cleanup-lint ∥ embed-pending ∥ expire-logs  (this script)
 //   1 enrich_backfill ∥ enrich_stale
 //   2 new_tag
 //   3 tag_suggestion ∥ edge_type
@@ -119,6 +119,27 @@ const api = async (method, apiPath) => {
     method,
     headers: {Authorization: `Bearer ${token}`}
   });
+  const text = await response.text();
+  if (!response.ok) fail(1, `${response.status} on ${method} ${apiPath} — ${text.slice(0, 300)}`);
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+};
+
+// A route the running server may predate. 404 degrades to a skip marker
+// the summary reports, so a sweep from a host newer than the singleton
+// server still runs everything else instead of aborting at begin.
+const apiOptional = async (method, apiPath) => {
+  const response = await fetch(`${base}${apiPath}`, {
+    method,
+    headers: {Authorization: `Bearer ${token}`}
+  });
+  if (response.status === 404) {
+    await response.text();
+    return {skipped: 'route_absent', route: apiPath};
+  }
   const text = await response.text();
   if (!response.ok) fail(1, `${response.status} on ${method} ${apiPath} — ${text.slice(0, 300)}`);
   try {
@@ -255,9 +276,15 @@ if (command === 'begin') {
     process.exit(0);
   }
   const oneShots = {};
-  [oneShots.cleanup_lint, oneShots.embed_pending] = await Promise.all([
+  // expire-logs is a one-shot rather than a triage kind on purpose: the
+  // 2026-07-31 ruling settled log expiry, so there is no per-record
+  // judgment to dispatch. Its own signal arrives as `archive_candidate`,
+  // which this sweep always skips — without a caller here the endpoint is
+  // inert and the queue keeps a permanent pending floor.
+  [oneShots.cleanup_lint, oneShots.embed_pending, oneShots.expire_logs] = await Promise.all([
     api('POST', '/maintenance/cleanup-lint'),
-    api('POST', '/maintenance/embed-pending')
+    api('POST', '/maintenance/embed-pending'),
+    apiOptional('POST', '/maintenance/expire-logs')
   ]);
   const state = {
     file: opts.state,

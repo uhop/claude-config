@@ -941,6 +941,7 @@ same stage run as parallel sub-agents):
 | --- | --- |
 | `lint.orphan_embeddings` + `lint.orphan_doc_embeddings` | `POST /maintenance/cleanup-lint` |
 | `lint.records_without_embeddings` + `lint.embedding_hash_drift` | `POST /maintenance/embed-pending` |
+| **`type: log` records past 90 days** — settled policy, not a judgment ([[topics/vault-hygiene-policy]], ruled 2026-07-31). Their own `archive_candidate` suggestions are always skipped (below), so this one-shot is the only thing that drains them. Called optionally: a server predating the route answers 404 and the sweep records `{skipped: "route_absent"}` rather than aborting, since the vault server is a singleton that any host's sweep may be newer than. | `POST /maintenance/expire-logs` (deletes from disk + DB; `dry_run=1` previews) |
 | **coverage**: enrichable knowledge notes with **no `agent:` block** — canonical source is `vault-storage`'s `GET /system/lint` → `coverage.enrichment` (`ENRICHABLE_TYPES` = `permanent`/`project`/`design`/`research`/`query`; the headline already excludes operational types, empty bodies, and archived). Read the count there; `/vault-enrich-all` § Enrichable set drives the enumeration. *Not* a suggestion kind, so invisible to `/suggestions/summary`. | `/vault-enrich-all --auto --limit=100` (backfill missing) |
 | `suggestions.agent_enrichment_stale` | `/vault-enrich-all --auto --stale --limit=100` (refresh drifted) |
 | `suggestions.new_tag` | `/vault-review-tags --auto --limit=100` |
@@ -955,6 +956,14 @@ same stage run as parallel sub-agents):
 - `raw_inbox.ready` — `/vault ingest` is a separate workflow; the user
   flips `ready: true` when a draft is finished, not the sweep.
 - `suggestions.archive_candidate` — per-record retention judgment.
+  **Logs are the exception, and they are handled elsewhere**: the same
+  kind carries two policies, "a human decides about this query or raw
+  note" and "the 2026-07-31 ruling already decided about this log". The
+  skip is right for the first and wrong for the second, so log expiry
+  moved to the `expire-logs` one-shot above rather than into this queue —
+  a suggestion is a request for a decision, and that one is made. Leaving
+  it here is what gave the queue a permanent pending floor (measured
+  2026-09-01: five pending, four of them logs).
 
 #### Ordering constraints
 
@@ -1051,9 +1060,10 @@ W=$(mktemp -d)
 ```
 
 1. **`begin`** computes the action set, runs the one-shot endpoints
-   itself (`cleanup-lint` ∥ `embed-pending`), and prints the first
-   dispatch plan. `begin --dry-run` prints the action set with live
-   per-kind counts and stops (no writes, no state).
+   itself (`cleanup-lint` ∥ `embed-pending` ∥ `expire-logs`), and prints
+   the first dispatch plan. `begin --dry-run` prints the action set with
+   live per-kind counts and stops (no writes, no state) — the one-shots
+   do not run there either, so nothing is deleted on a dry run.
 2. **Dispatch** every entry in the plan's `dispatch` array as parallel
    sub-agents — one Agent call per agent entry, fired in the same
    message, labeled with the kind:
@@ -1076,10 +1086,13 @@ W=$(mktemp -d)
 4. **Final summary** from the done report — `rounds` is the per-round
    before/after convergence trail; `floors` and `residue` name what
    survived and why (`reason`: converged / no_change_round /
-   max_rounds); `one_shots` carries the cleanup/embed results — **plus
-   the itemized structural mutations collected from the sub-agent
+   max_rounds); `one_shots` carries the cleanup/embed/expire results —
+   **plus the itemized structural mutations collected from the sub-agent
    reports**: each merge as `archived path → survivor`, each compacted
-   folder by name, never bare counts. This post-hoc itemization is
+   folder by name, never bare counts. `one_shots.expire_logs` is itemized
+   the same way: report every deleted log by path and age, from its
+   `logs` array, since a deletion the summary states only as a count is
+   the one mutation nobody can reconstruct afterwards. This post-hoc itemization is
    what replaced the retired `--include-destructive` pre-commitment
    gate.
 
