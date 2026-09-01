@@ -46,7 +46,8 @@ W=$(mktemp -d)
 ```
 
 The worksheet carries what judgment needs: per-tag record briefs +
-`taxonomy` status + `neighbors` (nearby canonical tags) for `new_tag`;
+`taxonomy` status + `neighbors` (the nearest canonical tags, closest first)
+for `new_tag`;
 per-item `in_taxonomy` / `canonical` for `tag_suggestion`; `path_moved`
 flags where a record relocated since filing. `resolve` performs the
 taxonomy/alias POSTs, the per-record FM tag strips (server-side membership
@@ -79,6 +80,18 @@ Tag shape rules (taxonomy CHECK constraint): lowercase, alphanumeric +
 hyphens only. Aliases: lowercase only. Use the worksheet's `neighbors`
 list to spot the alias-vs-new call; check both meanings before aliasing —
 an alias that loses specificity (`indexer-design` → `indexing`) is wrong.
+
+`neighbors` is ranked by string nearness, not by usage: each entry carries
+`edits` (raw edit distance) and `distance` (the same, normalized by the
+longer tag — the sort key, 0 = identical). A `distance` near 0 is the alias
+signal; `edits: 1` on a long tag is almost always a singular/plural or
+suffix pair. `neighbors_total` is how many canonical tags share the
+candidate's 3-character prefix — when it exceeds the list length the window
+was truncated, and the list already includes a second pass on the full
+candidate so the closest family is present anyway. Ranking by usage was the
+old behaviour and it was backwards: the canonical a new candidate most
+likely duplicates is itself rarely used, so it sorted last (`contract` saw
+`contracts` at rank 10 of 10; fixed 2026-09-01).
 
 **Bias: prefer taxonomy-add when in doubt** for coherent concepts; reject
 only clear typos/markers. A wrong reject destructively strips tags from
