@@ -426,21 +426,24 @@ const failureExamples = new Map();
 // Known accepted-as-noise error signatures — suppressed from repeated_failures
 // to keep reports actionable. Each entry resolved via /clarify with explicit
 // "accept as noise" decision; pattern is the tool-internal error message
-// matched as a case-insensitive substring against the (lowercased, whitespace-
-// collapsed, first-120-char) error signature.
+// matched as a substring, or a RegExp where the text varies, against the
+// (lowercased, whitespace-collapsed, first-120-char) error signature.
 //
 // Don't grow this list lightly — every entry hides real-looking signal. Each
 // addition should reference a clarify-queue archive entry.
-const SUPPRESSED_FAILURE_SUBSTRINGS = [
+const SUPPRESSED_FAILURE_PATTERNS = [
   // Q-2026-05-17-001 — accepted as noise. Tool description already says
   // "must Read before Edit/Write"; recovery is one Read call.
   'file has not been read yet',
   // 2026-08-29 (reports/2026-08-29-nuke P3) — the CLAUDE.md § Background shells
   // registry probe: the error text is the enumeration, not a failure. The id is
-  // whatever the agent types (probe-no-such-task, probe-none, …), so match the
-  // prefix (2026-08-30, reports/2026-08-30-nuke P2).
-  'no task found with id: probe'
+  // whatever the agent types (probe-no-such-task, probe-none, nonexistent-probe,
+  // …), so match `probe` anywhere in it (prefix 2026-08-30, reports/2026-08-30-nuke
+  // P2; regex 2026-09-03, reports/2026-09-03-nuke P2).
+  /no task found with id: \S*probe/
 ];
+const isSuppressed = text =>
+  SUPPRESSED_FAILURE_PATTERNS.some(s => (typeof s === 'string' ? text.includes(s) : s.test(text)));
 
 let sessionsAnalyzed = 0;
 
@@ -630,7 +633,7 @@ for (const t of transcripts) {
   for (const [key, tsList] of loopBuckets) {
     if (tsList.length < 3) continue;
     const keyLower = key.toLowerCase();
-    if (SUPPRESSED_FAILURE_SUBSTRINGS.some(s => keyLower.includes(s))) continue;
+    if (isSuppressed(keyLower)) continue;
     const [name] = key.split('::', 1);
     signals.stuck_loops.push({
       kind: 'stuck_loop',
@@ -739,7 +742,7 @@ for (const [key, count] of failureBuckets) {
   if (count < 3) continue;
   const ex = failureExamples.get(key);
   const sigLower = (ex?.error_text ?? '').toLowerCase();
-  if (SUPPRESSED_FAILURE_SUBSTRINGS.some(s => sigLower.includes(s))) continue;
+  if (isSuppressed(sigLower)) continue;
   signals.repeated_failures.push({
     kind: 'repeated_failure',
     occurrences: count,
