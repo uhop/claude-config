@@ -25,8 +25,12 @@ Per repository, all read-only through `gh api`:
   merged), comments (with who commented last), reactions on the item and on its comments. Bot
   authors (`dependabot[bot]`) are flagged, not dropped.
 - **Forks, with the forker's login** — one sorted call; removed forks show as removals.
-- **Stars and watchers** — counts and deltas. `--star-logins` fetches the stargazer set (paged,
-  100 per page) for per-login events; count-only is the floor, ruled 2026-08-28.
+- **Watchers, with the login** (2026-09-05) — one paged call per repository, made only when the
+  count moved or no list is stored yet, so `watcher.new` names the account. A watcher
+  subscribes to notifications, which is why the two spam accounts that subscribed to
+  stream-chain on 2026-09-02 deserved names where a star would not.
+- **Stars** — counts and deltas. `--star-logins` fetches the stargazer set (paged, 100 per page)
+  for per-login events; count-only is the floor, ruled 2026-08-28.
 - **Releases** — the GitHub release object (new, draft published), not tags: tags and npm
   publishes are the drift check's.
 - **Alerts and checks** — open Dependabot and code-scanning alert counts by severity, and the
@@ -82,6 +86,13 @@ WORK=$(mktemp -d)
 - `--since-days N` (default 30) sets the window for closed items on a first run; afterwards the
   window is the baseline's `collected_at`. Open items are read in full every run, because a
   reaction doesn't bump `updated_at`.
+- `--jobs N` (default 6, 1 to 16) sizes the pool that collects repositories concurrently
+  (2026-09-05). Every `gh api` call is a process plus a TLS handshake, so the fleet of 51 took
+  5m52s of wall clock for 1m23s of CPU when it ran sequentially; with the default pool the fleet
+  of 49 took 42.6 s on 2026-09-05, with no errors and no secondary-rate-limit refusals. Progress
+  lines print in completion order; the JSON keeps enumeration order, so a repository that never reports is a
+  hole in the count, never silence. The REST limit is 5,000 calls an hour and a fleet run uses a
+  few hundred.
 - Exit `3` means `gh` has no valid login on this host: the JSON carries `error: "gh_auth"` and
   the message names the fix (`gh auth login`). **Tell the operator**; never treat it as "no
   changes". Exit `2` is a missing tool (`gh`, `git`).
@@ -94,8 +105,8 @@ non-zero sibling cancels a parallel batch.
 The executive view: what moved, at a glance. One line per repository with movement, the
 action-worthy events only, ordered by weight — advisories; then new issues, PRs, and discussions
 by a person; then comments by someone else, state changes, releases, CI regressions, and alert
-counts that rose — and one `counters` line for the rest: stars, forks with the forker's login,
-watchers, reactions, bot items, and alert counts that fell. Then `first run`, `errors`, and
+counts that rose — and one `counters` line for the rest: stars, forks and watchers with their
+logins, reactions, bot items, and alert counts that fell. Then `first run`, `errors`, and
 `quiet: N repositories`. Your own single comment on a thread and plain edits stay in the JSON.
 Titles are quoted; a new item and a comment carry an excerpt — the first meaningful line of the
 body, at most 120 characters (80 in the brief) — so a line reads as a summary without a click.
@@ -226,7 +237,8 @@ repository could not be read, `{repo, project, error, events: [], summary}`. Eve
 | `advisory.new`, `advisory.cve_assigned`, `advisory.state`, `advisory.updated` | An advisory appeared, got its CVE, changed state, or changed otherwise |
 | `issue.*`, `pr.*`, `discussion.*` with `.new`, `.state`, `.comments`, `.reactions`, `.updated` | An item appeared, changed state, gained comments (`delta`, `last_comment`), gained or lost reactions, or changed in another way (labels, edits) |
 | `fork.new`, `fork.removed`, `forks.count` | A fork by `login`; the count alone when the list could not be read |
-| `stars.count`, `star.new`, `star.removed`, `watchers.count` | Count deltas; per-login events only with `--star-logins` |
+| `watcher.new`, `watcher.removed`, `watchers.count` | A watcher by `login` (2026-09-05); the count alone when the list could not be read or the baseline predates the list |
+| `stars.count`, `star.new`, `star.removed` | Count deltas; per-login events only with `--star-logins` |
 | `release.new`, `release.published` | A release object appeared or left draft |
 | `alerts.dependabot`, `alerts.code_scanning` | The open alert count moved |
 | `ci.conclusion` | The default branch's last run conclusion changed |

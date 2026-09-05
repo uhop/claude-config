@@ -8,7 +8,7 @@
 // the fleet digest, and the queue-item upsert — and prints JSON. The agent reads
 // the events and does only the judgment: pre-reviews and what deserves attention.
 //
-//   fleet-status.mjs collect --cwd [--project NAME] [--out FILE] [--since-days N] [--star-logins]
+//   fleet-status.mjs collect --cwd [--project NAME] [--out FILE] [--since-days N] [--star-logins] [--jobs N]
 //   fleet-status.mjs collect --repo OWNER/NAME [--project NAME] [...]
 //   fleet-status.mjs collect --fleet [--owner LOGIN] [...]
 //   fleet-status.mjs collect ... --show | --brief             # also print the full view, or the brief
@@ -36,9 +36,16 @@
 // collection can move to a schedule without consuming the events a later look
 // needs. Items and comments carry an `excerpt` (first line of the body) for it.
 //
+// Parallel collection and watcher logins (2026-09-05): repositories are read by
+// a pool of --jobs workers (default 6) — the fleet of 51 took 5m52s of wall
+// clock for 1m23s of CPU when sequential, every `gh api` call being a process
+// plus a TLS handshake. Progress lines print in completion order; the digest
+// keeps enumeration order. Watchers carry the login like forks: a watcher
+// subscribes to notifications, so a spam account watching is worth a name.
+//
 // Exit codes: 0 ok · 1 usage/HTTP error · 2 missing tool · 3 gh not authenticated.
 
-import {execFileSync} from 'node:child_process';
+import {execFile, execFileSync} from 'node:child_process';
 import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -50,7 +57,7 @@ if (!import.meta.main)
 
 const usage = `Usage:
   fleet-status.mjs collect (--cwd | --repo OWNER/NAME | --fleet) [--project NAME] [--owner LOGIN]
-                           [--out FILE] [--since-days N] [--star-logins] [--show] [--brief]
+                           [--out FILE] [--since-days N] [--star-logins] [--jobs N] [--show] [--brief]
   fleet-status.mjs show FILE [--brief]                         # a collected file: full view, or the brief
   fleet-status.mjs show (--cwd | --repo OWNER/NAME | --project NAME) [--since WHEN | --runs N]
                                                                # stored baseline + stored movement, no GitHub access
@@ -78,7 +85,8 @@ const VALUE_FLAGS = new Set([
   '--title',
   '--body-file',
   '--since',
-  '--runs'
+  '--runs',
+  '--jobs'
 ]);
 const BOOL_FLAGS = new Set([
   '--cwd',
@@ -142,6 +150,27 @@ const run = (cmd, argv, extra = {}) => {
   }
 };
 
+// The async twin of `run`, for the per-repository reads that run concurrently:
+// same result shape, same ENOENT exit.
+const runAsync = (cmd, argv, extra = {}) =>
+  new Promise(resolve => {
+    execFile(
+      cmd,
+      argv,
+      {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, ...extra},
+      (err, stdout, stderr) => {
+        if (!err) return resolve({ok: true, out: stdout.trim()});
+        if (err.code === 'ENOENT') fail(2, `${cmd} is not installed or not on PATH`);
+        resolve({
+          ok: false,
+          out: (stdout ?? '').toString().trim(),
+          err: (stderr ?? err.message ?? '').toString().trim(),
+          status: typeof err.code === 'number' ? err.code : null
+        });
+      }
+    );
+  });
+
 class GhError extends Error {
   constructor(status, message, route) {
     super(message);
@@ -152,13 +181,13 @@ class GhError extends Error {
 
 // One REST read. With paginate, walks `page=` until a short page — never
 // `--paginate`, whose output shape depends on the gh version.
-const ghApi = (route, {paginate = false, headers = []} = {}) => {
+const ghApi = async (route, {paginate = false, headers = []} = {}) => {
   const sep = route.includes('?') ? '&' : '?';
-  const page = n => {
+  const page = async n => {
     const argv = ['api'];
     for (const h of headers) argv.push('-H', h);
     argv.push(paginate ? `${route}${sep}per_page=100&page=${n}` : route);
-    const r = run('gh', argv);
+    const r = await runAsync('gh', argv);
     if (!r.ok) {
       let message = r.err || 'gh api failed',
         status = null;
@@ -176,7 +205,7 @@ const ghApi = (route, {paginate = false, headers = []} = {}) => {
   if (!paginate) return page(1);
   const all = [];
   for (let n = 1; n <= 50; ++n) {
-    const chunk = page(n);
+    const chunk = await page(n);
     if (!Array.isArray(chunk)) return chunk;
     all.push(...chunk);
     if (chunk.length < 100) break;
@@ -205,7 +234,7 @@ const DISCUSSIONS_QUERY = `query($owner: String!, $name: String!, $after: String
   }
 }`;
 
-const ghGraphql = (query, variables) => {
+const ghGraphql = async (query, variables) => {
   if (/\bmutation\b/i.test(query))
     throw new Error(
       'fleet-status issues GraphQL queries only — refusing text containing "mutation"'
@@ -213,7 +242,7 @@ const ghGraphql = (query, variables) => {
   const argv = ['api', 'graphql', '-f', `query=${query}`];
   for (const [k, v] of Object.entries(variables))
     if (v !== null && v !== undefined) argv.push('-F', `${k}=${v}`);
-  const r = run('gh', argv);
+  const r = await runAsync('gh', argv);
   if (!r.ok) throw new GhError(null, r.err || r.out || 'graphql failed', 'graphql');
   const json = JSON.parse(r.out);
   if (json.errors?.length)
@@ -411,13 +440,13 @@ const latestComment = comments => {
 
 const COMMENT_SCAN_CAP = 60;
 
-const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) => {
+const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogins}) => {
   const repo = `${owner}/${name}`,
     R = `repos/${owner}/${name}`;
   const errors = [];
-  const guard = (where, fn, fallback) => {
+  const guard = async (where, fn, fallback) => {
     try {
-      return fn();
+      return await fn();
     } catch (err) {
       errors.push({where, status: err.status ?? null, message: err.message});
       return fallback;
@@ -426,7 +455,7 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
   const collectedAt = new Date().toISOString();
   const since = baseline?.collected_at ?? new Date(Date.now() - sinceDays * 864e5).toISOString();
 
-  const repoMeta = ghApi(R);
+  const repoMeta = await ghApi(R);
   // Private repositories are out by ruling; --fleet filters them at enumeration,
   // the single-repository forms find out here.
   if (repoMeta.private)
@@ -441,7 +470,7 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
   };
 
   const advisories = {};
-  for (const a of guard(
+  for (const a of await guard(
     'advisories',
     () => ghApi(`${R}/security-advisories`, {paginate: true}),
     []
@@ -459,13 +488,13 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
   // Open items in full every run (reactions never bump updated_at), plus
   // anything updated inside the window.
   const raw = new Map();
-  for (const it of guard(
+  for (const it of await guard(
     'issues:open',
     () => ghApi(`${R}/issues?state=open`, {paginate: true}),
     []
   ))
     raw.set(it.number, it);
-  for (const it of guard(
+  for (const it of await guard(
     'issues:since',
     () => ghApi(`${R}/issues?state=all&since=${encodeURIComponent(since)}`, {paginate: true}),
     []
@@ -497,13 +526,13 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
     if (isPr) record.draft = Boolean(it.draft);
     if (scanned < COMMENT_SCAN_CAP && (record.comments > 0 || isPr)) {
       ++scanned;
-      const comments = guard(
+      const comments = await guard(
         `comments:#${it.number}`,
         () => ghApi(`${R}/issues/${it.number}/comments`, {paginate: true}),
         null
       );
       const reviews = isPr
-        ? guard(
+        ? await guard(
             `review-comments:#${it.number}`,
             () => ghApi(`${R}/pulls/${it.number}/comments`, {paginate: true}),
             null
@@ -530,12 +559,13 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
 
   const discussions = {};
   if (meta.has_discussions)
-    guard(
+    await guard(
       'discussions',
-      () => {
+      async () => {
         let after = null;
         for (let page = 0; page < 5; ++page) {
-          const conn = ghGraphql(DISCUSSIONS_QUERY, {owner, name, after}).repository.discussions;
+          const conn = (await ghGraphql(DISCUSSIONS_QUERY, {owner, name, after})).repository
+            .discussions;
           for (const d of conn.nodes)
             discussions[d.number] = {
               title: d.title,
@@ -562,33 +592,45 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
   // Forks carry the login (one sorted call); stars are count-only unless asked.
   let forks = baseline?.forks ?? null;
   if (!forks || meta.forks !== baseline?.meta?.forks)
-    forks = guard(
+    forks = await guard(
       'forks',
-      () =>
-        ghApi(`${R}/forks?sort=newest`, {paginate: true}).map(f => ({
+      async () =>
+        (await ghApi(`${R}/forks?sort=newest`, {paginate: true})).map(f => ({
           login: f.owner?.login ?? null,
           full_name: f.full_name,
           created_at: f.created_at
         })),
       forks ?? []
     );
+  // Watchers carry the login too: a watcher subscribes to notifications, so a
+  // spam account watching is worth a name where a star is not (stream-chain,
+  // 2026-09-02). One paged call, only when the count moved or no list is stored.
+  let watchers = baseline?.watchers ?? null;
+  if (!watchers || meta.watchers !== baseline?.meta?.watchers)
+    watchers = await guard(
+      'watchers',
+      async () => (await ghApi(`${R}/subscribers`, {paginate: true})).map(u => u.login ?? null),
+      watchers ?? []
+    );
   let stars = null;
   if (starLogins) {
     stars = baseline?.stars ?? null;
     if (!stars || meta.stars !== baseline?.meta?.stars)
-      stars = guard(
+      stars = await guard(
         'stars',
-        () =>
-          ghApi(`${R}/stargazers`, {
-            paginate: true,
-            headers: ['Accept: application/vnd.github.star+json']
-          }).map(s => s.user?.login ?? null),
+        async () =>
+          (
+            await ghApi(`${R}/stargazers`, {
+              paginate: true,
+              headers: ['Accept: application/vnd.github.star+json']
+            })
+          ).map(s => s.user?.login ?? null),
         stars ?? []
       );
   }
 
   const releases = {};
-  for (const r of guard('releases', () => ghApi(`${R}/releases?per_page=30`), []))
+  for (const r of await guard('releases', () => ghApi(`${R}/releases?per_page=30`), []))
     releases[r.id] = {
       tag_name: r.tag_name,
       name: r.name,
@@ -600,9 +642,9 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
 
   // Dependabot alerts reject `page=` (cursor pagination only): one 100-item
   // read for both alert lists, flagged when it may be short.
-  const alertSet = (route, severity) => {
+  const alertSet = async (route, severity) => {
     try {
-      const list = ghApi(`${route}&per_page=100`);
+      const list = await ghApi(`${route}&per_page=100`);
       const set = {open: list.length, by_severity: countBy(list, severity)};
       if (list.length >= 100) set.truncated = true;
       return set;
@@ -611,19 +653,25 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
     }
   };
   const alerts = {
-    dependabot: alertSet(`${R}/dependabot/alerts?state=open`, a => a.security_advisory?.severity),
-    code_scanning: alertSet(`${R}/code-scanning/alerts?state=open`, a => a.rule?.severity)
+    dependabot: await alertSet(
+      `${R}/dependabot/alerts?state=open`,
+      a => a.security_advisory?.severity
+    ),
+    code_scanning: await alertSet(`${R}/code-scanning/alerts?state=open`, a => a.rule?.severity)
   };
 
   // The newest run on a default branch is often Dependabot's updater
   // (`event: "dynamic"`, named "github_actions in /. - Update #n"); the CI
   // conclusion wanted is the newest run of a real workflow.
-  const lastRun = guard(
+  const lastRun = await guard(
     'ci',
-    () =>
+    async () =>
       (
-        ghApi(`${R}/actions/runs?branch=${encodeURIComponent(meta.default_branch)}&per_page=10`)
-          .workflow_runs ?? []
+        (
+          await ghApi(
+            `${R}/actions/runs?branch=${encodeURIComponent(meta.default_branch)}&per_page=10`
+          )
+        ).workflow_runs ?? []
       ).find(r => r.event !== 'dynamic') ?? null,
     null
   );
@@ -647,6 +695,7 @@ const collectRepo = ({owner, name, project, baseline, sinceDays, starLogins}) =>
     items,
     discussions,
     forks,
+    watchers,
     stars,
     releases,
     alerts,
@@ -798,7 +847,12 @@ const diff = (b, s, repo) => {
       delta: s.meta.stars - (b.meta?.stars ?? 0)
     });
   }
-  if (s.meta.watchers !== b.meta?.watchers && b.meta?.watchers !== undefined)
+  if (s.watchers && b.watchers) {
+    const prev = new Set(b.watchers),
+      now = new Set(s.watchers);
+    for (const login of s.watchers) if (!prev.has(login)) push('watcher.new', {login});
+    for (const login of b.watchers) if (!now.has(login)) push('watcher.removed', {login});
+  } else if (s.meta.watchers !== b.meta?.watchers && b.meta?.watchers !== undefined)
     push('watchers.count', {from: b.meta.watchers, to: s.meta.watchers});
 
   for (const [id, r] of Object.entries(s.releases)) {
@@ -857,24 +911,56 @@ const collect = async () => {
   }
 
   requireGhAuth();
-  const ghUser = ghApi('user').login;
+  const ghUser = (await ghApi('user')).login;
   if (mode === 'fleet') targets = listFleet(opts.owner ?? ghUser);
 
-  const repos = [];
-  for (const t of targets) {
-    const {baseline} = await readBaseline(t.project);
-    let entry;
-    try {
-      entry = collectRepo({...t, baseline, sinceDays, starLogins: Boolean(opts['star-logins'])});
-    } catch (err) {
-      entry = {
-        repo: `${t.owner}/${t.name}`,
-        project: t.project,
-        error: {status: err.status ?? null, message: err.message},
-        events: [],
-        summary: {events: 0}
-      };
+  const jobs = Number(opts.jobs ?? 6);
+  if (!(Number.isInteger(jobs) && jobs >= 1 && jobs <= 16))
+    fail(1, '--jobs must be an integer from 1 to 16');
+  const starLogins = Boolean(opts['star-logins']);
+
+  // A pool over the enumeration: each worker takes the next repository, so the
+  // progress lines arrive in completion order while `results` keeps the
+  // enumeration order for the digest. A repository that never reports is a
+  // hole in the count, not silence.
+  const results = new Array(targets.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < targets.length) {
+      const i = nextIndex++;
+      const t = targets[i];
+      const {baseline} = await readBaseline(t.project);
+      let entry;
+      try {
+        entry = await collectRepo({...t, baseline, sinceDays, starLogins});
+      } catch (err) {
+        entry = {
+          repo: `${t.owner}/${t.name}`,
+          project: t.project,
+          error: {status: err.status ?? null, message: err.message},
+          events: [],
+          summary: {events: 0}
+        };
+      }
+      results[i] = entry;
+      if (entry.skipped) {
+        if (mode === 'fleet') console.error(`${entry.repo}: skipped (${entry.reason})`);
+        continue;
+      }
+      const s = entry.summary ?? {};
+      const kinds = Object.entries(s.by_kind ?? {})
+        .map(([k, n]) => `${k}×${n}`)
+        .join(', ');
+      console.error(
+        `${entry.repo}: ${entry.error ? `ERROR ${entry.error.message}` : `${s.events} event${s.events === 1 ? '' : 's'}${entry.first_run ? ' (first run — baseline only)' : ''}${kinds ? ` [${kinds}]` : ''}`}${entry.errors?.length ? ` — ${entry.errors.length} partial error(s)` : ''}`
+      );
     }
+  };
+  await Promise.all(Array.from({length: Math.min(jobs, targets.length)}, worker));
+
+  const repos = [];
+  for (const entry of results) {
+    if (!entry) continue;
     if (entry.skipped) {
       if (mode !== 'fleet')
         emitSkipped({
@@ -882,19 +968,11 @@ const collect = async () => {
           mode,
           reason: entry.reason,
           repo: entry.repo,
-          project: t.project
+          project: entry.project
         });
-      console.error(`${entry.repo}: skipped (${entry.reason})`);
       continue;
     }
     repos.push(entry);
-    const s = entry.summary ?? {};
-    const kinds = Object.entries(s.by_kind ?? {})
-      .map(([k, n]) => `${k}×${n}`)
-      .join(', ');
-    console.error(
-      `${entry.repo}: ${entry.error ? `ERROR ${entry.error.message}` : `${s.events} event${s.events === 1 ? '' : 's'}${entry.first_run ? ' (first run — baseline only)' : ''}${kinds ? ` [${kinds}]` : ''}`}${entry.errors?.length ? ` — ${entry.errors.length} partial error(s)` : ''}`
-    );
   }
   const digest = {
     collected_at: new Date().toISOString(),
@@ -970,7 +1048,7 @@ const eventLine = e => {
     }
     case e.kind === 'fork.new' || e.kind === 'fork.removed':
       return `${e.kind} ${e.login} (${e.full_name})`;
-    case e.kind === 'star.new' || e.kind === 'star.removed':
+    case /^(star|watcher)\.(new|removed)$/.test(e.kind):
       return `${e.kind} ${e.login}`;
     case /count$/.test(e.kind):
       return `${e.kind} ${e.from} → ${e.to}`;
@@ -1288,10 +1366,12 @@ const briefCounters = (repos, ghUser) => {
     forks = new Map(),
     forkLogins = new Map(),
     watchers = new Map(),
+    watcherLogins = new Map(),
     reactions = new Map(),
     bots = [],
     alertsDown = [];
   const add = (m, key, n) => m.set(key, (m.get(key) ?? 0) + n);
+  const name_ = (m, key, login) => m.set(key, [...(m.get(key) ?? []), login]);
   for (const r of repos) {
     const name = shortRepo(r.repo, ghUser);
     for (const e of r.events) {
@@ -1301,9 +1381,13 @@ const briefCounters = (repos, ghUser) => {
       else if (k === 'star.removed') add(stars, name, -1);
       else if (k === 'fork.new') {
         add(forks, name, 1);
-        forkLogins.set(name, [...(forkLogins.get(name) ?? []), e.login]);
+        name_(forkLogins, name, e.login);
       } else if (k === 'fork.removed') add(forks, name, -1);
       else if (k === 'forks.count') add(forks, name, e.to - e.from);
+      else if (k === 'watcher.new') {
+        add(watchers, name, 1);
+        name_(watcherLogins, name, e.login);
+      } else if (k === 'watcher.removed') add(watchers, name, -1);
       else if (k === 'watchers.count') add(watchers, name, e.to - e.from);
       else if (isItemKind(k) && k.endsWith('.reactions'))
         add(reactions, `${name}#${e.number}`, e.delta);
@@ -1324,7 +1408,7 @@ const briefCounters = (repos, ghUser) => {
     );
   if (watchers.size)
     parts.push(
-      `watchers ${signed(total(watchers))} (${list(watchers, ([k, v]) => `${k} ${signed(v)}`)})`
+      `watchers ${signed(total(watchers))} (${list(watchers, ([k, v]) => `${k} ${signed(v)}${watcherLogins.has(k) ? `: ${watcherLogins.get(k).join(', ')}` : ''}`)})`
     );
   if (reactions.size)
     parts.push(
