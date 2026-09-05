@@ -729,10 +729,14 @@ Rebuild context from the vault. Note: a SessionStart hook
 (`hooks/vault-resume-brief.sh`, 2026-07-23) already injects a few `[vault]`
 digest lines at session start via `GET /system/resume-brief` — lint state,
 pending-suggestion count, the project's Active titles + ready/blocked counts,
-a feedback.md pointer, and the latest log title. The digest is a *trigger*,
+a feedback.md pointer, and the latest log title — plus, since 2026-09-05, one
+`[vault] github <repo>:` line read from the project's stored `state.md`
+§ GitHub block (open items, advisories without a CVE, open alerts, CI, and how
+old the collection is), never from GitHub itself. The digest is a *trigger*,
 never a substitute: it carries no bodies, so feedback rules, logs, and the
 drift check still come from this workflow. On a pre-brief server (404) the
-hook injects nothing, silently.
+hook injects nothing, silently; a project with no stored GitHub block gets no
+GitHub line.
 
 This workflow is **MCP-native** — steps 2 and 5 are tool calls, not shell. The
 Bash is `check-drift.sh` (step 1) and `fleet-status.mjs` (step 3), each run

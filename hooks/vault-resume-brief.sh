@@ -46,7 +46,40 @@ jq -r '
       ] | join_present)
   end),
   (.latest_log | if . == null then empty
-    else "[vault] last log \(.updated): \(.title // .file_path)" end),
-  "[vault] Digest only — /vault resume for full context (drift check, feedback body, logs)."
+    else "[vault] last log \(.updated): \(.title // .file_path)" end)
 ' <<<"$resp" 2>/dev/null || exit 0
+
+# GitHub line from the stored baseline, never from GitHub itself (2026-09-05):
+# `projects/<name>/state.md` § GitHub holds the last fleet-status snapshot,
+# written by the manual daily on croc or by a `/vault resume`. One line — open
+# items, published advisories without a CVE, open alerts, the last CI
+# conclusion, and how old the collection is — so a stale baseline reads as
+# stale rather than as quiet. No block, no line; any failure, no line.
+if [[ $project =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+  state=$(curl -sf --connect-timeout 1 --max-time 2 \
+    -H "Authorization: Bearer $VAULT_API_TOKEN" \
+    "$VAULT_API_URL/vault/projects/$project/state.md") || state=""
+  block=$(awk '/^## GitHub/{f=1} f && /^```json/{g=1; next} g && /^```/{exit} g' <<<"$state")
+  if [[ -n "$block" ]]; then
+    jq -r '
+      def count(f): [f] | length;
+      (now - (.collected_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)) as $age |
+      ($age / 3600 | floor) as $h |
+      (if $h < 48 then "\($h)h ago" else "\($h / 24 | floor)d ago" end) as $when |
+      [.items[]? | select(.state == "open")] as $open |
+      "[vault] github \(.repo): " + ([
+          "\($open | length) open (\(count($open[] | select(.is_pr | not))) issues, \(count($open[] | select(.is_pr))) PRs)",
+          (count(.advisories[]? | select(.state == "published" and .cve_id == null)) as $a
+            | if $a > 0 then "\($a) advisories without CVE" else null end),
+          ([.alerts | to_entries[] | select((.value.open // 0) > 0)
+              | "\(.key | sub("_"; " ")) \(.value.open)"]
+            | if length > 0 then "alerts " + join(", ") else null end),
+          (if .ci then "CI \(.ci.conclusion // .ci.status)" else null end),
+          "collected \(.collected_at | sub("T(?<t>[0-9:]{5}).*$"; " \(.t)")) (\($when))"
+        ] | map(select(. != null)) | join("; "))
+    ' <<<"$block" 2>/dev/null || true
+  fi
+fi
+
+echo "[vault] Digest only — /vault resume for full context (drift check, feedback body, logs)."
 exit 0
