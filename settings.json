@@ -6,11 +6,7 @@
       "Bash(git for-each-ref:*)",
       "Bash(git show-ref:*)"
     ],
-    "deny": [
-      "Bash(git push:*)",
-      "Bash(git tag:*)",
-      "Bash(npm publish:*)"
-    ],
+    "deny": ["Bash(git push:*)", "Bash(git tag:*)", "Bash(npm publish:*)"],
     "defaultMode": "auto"
   },
   "hooks": {
@@ -34,6 +30,17 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/vault-lease-gate.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/vault-lease-gate.sh --touch",
             "timeout": 5
           }
         ]

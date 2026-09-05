@@ -24,26 +24,48 @@
 # active" and a lapsed own-repo lease heals on the next touch instead of
 # leaving the next session unable to tell a live neighbour from a ghost.
 #
+# `--touch` (2026-09-05): the same liveness half, keyed to the session's cwd
+# repo instead of an edited file, run from PostToolUse on every tool. A
+# session that edits through Bash, or works through MCP tools alone, never
+# trips the Edit/Write matcher, so its lease used to expire mid-session and
+# the next agent read a live neighbour as a ghost (found 2026-08-20). Touch
+# mode never blocks and never prints: a fresh renew stamp costs a stat, a
+# stale one costs one lookup per RENEW_EVERY. Sub-agent payloads (agent_id)
+# exit at once — sub-agents never claim, and a re-claim under a different
+# session prefix would lock the parent out of its own repo. Enforcement of
+# Bash edits into someone else's repo is deliberately NOT here: the target of
+# a shell command is guesswork, and that half awaits its own ruling.
+#
 # Hook contract:
 #   - stdin: JSON {tool_name, tool_input: {file_path|notebook_path}, session_id, cwd}
-#   - exit 0: allow. exit 2: block, stderr shown to the agent.
+#     (--touch: {session_id, cwd, agent_id?}; the tool fields are ignored)
+#   - exit 0: allow. exit 2: block, stderr shown to the agent (never in --touch).
 
 set -u
 
 payload=$(cat)
+touch=0
+[[ "${1:-}" == "--touch" ]] && touch=1
 
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
 [[ -n "${VAULT_API_URL:-}" && -n "${VAULT_API_TOKEN:-}" ]] || exit 0
 
-tool=$(jq -r '.tool_name // ""' <<<"$payload" 2>/dev/null) || exit 0
-case "$tool" in
-  Edit | Write | NotebookEdit | MultiEdit) ;;
-  *) exit 0 ;;
-esac
-
-target=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$payload" 2>/dev/null)
-[[ -n "$target" ]] || exit 0
+if ((touch == 1)); then
+  agent_id=$(jq -r '.agent_id // ""' <<<"$payload" 2>/dev/null) || exit 0
+  [[ -z "$agent_id" ]] || exit 0
+  target=$(jq -r '.cwd // ""' <<<"$payload" 2>/dev/null)
+  [[ -n "$target" && -d "$target" ]] || target=$PWD
+  target="$target/."
+else
+  tool=$(jq -r '.tool_name // ""' <<<"$payload" 2>/dev/null) || exit 0
+  case "$tool" in
+    Edit | Write | NotebookEdit | MultiEdit) ;;
+    *) exit 0 ;;
+  esac
+  target=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$payload" 2>/dev/null)
+  [[ -n "$target" ]] || exit 0
+fi
 
 # A Write may be creating a file that does not exist yet, so resolve the repo
 # from the deepest existing ancestor rather than from the target itself.
@@ -78,6 +100,18 @@ TTL=10
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease"
 cache_file="$cache_dir/$(printf '%s' "$resource" | cksum | tr -d ' ')"
 now=$(date +%s)
+RENEW_EVERY=900
+renew_stamp="$cache_file.renew"
+
+# Touch mode fast path: a fresh stamp means the lease was renewed (or checked)
+# within RENEW_EVERY, so there is nothing to do and no reason to go near the
+# network — this runs after every tool call.
+if ((touch == 1)); then
+  last=0
+  [[ -f "$renew_stamp" ]] && read -r last <"$renew_stamp" 2>/dev/null
+  [[ ${last:-0} =~ ^[0-9]+$ ]] || last=0
+  ((now - last < RENEW_EVERY)) && exit 0
+fi
 
 stamp=0
 holder=""
@@ -111,8 +145,6 @@ if [[ -n "$cwd" && -d "$cwd" ]]; then
   cwd_root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || true)
   [[ -n "$cwd_root" && "$cwd_root" == "$root" ]] && own_repo=1
 fi
-RENEW_EVERY=900
-renew_stamp="$cache_file.renew"
 auth=(-H "Authorization: Bearer $VAULT_API_TOKEN" -H 'Content-Type: application/json')
 
 if [[ -z "$holder" ]]; then
@@ -154,6 +186,14 @@ if [[ "$holder" == "$me" ]]; then
       "$VAULT_API_URL/leases/renew" || true
     printf '%s\n' "$now" >"$renew_stamp" 2>/dev/null || true
   fi
+  exit 0
+fi
+
+if ((touch == 1)); then
+  # Not ours: nothing to renew and nothing to say — enforcing Bash edits is
+  # not this mode's job. Stamp the check so a subordinate session asks once
+  # per RENEW_EVERY, not once per cache expiry.
+  printf '%s\n' "$now" >"$renew_stamp" 2>/dev/null || true
   exit 0
 fi
 

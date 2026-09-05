@@ -6,8 +6,10 @@
 # so an empty registry could not distinguish "nobody is there" from "nobody
 # claimed" — a side agent found no holder, attested a clean tree, and edited
 # a repo whose live session had never announced itself. The claim now happens
-# where every session already starts. Renewal rides the PreToolUse lease gate;
-# release rides the SessionEnd hook; TTL covers a crash.
+# where every session already starts. Renewal rides the lease gate — on every
+# edit (PreToolUse) and on every tool call (PostToolUse `--touch`, 2026-09-05,
+# so a Bash- or MCP-only session stays live); release rides the SessionEnd
+# hook; TTL covers a crash.
 #
 # Design: vault projects/vault-storage/design/agent-coordination
 # § Session-lifetime claims. Holder-id convention (must match
@@ -72,11 +74,11 @@ case "$code" in
       def hours: (ttl | if . == null then "" else " (TTL \(.)h)" end);
       if .status == "preempted" then
         "[vault] lease: \($r) — claimed (cwd) as \($me)\(hours), preempting a side holder — it learns " +
-        "at its next edit. Renews on edits; released at session end."
+        "at its next edit. Renews on activity; released at session end."
       elif .status == "renewed" then
-        "[vault] lease: \($r) — renewed (cwd) as \($me)\(hours). Yours; renews on edits; released at session end."
+        "[vault] lease: \($r) — renewed (cwd) as \($me)\(hours). Yours; renews on activity; released at session end."
       else
-        "[vault] lease: \($r) — claimed (cwd) as \($me)\(hours). Yours; renews on edits; released at session end."
+        "[vault] lease: \($r) — claimed (cwd) as \($me)\(hours). Yours; renews on activity; released at session end."
       end' <<<"$resp" 2>/dev/null || exit 0
     ;;
   409)

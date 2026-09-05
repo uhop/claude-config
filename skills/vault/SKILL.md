@@ -178,8 +178,10 @@ block your own edits**; the message prints both sides when that happens.
 **Your own repo is claimed for you — mechanically (ruled 2026-08-18).**
 `hooks/vault-lease-claim.sh` (SessionStart) claims the cwd repo with
 `priority: "cwd"` under the holder id below; `hooks/vault-lease-gate.sh`
-renews it on every edit burst (and re-claims after a TTL lapse when the
-edited repo is your own); `hooks/vault-lease-release.sh` (SessionEnd)
+renews it on activity — every edit through the PreToolUse gate, and every
+tool call through the same script's `--touch` mode on PostToolUse
+(2026-09-05, so a Bash-only or MCP-only session stays live) — and re-claims
+after a TTL lapse when the repo is your own; `hooks/vault-lease-release.sh` (SessionEnd)
 releases every lease this holder has; TTL (4 h) covers a crash. Sub-agents
 never claim — the parent owns the repo. All fail-open. The result arrives
 as a `[vault] lease: …` line at session start, which is how you know your
