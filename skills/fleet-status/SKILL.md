@@ -224,7 +224,10 @@ first, the last 30 kept — the brief, then a `json` block
 events only, no snapshots. `show --fleet` and `show --repo` merge the blocks in the window into
 one brief; sections written before 2026-08-29 have no block and are skipped. A baseline answers
 "what is the state", the digest answers "what moved since when" — which is what lets collection
-move to a schedule without consuming what a later look needs.
+run as a section of the manual daily playbook without consuming what a later look needs. That
+section lives in the dotfiles `playbash-daily` template, gated to croc (2026-09-05); Eugene runs
+the daily by hand, and collections are never scheduled, by ruling ([[projects/agent-workflow/feedback]]
+§ Collections run by hand or on an event).
 
 ## Output shape
 

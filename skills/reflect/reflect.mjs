@@ -13,7 +13,7 @@
 //   reflect.mjs --since=24h|7d|14d|YYYY-MM-DD
 //   reflect.mjs --project=NAME               # filter by project dir basename
 //   reflect.mjs --out="$WORK/scan.json"     # write JSON to file (also stdout); $WORK from mktemp -d
-//   reflect.mjs --include-sidechain          # include sub-agent transcripts
+//   reflect.mjs --include-sidechain          # include sub-agent transcripts (<session>/subagents/agent-*.jsonl)
 //   reflect.mjs --include-automated          # analyze headless `claude -p` transcripts (sdk-cli) too
 //   reflect.mjs --max-excerpt-chars N        # cap each excerpt (default 800)
 
@@ -144,6 +144,33 @@ const collectTranscripts = () => {
         session_id: entry.replace(/\.jsonl$/, ''),
         mtime: stat.mtimeMs
       });
+    }
+    // Sub-agent transcripts live in <session>/subagents/agent-*.jsonl (rows
+    // still carry isSidechain: true, agentId, and the parent sessionId). No
+    // top-level transcript carried a sidechain row in the 30 days to
+    // 2026-09-05 (400 agent files did), so without this walk
+    // --include-sidechain included nothing.
+    if (!INCLUDE_SIDECHAIN) continue;
+    for (const entry of entries) {
+      const dir = join(projectPath, entry, 'subagents');
+      let agents;
+      try {
+        agents = readdirSync(dir);
+      } catch {
+        continue;
+      }
+      for (const agent of agents) {
+        if (!agent.endsWith('.jsonl')) continue;
+        const fp = join(dir, agent);
+        const stat = statSync(fp);
+        if (stat.mtimeMs < windowStartMs) continue;
+        out.push({
+          path: fp,
+          project: projectDir,
+          session_id: `${entry}/${agent.replace(/\.jsonl$/, '')}`,
+          mtime: stat.mtimeMs
+        });
+      }
     }
   }
   return out;

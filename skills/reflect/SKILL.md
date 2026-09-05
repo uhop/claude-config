@@ -17,7 +17,7 @@ Companion skill: `/clarify` drains the ambiguous-findings parking lot. Design an
 /reflect --since=24h | 7d | 14d | YYYY-MM-DD
 /reflect --project=NAME               # restrict scan to one project dir
 /reflect --apply                      # walk high-confidence proposals via AskUserQuestion after the report
-/reflect --include-sidechain          # include sub-agent (Task) transcripts in the scan
+/reflect --include-sidechain          # include sub-agent (Task) transcripts — <session>/subagents/agent-*.jsonl — in the scan
 /reflect --include-automated          # analyze headless `claude -p` transcripts (entrypoint sdk-cli) too
 ```
 
