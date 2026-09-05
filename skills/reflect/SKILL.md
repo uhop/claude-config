@@ -132,8 +132,13 @@ Read all three to dedupe; write only to vault + claude-config.
      case — publishing to debug a dependent repo (`tape-six` → `tape-six-*`) —
      is itself a process gap, so the proposal there is **not** "stop releasing"
      but "link the package locally (`npm link` or a file: install) and debug
-     without publishing". Read the `driver` on each release before proposing:
-     it usually says outright why the second one happened.
+     without publishing". A second known-legitimate case (2026-09-04,
+     [[projects/agent-workflow/reports/2026-09-04-nuke]] P1): a private,
+     unpublished repository whose contract pins recorded answers to the version
+     (apodict, contract § 7), where each release is an explicit ask closing an
+     answer-changing arc — the report names the case, cites the project's
+     `feedback.md`, and proposes nothing. Read the `driver` on each release
+     before proposing: it usually says outright why the second one happened.
    - **medium** — singular, plausible signal, neutral language, no cross-machine corroboration.
    - **low / ambiguous** — multiple plausible interpretations, or possibly a one-off.
 
