@@ -14,6 +14,7 @@
 //   reflect.mjs --project=NAME               # filter by project dir basename
 //   reflect.mjs --out="$WORK/scan.json"     # write JSON to file (also stdout); $WORK from mktemp -d
 //   reflect.mjs --include-sidechain          # include sub-agent transcripts
+//   reflect.mjs --include-automated          # analyze headless `claude -p` transcripts (sdk-cli) too
 //   reflect.mjs --max-excerpt-chars N        # cap each excerpt (default 800)
 
 import {
@@ -31,6 +32,14 @@ import {dirname, join} from 'node:path';
 import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
 import {correlateSession} from '../process-review/git-correlate.mjs';
+import {
+  classifyUserTurn,
+  stripSyntheticBlocks,
+  errorSignature,
+  isSuppressed,
+  isAutomatedEntrypoint,
+  firstLine
+} from './reflect-lib.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -50,6 +59,7 @@ const SINCE = opt('--since', 'last-run');
 const PROJECT_FILTER = opt('--project', null);
 const OUT_PATH = opt('--out', null);
 const INCLUDE_SIDECHAIN = opt('--include-sidechain', false) === true;
+const INCLUDE_AUTOMATED = opt('--include-automated', false) === true;
 const MAX_EXCERPT = Number(opt('--max-excerpt-chars', '800'));
 
 const STATE_FILE = join(homedir(), '.cache', 'reflect', 'last-run.json');
@@ -98,109 +108,9 @@ const priorReport = (() => {
   }
 })();
 
-// --- Pattern library ----------------------------------------------------
-
-// The don't/stop/never patterns deliberately carry no action-verb list: three
-// runs (2026-08-02 ×2, 2026-08-03) showed corrections about state, perception,
-// or prior discussion ("I don't mind…", "I don't see hA5-grid", "I don't like
-// it") falling through closed verb lists. Recall-over-precision, same tradeoff
-// as OBSERVATIONAL below; measured 2026-08-09 over 30 days: 63 → 163 correction
-// firings, 51 of the 100 new ones real — including previously invisible sharp
-// corrections ("stop creating excuses", "Never print it again", "don't import
-// random files"). Noise is epistemic prose ("I don't know/think") the dedupe
-// step drops; verb exclusions tested lossy (real corrections fire only via
-// "don't think" turns), and a prev-assistant-tool_use gate doesn't
-// discriminate (82/100 new firings, real ones included, follow text turns).
-const NEGATION_PATTERNS = [
-  /\bno+,?\s+(don'?t|stop|not)\b/i,
-  /\bdon'?t\s+\w+/i,
-  /\bstop\s+\w+ing\b/i,
-  /\bnever\s+\w+/i,
-  /\bplease\s+don'?t\b/i,
-  /\bwe\s+don'?t\s+(do|use)\s+(that|this|it)\b/i,
-  /\bthat'?s?\s+(wrong|not right|not what)\b/i,
-  /\bnot\s+(that|this)\s+(way|one|approach)\b/i
-];
-
-// Cue-less corrections: a steer phrased as an observation-of-a-better-way, with
-// none of the sharp NEGATION cues — the class that let the scratch-file/mktemp
-// correction fire zero signals across two /reflect runs. Recall-over-precision
-// by design (dedupe + agent judgment carry precision downstream); deliberately
-// excludes bare imperatives ("do it" / "continue"), which are task directions.
-const OBSERVATIONAL_CORRECTION_PATTERNS = [
-  /\bI(?:'ve| have)? noticed\b/i,
-  /\bthere(?:'s| is)\s+(?:a|an)\s+(better|doc|convention|skill|way|tool|helper|rule|pattern)\b/i,
-  /\binstead of\b/i,
-  /\brather than\b/i,
-  /\bwhy\s+(?:don'?t|not|are you|did you|would you|are we|did we)\b/i,
-  // Sentence-final bare "Why?" — the form actually used to open a challenge
-  // ("…yet we never talked about it. Why?"); the pattern above requires an
-  // interrogative immediately after "why", so it never matched (2026-08-02).
-  /(?:^|[.!?\n])\s*why\s*\?/im
-];
-
-// "Still" corrections: the user reporting that a correction already given has
-// not landed. Structurally the highest-value signal here — the turn *is* the
-// second occurrence, so one hit already meets the recurrence bar — and blind to
-// both families above: no negation cue, no closed verb list. Anchored on second
-// person, an interrogative, a negation, or a quoted artifact so ordinary
-// concessive "still" stays out; "we still" alone is deliberately NOT a cue
-// ("we still need a list", "do we still need overrides" are planning talk, and
-// were most of the false positives when it was included). Measured over 30 days
-// of transcripts: 59 turns contain "still", these fire on 10, of which 9 are
-// real (the survivor is a "why we still" buried in a long anecdote) — acceptable
-// under the same recall-over-precision tradeoff as OBSERVATIONAL above.
-const UNLANDED_CORRECTION_PATTERNS = [
-  /\byou\b(?:'re|'ve|\s+(?:are|were|have|had|do|did|keep))?\s+still\b/i,
-  /\bwhy\s+(?:\w+\s+){0,3}still\b/i,
-  /\bstill\s+(?:\w+\s+)?(?:not|no\b|don'?t|doesn'?t|does not|isn'?t|is not|didn'?t|hasn'?t|haven'?t|won'?t|can'?t|cannot)\b/i,
-  // quoted artifact + "still <verb>": the quotes carry the specificity, so this
-  // needs no verb list — "'// null -> Do stops' still wraps."
-  /["'`][^"'`\n]{3,80}["'`]\s+still\s+\w+/i,
-  /\bI\s+still\s+(?:see|notice|find|get|have)\b/i,
-  /\bI\s+(?:see|notice|find)\b[^.!?\n]{0,40}\bstill\b/i,
-  // Quoted follow-up: `did you <verb>` + a quoted span is the user replaying a
-  // commitment ("did you do \"Next leg: …\"?"). The quotes carry the
-  // specificity — bare "did you push?" chatter stays out. Measured 2026-08-09
-  // over 30 days: 16 `did you` user turns, fires on 2, both real (the third
-  // hit was a continuation-summary turn, now stripped as synthetic).
-  /\bdid\s+you\s+(?:do|check|handle|finish|address)\b[^"'`\n]{0,40}["'`][^"'`\n]{3,}["'`]/i
-];
-
-// Scope extensions: a short user turn that appends a sibling target to a fix
-// just reported done — "fix the trailer too", "do the other two drafts' dashes
-// too", "do the rest", "finish wiki-search, then do double-meh", "Did you fix
-// the bail-out bug in browser?". No corrective vocabulary at all, which is why
-// the two richest transcripts of the 2026-08-16 run scored zero while carrying
-// the whole "fix the class" finding, and why the same shape scored zero again
-// on 2026-08-18. Gated on turn length (SCOPE_EXTENSION_MAX_CHARS) so content
-// turns that merely end in "too" stay out. Measured 2026-08-18 over 30 days on
-// nuke: 1,780 user turns, the tail-"too" cue fires on 36 (~28 real; the misses
-// are planning talk — "Node started to work on it too"), the three companions
-// on 4 more, all real. Recall-over-precision, same footing as OBSERVATIONAL.
-// A cluster of these in one session is direct evidence for CLAUDE.md § Fix the
-// class — the flag rides along so step 4 can count it.
-const SCOPE_EXTENSION_MAX_CHARS = 160;
-const SCOPE_EXTENSION_PATTERNS = [
-  /\b(?:too|as well)\s*[.!?]?\s*$/im,
-  /^(?:do|fix|finish|sweep|update)\s+(?:the\s+)?(?:rest|others?|remaining|other\s+\w+)\b/im,
-  /^(?:finish|and)\b[^,\n]{0,60},?\s*then\s+(?:do|fix|the)\b/im,
-  /\bdid\s+you\s+(?:also\s+)?(?:fix|do|update|apply|handle|change)\b[^?\n]{0,60}\b(?:in|for|on)\b[^?\n]{1,40}\?/i
-];
-
-const CONFIRMATION_PATTERNS = [
-  /\byes,?\s*(exactly|right|that'?s right|perfect|good|correct)\b/i,
-  /\b(perfect|exactly right|nailed it|spot on)\b/i,
-  /\bkeep doing (that|this)\b/i,
-  /\bthat'?s the (right|correct) (call|approach|move|answer)\b/i
-];
-
-const SURPRISE_PATTERNS = [
-  /\bTIL\b/,
-  /\boh,?\s+(huh|wow)\b/i,
-  /\b(I|we)\s+didn'?t\s+(expect|know|realize)\b/i,
-  /^(that'?s|this is|how)\s+(interesting|surprising|unexpected)\b/im
-];
+// The pattern library, the per-turn classifier, the failure-suppression list
+// and the text helpers live in ./reflect-lib.mjs (pure, pinned by
+// reflect.test.mjs). This file is the walk, the passes and the output.
 
 // --- Transcript walking -------------------------------------------------
 
@@ -282,33 +192,6 @@ const firstRowMs = fp => {
   }
   return null;
 };
-
-// Strip auto-inserted machine content (system reminders, command-message
-// blocks, stdout dumps) that Claude Code interleaves with user messages.
-// These are not user-authored text and must not be classified as such.
-const stripSyntheticBlocks = s =>
-  s
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
-    .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, '')
-    .replace(/<local-command-stderr>[\s\S]*?<\/local-command-stderr>/g, '')
-    .replace(/<command-message>[\s\S]*?<\/command-message>/g, '')
-    .replace(/<command-name>[\s\S]*?<\/command-name>/g, '')
-    .replace(/<command-args>[\s\S]*?<\/command-args>/g, '')
-    .replace(/<task-notification>[\s\S]*?<\/task-notification>/g, '')
-    // Peer traffic from another Claude session (SendMessage): preamble,
-    // envelope and harness trailer are all machine-authored, and the
-    // trailer's own "never …" wording fires the patterns, so the whole
-    // turn goes. Requires the envelope to follow the preamble, so a user
-    // quoting the phrase keeps their text.
-    .replace(/Another Claude session sent a message:\s*<cross-session-message[\s\S]*/g, '')
-    // Continuation-summary turns (context-compaction handoffs) are the
-    // assistant's own recap of the prior session arriving in a user-role row —
-    // correction-dense by construction, since they replay the very language
-    // the classifier hunts for. Anchored at turn start so a user merely
-    // quoting the phrase keeps their text. (Found 2026-08-09: a summary
-    // quoting a `did you check "…"` fixture re-fired it as a fresh signal.)
-    .replace(/^\s*This session is being continued from a previous conversation[\s\S]*/, '')
-    .trim();
 
 // Flatten a row into:
 //   - `userText`: user-authored prose only (string content or text blocks),
@@ -399,11 +282,6 @@ const inputFingerprint = input => {
   }
 };
 
-// Error signature: whitespace-collapsed, truncated, lowercased — the shape
-// Pass 3 buckets on, shared so Pass 2's stuck-loop key uses the same notion
-// of "the same error".
-const errorSignature = text => (text ?? '').replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
-
 // --- Detection ----------------------------------------------------------
 
 const signals = {
@@ -419,31 +297,18 @@ const signals = {
 // reader can see which sessions produced commits and which were talk only.
 const sessionGit = [];
 
+// Headless transcripts (entrypoint sdk-cli) are listed, not analyzed, unless
+// --include-automated: their "user" turns are a launcher's prompt, and Pass 4
+// would attribute the launcher's commits to them (reports/2026-08-30-nuke P4).
+const automatedSessions = [];
+
+// Every human-authored turn of every analyzed session, by first line — the
+// agent's reading pass (see reflect-lib.mjs § User-turn listing).
+const userTurns = [];
+
 // Repeated-failure detection works across sessions: aggregate (toolName, errorSig) → count
 const failureBuckets = new Map();
 const failureExamples = new Map();
-
-// Known accepted-as-noise error signatures — suppressed from repeated_failures
-// to keep reports actionable. Each entry resolved via /clarify with explicit
-// "accept as noise" decision; pattern is the tool-internal error message
-// matched as a substring, or a RegExp where the text varies, against the
-// (lowercased, whitespace-collapsed, first-120-char) error signature.
-//
-// Don't grow this list lightly — every entry hides real-looking signal. Each
-// addition should reference a clarify-queue archive entry.
-const SUPPRESSED_FAILURE_PATTERNS = [
-  // Q-2026-05-17-001 — accepted as noise. Tool description already says
-  // "must Read before Edit/Write"; recovery is one Read call.
-  'file has not been read yet',
-  // 2026-08-29 (reports/2026-08-29-nuke P3) — the CLAUDE.md § Background shells
-  // registry probe: the error text is the enumeration, not a failure. The id is
-  // whatever the agent types (probe-no-such-task, probe-none, nonexistent-probe,
-  // …), so match `probe` anywhere in it (prefix 2026-08-30, reports/2026-08-30-nuke
-  // P2; regex 2026-09-03, reports/2026-09-03-nuke P2).
-  /no task found with id: \S*probe/
-];
-const isSuppressed = text =>
-  SUPPRESSED_FAILURE_PATTERNS.some(s => (typeof s === 'string' ? text.includes(s) : s.test(text)));
 
 let sessionsAnalyzed = 0;
 
@@ -477,6 +342,7 @@ for (const t of transcripts) {
   // from sequential retries across turns.
   const toolUseRegistry = new Map();
   let turnSeq = 0;
+  let entrypoint = null;
   for (const line of content.split('\n')) {
     if (line.length === 0) continue;
     let row;
@@ -487,6 +353,9 @@ for (const t of transcripts) {
     }
     if (!INCLUDE_SIDECHAIN && row.isSidechain === true) continue;
     if (row.type !== 'user' && row.type !== 'assistant') continue;
+    if (entrypoint === null && row.type === 'user' && typeof row.entrypoint === 'string') {
+      entrypoint = row.entrypoint;
+    }
     const ts = row.timestamp ? Date.parse(row.timestamp) : null;
     if (ts && ts < windowStartMs) continue;
     // Parallel tool calls are NOT one row: the transcript streams each
@@ -532,6 +401,17 @@ for (const t of transcripts) {
   }
 
   if (events.length === 0) continue;
+  if (!INCLUDE_AUTOMATED && isAutomatedEntrypoint(entrypoint)) {
+    const first = events.find(e => e.role === 'user' && e.userText);
+    automatedSessions.push({
+      project: t.project,
+      session_id: t.session_id,
+      entrypoint,
+      rows: events.length,
+      first_turn: firstLine(first?.userText ?? '', 80)
+    });
+    continue;
+  }
   sessionsAnalyzed++;
 
   // Pass 1: corrections + confirmations + surprises — scan user-authored
@@ -543,14 +423,13 @@ for (const t of transcripts) {
 
     const text = e.userText;
     const prevAssistant = i > 0 && events[i - 1].role === 'assistant';
-    const hasNegation = NEGATION_PATTERNS.some(re => re.test(text));
-    const hasObservational = OBSERVATIONAL_CORRECTION_PATTERNS.some(re => re.test(text));
-    const hasUnlanded = UNLANDED_CORRECTION_PATTERNS.some(re => re.test(text));
-    const hasScopeExtension =
-      text.length <= SCOPE_EXTENSION_MAX_CHARS &&
-      SCOPE_EXTENSION_PATTERNS.some(re => re.test(text));
-    const hasConfirmation = CONFIRMATION_PATTERNS.some(re => re.test(text));
-    const hasSurprise = SURPRISE_PATTERNS.some(re => re.test(text));
+    const fired = classifyUserTurn(text);
+    const hasNegation = fired.negation;
+    const hasObservational = fired.observational;
+    const hasUnlanded = fired.unlanded;
+    const hasScopeExtension = fired.scope_extension;
+    const hasConfirmation = fired.confirmation;
+    const hasSurprise = fired.surprise;
 
     if (
       !hasNegation &&
@@ -697,6 +576,30 @@ for (const t of transcripts) {
   const correctionTs = new Set(
     signals.corrections.filter(c => c.session_id === t.session_id).map(c => c.ts)
   );
+
+  // The user-turn listing. `adjacent`: only assistant text between this turn
+  // and the previous human one — a reply with no tool call, so the two turns
+  // are a quick exchange (a cluster). `correction`: the classifier already
+  // fired here, so the unmarked turns are the reading.
+  let prevHuman = -1;
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
+    if (e.role !== 'user' || !e.userText) continue;
+    const between = prevHuman >= 0 ? events.slice(prevHuman + 1, i) : [];
+    const adjacent =
+      between.length > 0 && between.every(x => x.role === 'assistant' && !x.hasToolUse);
+    userTurns.push({
+      project: t.project,
+      session_id: t.session_id,
+      ts: e.ts,
+      first_line: firstLine(e.userText),
+      chars: e.userText.length,
+      ...(adjacent && {adjacent: true}),
+      ...(correctionTs.has(e.ts) && {correction: true})
+    });
+    prevHuman = i;
+  }
+
   const turns = events
     .filter(e => e.role === 'user' && e.userText)
     .map(e => ({ts: e.ts, text: e.userText, isCorrection: correctionTs.has(e.ts)}));
@@ -762,15 +665,22 @@ const output = {
   },
   filters: {
     project: PROJECT_FILTER,
-    include_sidechain: INCLUDE_SIDECHAIN
+    include_sidechain: INCLUDE_SIDECHAIN,
+    include_automated: INCLUDE_AUTOMATED
   },
   totals,
   sessions_scanned: sessionsAnalyzed,
+  automated: {
+    count: automatedSessions.length,
+    included: INCLUDE_AUTOMATED,
+    sessions: automatedSessions
+  },
   transcripts_seen: transcripts.length,
   prior_report: priorReport,
   live_sessions: liveSessions,
   state_watermark_iso: new Date(Math.min(scanMs, ...liveFloorsMs)).toISOString(),
   session_git: sessionGit,
+  user_turns: userTurns,
   signals
 };
 

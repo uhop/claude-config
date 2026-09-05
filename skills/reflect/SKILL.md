@@ -18,6 +18,7 @@ Companion skill: `/clarify` drains the ambiguous-findings parking lot. Design an
 /reflect --project=NAME               # restrict scan to one project dir
 /reflect --apply                      # walk high-confidence proposals via AskUserQuestion after the report
 /reflect --include-sidechain          # include sub-agent (Task) transcripts in the scan
+/reflect --include-automated          # analyze headless `claude -p` transcripts (entrypoint sdk-cli) too
 ```
 
 The script itself is dry-run only — it scans, classifies, emits JSON. `--apply` is implemented in this SKILL.md by the agent walking the report after writing it.
@@ -63,11 +64,13 @@ Read all three to dedupe; write only to vault + claude-config.
      "scan_window": {"since": "...", "start_iso": "...", "end_iso": "..."},
      "totals": {"corrections": N, "confirmations": N, "stuck_loops": N, "repeated_failures": N, "surprises": N, "multi_release": N},
      "sessions_scanned": N,
+     "automated": {"count": N, "included": false, "sessions": [{project, session_id, entrypoint, rows, first_turn}]},
      "transcripts_seen": N,
      "prior_report": "[[projects/agent-workflow/reports/<name>]] — this host's previous report, null on a first run or a pre-2026-08-09 cache",
      "live_sessions": [{project, session_id, path, mtime_iso, age_seconds, first_row_iso}],
      "state_watermark_iso": "...",
      "session_git": [{project, session_id, start_iso, end_iso, repo, commits, correction_driven_commits, shas}],
+     "user_turns": [{project, session_id, ts, first_line, chars, adjacent?, correction?}],
      "signals": {
        "corrections":       [{kind, project, session_id, ts, matched_text, excerpt, unlanded?, scope_extension?}, ...],
        "confirmations":     [{...}],
@@ -111,6 +114,29 @@ Read all three to dedupe; write only to vault + claude-config.
    tripped the classifier is `matched_text`. Then read the transcript rows
    around `ts` for the reply — the 2026-08-18 run first read `excerpt` alone
    and saw nothing but tool results.
+
+   **Two populations: `sessions_scanned` and `automated`.** `sessions_scanned`
+   counts human sessions only. A headless `claude -p` transcript carries
+   `entrypoint: "sdk-cli"` on every row (an interactive one carries `"cli"`;
+   measured 2026-09-05 over 140 transcripts, no third value), and apodict's
+   study arms and one-turn probes made 14 of a window's 16 "sessions" on
+   2026-08-30. They are listed under `automated.sessions` with their first
+   turn, and analyzed only with `--include-automated` — their "user" turns are
+   a launcher's prompt, and Pass 4 would otherwise attribute the launcher's
+   commits to them. Report the `automated.count` in the stats line beside
+   `sessions_scanned`, never fold it in.
+
+   **`user_turns` is the reading pass.** Every human-authored turn of every
+   analyzed session, by its first line (capped at 220 characters; the turn is
+   never hidden, so a one-line ruling is truncated and a short ask over a long
+   paste keeps its line), with `correction: true` where the classifier fired
+   and `adjacent: true` where the turn came one assistant reply after the
+   previous human turn. Read every unmarked turn: in five consecutive windows
+   (2026-08-25 → 09-01) this pass carried proposals the regexes missed, and it
+   replaces the ad hoc `jq` listing those runs built by hand. A run of
+   `adjacent` turns is the fix-the-class cluster shape; a short `first_line`
+   over a large `chars` is a short ask carrying a paste, the shape most worth
+   opening.
 
 3. **Dedupe against existing memory.** For each candidate signal, check whether the rule is already captured. Read in parallel:
    - `~/Open/claude-config/CLAUDE.md` (global rules)
