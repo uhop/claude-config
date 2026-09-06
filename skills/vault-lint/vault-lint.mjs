@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // vault-lint — vault hygiene linter. Surfaces FRONTMATTER / BODY / WIKILINKS /
-// DENSITY / CURRENCY / DUPLICATES findings against the policy at
+// DENSITY / CURRENCY / DUPLICATES / QUEUE findings against the policy at
 // topics/vault-hygiene-policy.md. Read-only: it reports, never fixes.
 // Exit 1 if any finding, 0 if clean, 2 on API error.
 //
@@ -12,11 +12,12 @@
 // Usage:
 //   vault-lint.mjs                  full report
 //   vault-lint.mjs --quiet          tab-separated data lines only (greppable)
-//   vault-lint.mjs --category=a,b   subset of: frontmatter,body,wikilinks,density,currency,duplicates
+//   vault-lint.mjs --category=a,b   subset of: frontmatter,body,wikilinks,density,currency,duplicates,queue
 //   vault-lint.mjs --max=N          per-category cap in the full report (default 40)
 //   vault-lint.mjs --no-fetch       skip the per-note raw fetch that confirms density (faster, may over-flag)
 
 import {execFileSync} from 'node:child_process';
+import {parseQueue, itemCount, queueFindings, countMismatch} from './queue-lint.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -35,7 +36,7 @@ const flag = (name, fallback) => {
 const QUIET = flag('--quiet', false) === true;
 const NO_FETCH = flag('--no-fetch', false) === true;
 const MAX = Number(flag('--max', '40'));
-const ALL_CATS = ['frontmatter', 'body', 'wikilinks', 'density', 'currency', 'duplicates'];
+const ALL_CATS = ['frontmatter', 'body', 'wikilinks', 'density', 'currency', 'duplicates', 'queue'];
 const catArg = flag('--category', null);
 const CATS = catArg
   ? catArg
@@ -202,7 +203,8 @@ const F = [],
   W = [],
   D = [],
   C = [],
-  U = [];
+  U = [],
+  Q = [];
 const want = c => CATS.includes(c);
 
 // raw full-file link count (FM `related:` + body), bounded by FETCH_CAP
@@ -371,6 +373,32 @@ if (want('duplicates')) {
       }
 }
 
+// Queue hygiene: the rules live in ./queue-lint.mjs (pure, pinned by its
+// test); this block adds the one thing that needs the API — the convention's
+// cheap check, the served slice against the markdown's column-0 bullets.
+if (want('queue')) {
+  const QUEUE_RE = /^projects\/([^/]+)\/queue\.md$/;
+  for (const r of active) {
+    const m = QUEUE_RE.exec(r.file_path);
+    if (!m) continue;
+    const parsed = parseQueue(r.body == null ? '' : String(r.body));
+    for (const detail of queueFindings(parsed)) Q.push({path: r.file_path, detail});
+    let served = null;
+    try {
+      served = api(`/queue/projects/${encodeURIComponent(m[1])}`).count;
+    } catch {
+      Q.push({
+        path: r.file_path,
+        detail: 'queue slice unreadable (/queue/projects/<name> failed) — count not compared'
+      });
+    }
+    if (typeof served === 'number') {
+      const mismatch = countMismatch(itemCount(parsed), served);
+      if (mismatch) Q.push({path: r.file_path, detail: mismatch});
+    }
+  }
+}
+
 // --- output --------------------------------------------------------------
 const CATEGORIES = [
   ['FRONTMATTER', F],
@@ -378,7 +406,8 @@ const CATEGORIES = [
   ['WIKILINKS', W],
   ['DENSITY', D],
   ['CURRENCY', C],
-  ['DUPLICATES', U]
+  ['DUPLICATES', U],
+  ['QUEUE', Q]
 ];
 const ABBREV = {
   FRONTMATTER: 'fm',
@@ -386,7 +415,8 @@ const ABBREV = {
   WIKILINKS: 'links',
   DENSITY: 'density',
   CURRENCY: 'currency',
-  DUPLICATES: 'dups'
+  DUPLICATES: 'dups',
+  QUEUE: 'queue'
 };
 const selected = CATEGORIES.filter(([n]) => want(n.toLowerCase()));
 const totalFindings = selected.reduce((s, [, arr]) => s + arr.length, 0);

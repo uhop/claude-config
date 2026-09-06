@@ -667,11 +667,13 @@ Research a question against the vault.
 
 The **hygiene** lint, implemented as its own skill — `/vault-lint`
 (`~/.claude/skills/vault-lint/vault-lint.mjs`). It reads every indexed record
-via `/sections` and reports six categories — `FRONTMATTER` (required keys, date
+via `/sections` and reports seven categories — `FRONTMATTER` (required keys, date
 sanity), `BODY` (empty/`null` bodies; newline-collapsed bodies), `WIKILINKS`
 (broken body targets), `DENSITY` (topic notes < 2 outbound; isolated project
 notes), `CURRENCY` (per-type retention), `DUPLICATES`
-(near-identical folders / titles) — against the thresholds in
+(near-identical folders / titles), `QUEUE` (queue.md items under non-schema
+H2s, completion markers in open titles, unbolded items, glued headings, the
+served count against the markdown; 2026-09-06) — against the thresholds in
 `topics/vault-hygiene-policy.md`. Exit `0` clean, `1` on findings. Read-only:
 it reports, never fixes. Full docs + flags + v1 limitations:
 `~/.claude/skills/vault-lint/SKILL.md`.

@@ -7,7 +7,7 @@ user_invocable: true
 # /vault-lint — vault hygiene linter
 
 Scans every indexed vault record via vault-storage's `/sections` and reports
-hygiene findings across six categories. **Read-only** — it surfaces a working
+hygiene findings across seven categories. **Read-only** — it surfaces a working
 list; it never edits the vault. Backed by `vault-lint.mjs`.
 
 This is the **hygiene** lint the policy note `topics/vault-hygiene-policy.md`
@@ -21,7 +21,7 @@ content well-kept".
 ```
 /vault-lint                       full human-readable report (exit 1 if findings)
 /vault-lint --quiet               tab-separated `category<TAB>path<TAB>detail` lines, no caps (pipe/grep)
-/vault-lint --category=a,b        subset of: frontmatter, body, wikilinks, density, currency, duplicates
+/vault-lint --category=a,b        subset of: frontmatter, body, wikilinks, density, currency, duplicates, queue
 /vault-lint --max=N               per-category cap in the full report (default 40; --quiet is uncapped)
 /vault-lint --no-fetch            skip the per-note raw fetch that confirms density (faster, may over-flag)
 ```
@@ -88,6 +88,39 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
   plus near-duplicate note titles within one folder (dated series and
   log/state/queue-item/meta notes excluded). Heuristic — flagged for human
   review, not auto-merged.
+- **QUEUE** — the mechanics of `topics/project-queue-convention` that nothing
+  ran before 2026-09-06, over every `projects/*/queue.md`. Rules live in
+  `queue-lint.mjs` (pure, pinned by `queue-lint.test.mjs`); the harness adds
+  the one check that needs the API.
+  - *Non-schema H2*: only `## Active` / `## Backlog` / `## Watching` parse, so
+    an invented heading (`## Done`, `## Follow-ups`) holding work-shaped
+    bullets — bold-titled or checkboxed — drops them from every queue view.
+    The sanctioned prose sections (`See also`, `Scope guardrails`,
+    `Deferred…`, `Design constraints`, `Tooling notes`) are exempt whatever
+    they hold; a plain `- See [[…]]` pointer under any heading is not work.
+    Work-shaped bullets above the first schema H2 flag the same way.
+  - *Completion marker in a title*: a checked `[x]`, a shouted `SHIPPED` /
+    `DONE` / `COMPLETE(D)` / `CLOSED` / `FIXED` / `PUBLISHED`, or a plain one
+    of those within 24 characters of a date. **Titles only.** The description
+    is where house style narrates partial progress (`deprecation **SHIPPED**
+    2026-06-07; only the removal remains`), and the calibration run found
+    both description hits false and all six title hits real.
+  - *Unbolded column-0 bullets* in a schema section: the parser counts every
+    column-0 `-`/`*` bullet as an item, so an unbolded one is an item with no
+    key and a column-0 sub-bullet is a stray item, not detail.
+  - *Glued heading*: `…item.## Backlog` is a paragraph, and everything below
+    it lands in the previous section.
+  - *Served count*: `GET /queue/projects/{name}` against the markdown's
+    column-0 bullets in schema sections. They must agree exactly — the
+    linter counts what the parser counts — so any difference is a stale slice
+    or parser drift: `vault_queue_reindex`, then re-lint.
+
+  Calibrated 2026-09-06 on all 53 queues: 19 findings (six title markers,
+  seven `[x]` items under one project's Active, six groups of unbolded
+  bullets), 0 count mismatches once the count rule matched the parser's (7
+  before, every one an unbolded bullet). Report-only like the rest: the
+  archival move stays judgment (condensed-duplicate check, close-date
+  grouping — the convention's § Archiving mechanics).
 
 ## v1 scope & limitations
 
@@ -109,6 +142,11 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
   sentence boundary can still slip under the bar — deliberate, since loosening
   either threshold reintroduced dozens of false positives. It also cannot see
   a collapse that merged only two paragraphs of a long healthy note.
+- **QUEUE reads `queue.md` only**, not `queue-archive.md`, and reads markers
+  from titles, never descriptions (measured: the description rule was all
+  false positives). A bold title left unclosed (`**Title` with no closing
+  `**`) reads as an unbolded bullet; the finding shows the text, so it is
+  recognizable.
 - **Report-only** — no auto-fix, despite the policy listing some
   auto-fixable classes. Fixing is a deliberate follow-up action (FM backfill,
   link rewrite, archival move), not a side effect of linting.
