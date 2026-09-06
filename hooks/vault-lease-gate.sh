@@ -37,7 +37,7 @@
 #
 # Bash (2026-09-06, option 1 of the three put to the operator): a write-shaped
 # Bash command is gated on the repositories its targets name. The extractor
-# (Python, below) strips heredoc bodies, splits the command on unquoted `;`,
+# (Python, below, through the shared hooks/lib/shell_segments.py) strips heredoc bodies, splits the command on unquoted `;`,
 # `|`, `&&`, `||` and newlines, tokenizes each segment with shlex, tracks `cd`
 # for the effective directory, and collects the write targets it understands:
 # redirections, `sed -i`, `tee`, `cp`/`mv`/`rsync`/`ln` destinations, `rm`,
@@ -310,70 +310,26 @@ fi
 
 # ── Bash: the write targets the command names, each to its main checkout ──
 
-roots=$(CMD="$cmd" /usr/bin/python3 - "$cwd" <<'PY' 2>/dev/null
-import os, re, shlex, sys
+roots=$(CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$cwd" "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib" <<'PY' 2>/dev/null
+import os, re, sys
+sys.path.insert(0, sys.argv[2])
+from shell_segments import strip_heredocs, segments, command_tokens, git_verb
 
 cmd = os.environ.get('CMD', '')
 base = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
 home = os.path.expanduser('~')
 
-# 1. Heredoc bodies are data, not commands.
-lines, term = [], None
-for line in cmd.split('\n'):
-    if term is not None:
-        if line.strip() == term:
-            term = None
-        continue
-    m = re.search(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1", line)
-    if m:
-        term = m.group(2)
-        lines.append(line[:m.start()])
-        continue
-    lines.append(line)
-text = '\n'.join(lines)
-
-# 2. Split on unquoted ; | || && and newlines. `>&`, `&>` belong to redirects.
-segs, cur, q, i = [], [], None, 0
-while i < len(text):
-    c = text[i]
-    if q:
-        cur.append(c)
-        if c == '\\' and q == '"' and i + 1 < len(text):
-            cur.append(text[i + 1]); i += 2; continue
-        if c == q:
-            q = None
-    elif c in '\'"':
-        q = c; cur.append(c)
-    elif c == '\\' and i + 1 < len(text):
-        cur.append(c); cur.append(text[i + 1]); i += 2; continue
-    elif c in ';\n':
-        segs.append(''.join(cur)); cur = []
-    elif c == '|':
-        segs.append(''.join(cur)); cur = []
-        if i + 1 < len(text) and text[i + 1] == '|':
-            i += 1
-    elif c == '&':
-        prev = text[i - 1] if i else ''
-        nxt = text[i + 1] if i + 1 < len(text) else ''
-        if prev == '>' or nxt == '>':
-            cur.append(c)
-        else:
-            segs.append(''.join(cur)); cur = []
-            if nxt == '&':
-                i += 1
-    else:
-        cur.append(c)
-    i += 1
-segs.append(''.join(cur))
+# 1-2. Heredoc bodies are data; segments split on unquoted separators — the
+#      shared parser (hooks/lib/shell_segments.py, D14, also the commit gate's).
+text, _ = strip_heredocs(cmd)
+segs = segments(text)
 
 MUTATING_GIT = {'add', 'am', 'apply', 'checkout', 'cherry-pick', 'clean', 'commit', 'merge', 'mv',
                 'pull', 'rebase', 'reset', 'restore', 'revert', 'rm', 'stash', 'switch'}
-PREFIX = {'command', 'nice', 'time', 'exec', 'sudo', 'doas', 'builtin'}
 ALL_ARGS = {'rm', 'rmdir', 'mkdir', 'touch', 'unlink', 'tee'}
 SKIP_ONE = {'chmod', 'chown', 'truncate'}
 DEST_LAST = {'cp', 'mv', 'rsync', 'ln', 'install'}
 NPM_WRITES = {'install', 'i', 'ci', 'update', 'uninstall', 'link', 'rebuild', 'add', 'remove', 'dedupe'}
-ASSIGN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=')
 
 def resolve(tok, eff):
     if not tok or tok in ('-', '/dev/null') or tok.startswith(('&', '<')):
@@ -397,21 +353,7 @@ def resolve(tok, eff):
 
 targets, eff = [], base
 for seg in segs:
-    seg = seg.strip().lstrip('({').rstrip(')}').strip()
-    if not seg:
-        continue
-    try:
-        toks = shlex.split(seg)
-    except ValueError:
-        continue
-    while toks and (ASSIGN.match(toks[0]) or toks[0] in PREFIX):
-        toks = toks[1:]
-    if toks and toks[0] == 'timeout':
-        toks = toks[2:]
-    if toks and toks[0] == 'env':
-        toks = toks[1:]
-        while toks and (ASSIGN.match(toks[0]) or toks[0].startswith('-')):
-            toks = toks[1:]
+    toks = command_tokens(seg)
     if not toks:
         continue
     rest, j = [], 0
@@ -462,14 +404,8 @@ for seg in segs:
         elif len(nonflag) >= 2:
             targets.append(resolve(nonflag[-1], eff))
     elif name == 'git':
-        d, k = eff, 0
-        while k < len(args) and args[k].startswith('-'):
-            if args[k] == '-C' and k + 1 < len(args):
-                d = resolve(args[k + 1], eff) or d; k += 2; continue
-            if args[k].startswith('-C') and len(args[k]) > 2:
-                d = resolve(args[k][2:], eff) or d
-            k += 1
-        verb = args[k] if k < len(args) else ''
+        verb, cdir = git_verb(args)
+        d = (resolve(cdir, eff) or eff) if cdir else eff
         if verb in MUTATING_GIT and not (verb == 'apply' and '--check' in args):
             targets.append(d)
     elif name in ('npx', 'prettier'):
