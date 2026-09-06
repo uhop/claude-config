@@ -927,6 +927,34 @@ is fast (a few ms) but unnecessary. The endpoint reports
 fellBack, durationMs}`; surface anything non-zero, otherwise stay
 quiet.
 
+### /vault verify [project] [--all] [--unchecked]
+
+Check the project's vault notes against its repository — the map against
+the territory. `/vault check` asks whether the repository moved since the
+baseline; this asks whether the repository supports what the notes say.
+Implemented as its own skill, `/vault-verify`
+(`~/.claude/skills/vault-verify/vault-verify.mjs`): run from the project
+directory, it reads `projects/<name>/` from `/sections` and verifies every
+backticked path with a slash (exists; gone since; a line reference within
+the file), every 7- or 40-hex commit (here or in a sibling checkout; dated
+as the sentence says), every version beside a release verb (a tag, or a
+package.json version ever declared), and every `N files in \`dir/\`` or
+`\`file\` (N lines)`. A date pairs with a claim only in one-statement
+shapes. corpus/, research/ and archives are skipped unless `--all`;
+`--unchecked` lists the counts nothing can verify, for the agent's
+spot-check. Report-only, `--quiet` TSV, exit 1 on findings. Calibrated
+2026-09-06 (claude-config D17); rules, residue classes and limitations in
+`~/.claude/skills/vault-verify/SKILL.md`.
+
+```bash
+~/.claude/skills/vault-verify/vault-verify.mjs               # current project
+~/.claude/skills/vault-verify/vault-verify.mjs --unchecked   # plus the spot-check list
+```
+
+Run it at wrap or after a documentation pass, and read each finding's line:
+a path from another codebase the note analyzes is "never existed in this
+repository", and correct.
+
 ### /vault sweep [options]
 
 Drain every safely-automatable maintenance queue. The deterministic
