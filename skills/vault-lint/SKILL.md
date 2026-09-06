@@ -91,7 +91,11 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
 - **QUEUE** — the mechanics of `topics/project-queue-convention` that nothing
   ran before 2026-09-06, over every `projects/*/queue.md`. Rules live in
   `queue-lint.mjs` (pure, pinned by `queue-lint.test.mjs`); the harness adds
-  the one check that needs the API.
+  the one check that needs the API. Since 2026-09-06 the same rules run
+  server-side as `/system/lint`'s `queue_hygiene` (`src/queue/lint.ts` in
+  vault-storage, identical on all 53 queues at the port) and the SessionStart
+  brief prints a project's findings; the server copy is canonical
+  (vault-storage D25) — a rule change lands there first.
   - *Non-schema H2*: only `## Active` / `## Backlog` / `## Watching` parse, so
     an invented heading (`## Done`, `## Follow-ups`) holding work-shaped
     bullets — bold-titled or checkboxed — drops them from every queue view.

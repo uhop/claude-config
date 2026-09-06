@@ -42,6 +42,7 @@ jq -r '
         (if (.queue.active | length) > 0 then "ACTIVE: \(.queue.active | join(" | "))" else null end),
         "\(.queue.ready)/\(.queue.backlog) backlog ready",
         (if .queue.blocked > 0 then "\(.queue.blocked) blocked" else null end),
+        ((.queue.hygiene // []) | if length > 0 then "queue hygiene \(length): \(.[0])" else null end),
         (if .feedback then "feedback.md updated \(.feedback.updated)" else null end)
       ] | join_present)
   end),

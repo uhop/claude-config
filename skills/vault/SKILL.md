@@ -684,7 +684,11 @@ it reports, never fixes. Full docs + flags + v1 limitations:
 ```
 
 Do not confuse it with the server-side **integrity** lint, which is a different
-tool (embeddings / orphans / temporal anomalies / tag aliases — *not* hygiene).
+tool (embeddings / orphans / temporal anomalies / tag aliases — *not* hygiene,
+with one deliberate exception: since 2026-09-06 it also carries
+`queue_hygiene`, the QUEUE category's rules run server-side over every
+`queue.md` so the SessionStart brief can print a project's findings —
+vault-storage D25).
 Call `vault_lint` for it; the curl form below is the fallback. `vault_lint`
 does return the `coverage.enrichment` block (`by_type` breakdown +
 `unenriched_records` worklist) that `/vault sweep` reads — verified
@@ -742,6 +746,7 @@ Rebuild context from the vault. Note: a SessionStart hook
 (`hooks/vault-resume-brief.sh`, 2026-07-23) already injects a few `[vault]`
 digest lines at session start via `GET /system/resume-brief` — lint state,
 pending-suggestion count, the project's Active titles + ready/blocked counts,
+its queue-hygiene findings (server ≥ 2026-09-06),
 a feedback.md pointer, and the latest log title — plus, since 2026-09-05, one
 `[vault] github <repo>:` line read from the project's stored `state.md`
 § GitHub block (open items, advisories without a CVE, open alerts, CI, and how
@@ -782,9 +787,9 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      `Clarify queue: N pending (/clarify to drain)`. Nulls mean the
      surface isn't scaffolded — omit silently.
    - `logs` — the most recent session logs as their `agent.summary`
-     lines. Skim the summaries; fetch a full body (`vault_read_file`)
-     only when a summary is missing or the session directly continues
-     that log's work.
+     lines, each with `summary_stale`. Skim the summaries; fetch a full
+     body (`vault_read_file`) only when a summary is missing or stale, or
+     the session directly continues that log's work.
    - `project` — `feedback.md` normally arrives with its full body:
      surface its rules near the top of the resume output (this is the
      read path for fleet-shared project feedback — the vault is
@@ -797,7 +802,9 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      the rules; don't skip them because the bundle didn't inline them.
      The other files (queue/decisions/learnings/stack) come as
      `summary` + `body_bytes`; fetch bodies with `vault_read_file` only
-     as needed. A `null` entry means the file doesn't exist — not every
+     as needed. Every entry carries `summary_stale` (server ≥ 2026-09-06):
+     true means the summary was derived from an older body — fetch the
+     body and never relay that summary as current. A `null` entry means the file doesn't exist — not every
      project has a `feedback.md`.
      The block also carries `handoffs: {open, returned, claimed}` (server
      ≥ 2026-08-10) — the coordination inbox, since claiming a repo means
