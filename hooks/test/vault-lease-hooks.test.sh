@@ -150,6 +150,44 @@ else
   holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
   [[ $rc -eq 0 && -z "$holder" ]] && ok || bad "touch: a sub-agent payload must never claim (rc=$rc holder='$holder')"
 
+  # 13. the Bash gate (2026-09-06, option 1): session 1 holds; session 2's write-shaped Bash
+  #     into the held repo is blocked, reads and scratch writes pass, the holder's own writes pass
+  run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
+  rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease/$(printf '%s' "$RES" | cksum | tr -d ' ')"
+  bashrun() { run "$GATE" "$(jq -nc --arg cmd "$1" --arg c "$2" --arg s "$3" '{tool_name:"Bash",tool_input:{command:$cmd},session_id:$s,cwd:$c}')"; }
+  bashrun "cd $W && command sed -i 's/a/b/' a.txt" /tmp "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: cd into held && sed -i must block (rc=$rc)"
+  bashrun $'cat >> '"$W"$'/a.txt <<\'EOF\'\nx\nEOF' /tmp "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: >> into held must block (rc=$rc)"
+  bashrun "command cp /tmp/nothing $W/y.txt" /tmp "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: cp into held must block (rc=$rc)"
+  bashrun "sed -i 's/a/b/' a.txt" "$W" "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: a relative sed -i with cwd inside held must block (rc=$rc)"
+  bashrun "git -C $W am /tmp/p.patch" /tmp "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: git am into held must block (rc=$rc)"
+  bashrun "command sed -i \"s|a|b|\" $W/a.txt 2>/dev/null" /tmp "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: a pipe character inside quotes must not split the command (rc=$rc)"
+  bashrun "grep -rn foo $W" /tmp "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: a read of held must pass (rc=$rc)"
+  bashrun "cat $W/a.txt > /tmp/out.txt 2>/dev/null" /tmp "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: a redirect to scratch must pass (rc=$rc)"
+  bashrun $'cat > /tmp/f.sh <<\'EOF\'\necho hi > '"$W"$'/z.txt\nEOF' /tmp "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: a heredoc body naming held is data and must pass (rc=$rc)"
+  bashrun "git -C $W worktree add /tmp/xyz-wt -b topic" /tmp "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: worktree add on held is the sanctioned path and must pass (rc=$rc)"
+  bashrun "git -C $W apply --check /tmp/p.patch" /tmp "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: apply --check is a read and must pass (rc=$rc)"
+  bashrun "command sed -i 's/a/b/' $W/a.txt" /tmp "$S1"
+  [[ $rc -eq 0 ]] && ok || bad "bash: the holder's own write must pass (rc=$rc)"
+  # 14. linked worktrees of a held repo are never blocked — Edit or Bash (the sanctioned path)
+  WT=$(mktemp -d) && rmdir "$WT" && git -C "$W" worktree add -q "$WT" -b wt-test 2>/dev/null
+  run "$GATE" "$(jq -nc --arg f "$WT/a.txt" --arg s "$S2" '{tool_name:"Edit",tool_input:{file_path:$f},session_id:$s,cwd:"/tmp"}')"
+  [[ $rc -eq 0 ]] && ok || bad "gate: an Edit inside a linked worktree of a held repo must pass (rc=$rc)"
+  bashrun "command sed -i 's/a/b/' $WT/a.txt" /tmp "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: a write inside a linked worktree must pass (rc=$rc)"
+  git -C "$W" worktree remove --force "$WT" 2>/dev/null
+  run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
+
   rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease/$(printf '%s' "$RES" | cksum | tr -d ' ')"*
   rm -rf "$W"
 fi

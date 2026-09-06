@@ -21,6 +21,11 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/destructive-op-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/vault-lease-gate.sh",
+            "timeout": 5
           }
         ]
       },

@@ -168,7 +168,18 @@ Handoff tools: `vault_handoff_*` (adapter ≥ 0.5.0; on an older adapter,
 **This is enforced, not advisory** (leg 4, 2026-08-10): the `PreToolUse` hook
 `hooks/vault-lease-gate.sh` resolves each `Edit`/`Write`/`NotebookEdit`
 target to its repo and blocks the call when someone else holds that lease,
-naming the holder and the worktree + handoff path. It **fails open** on every
+naming the holder and the worktree + handoff path. Since 2026-09-06 it gates
+write-shaped **Bash** the same way (ruled option 1 of three, after a
+measurement found 80 cross-repo Bash writes in 21 sessions over 30 days): it
+parses the command for the repositories its write targets name —
+redirections, `sed -i`, `tee`, `cp`/`mv`/`rsync` destinations, `rm`, `mkdir`,
+`touch`, `prettier --write`, `npm install`, the working-tree-mutating `git`
+verbs (never `worktree`, never `apply --check`) — with `cd` tracked and
+heredoc bodies ignored, and blocks when any of those checkouts is held by
+someone else. What it cannot parse it allows (a write inside `python - <<EOF`,
+a path in a variable), so it narrows the gap rather than closing it.
+**Linked worktrees are never blocked**, in any mode: they are the sanctioned
+path, and their remote is the held checkout's. It **fails open** on every
 unknown — no vault env, unreachable server, non-repo path, unclaimed repo —
 so a blocked edit always means a real, current, someone-else lease, never
 infrastructure trouble. It reconstructs your holder id as
