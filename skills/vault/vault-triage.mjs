@@ -35,7 +35,7 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import process from 'node:process';
-import {nearestTags, NEIGHBOR_WINDOW} from './tag-distance.mjs';
+import {nearestTags, neighborPrefixes, NEIGHBOR_WINDOW} from './tag-distance.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -335,18 +335,24 @@ const prepare = async () => {
       });
     }
     const neighborJobs = [...groups.values()].map(group => async () => {
-      const window3 = encodeURIComponent(group.tag.slice(0, 3));
-      const response = await api('GET', `/tags?prefix=${window3}&limit=${NEIGHBOR_WINDOW}`);
-      const found = new Map(response.items.map(entry => [entry.tag, entry]));
-      // Window itself truncated: re-query on the full candidate so the closest
-      // family (singular/plural, suffixes) is present regardless of rank.
-      if (response.total > response.items.length) {
-        const exact = encodeURIComponent(group.tag);
-        const closest = await api('GET', `/tags?prefix=${exact}&limit=${NEIGHBOR_WINDOW}`);
-        for (const entry of closest.items) found.set(entry.tag, entry);
+      const found = new Map();
+      const windows = [];
+      const fetchWindow = async prefix => {
+        const query = `/tags?prefix=${encodeURIComponent(prefix)}&limit=${NEIGHBOR_WINDOW}`;
+        const response = await api('GET', query);
+        for (const entry of response.items) found.set(entry.tag, entry);
+        windows.push({prefix, total: response.total, fetched: response.items.length});
+        return response.total > response.items.length;
+      };
+      let truncated = false;
+      for (const prefix of neighborPrefixes(group.tag)) {
+        if (await fetchWindow(prefix)) truncated = true;
       }
+      // A window truncated: re-query on the full candidate so the closest
+      // family (singular/plural, suffixes) is present regardless of rank.
+      if (truncated) await fetchWindow(group.tag);
       group.neighbors = nearestTags(group.tag, [...found.values()]);
-      group.neighbors_total = response.total;
+      group.neighbor_windows = windows;
       group.count = group.records.length;
     });
     await pool(neighborJobs);
