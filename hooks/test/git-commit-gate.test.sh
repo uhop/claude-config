@@ -59,6 +59,16 @@ check ALLOW "vault-put x --append f"
 # ── the opt-in marker ──
 check ALLOW "$V -m x" "$MARKED"
 check ALLOW "cd sub && $V -m x" "$MARKED"
+# ── the marker belongs to the repo the commit runs in, not the session cwd (2026-09-06) ──
+check ALLOW "cd $MARKED && $V -m x"
+check ALLOW "git -C $MARKED commit -m x"
+check ALLOW "(cd $MARKED && git add -A && $V -q -F msg)"
+check ALLOW "cd $MARKED && git add . ; $V -m x"
+check DENY  "cd $PLAIN && $V -m x" "$MARKED"
+check DENY  "git -C $PLAIN commit -m x" "$MARKED"
+check DENY  "cd $MARKED && $V -m x && cd $PLAIN && $V -m y"
+check ALLOW "cd \"\$W\" && $V -m x" "$MARKED"
+check DENY  "cd \"\$W\" && $V -m x"
 # ── parser absent: the substring verdict stands ──
 MISSING=$(mktemp -d); cp "$HOOK" "$MISSING/git-commit-gate.sh"
 jq -nc --arg c "echo \"$V\"" --arg d "$PLAIN" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
