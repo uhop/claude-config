@@ -26,6 +26,7 @@ in the same row.
 | Reads — document, folder, search, lint, status, suggestions, queue slices, graph | **MCP tools** | (always existed) |
 | Body edits — append, replace-a-string | **`vault_append` / `vault_replace`** | `vault-put --append/--replace` |
 | One `## Heading` section — read it, or replace its content leaving every other byte alone | **`vault_read_section` / `vault_replace_section`** (adapter ≥ 0.7.0; server ≥ 2026-09-06) | `vault-curl '/vault/<path>?section=<heading line>'` + `POST /vault/edit` with `{path, op: "replace-section", heading, body}` |
+| One queue item — remove it, insert it, or move it between documents with a trail after its title | **`vault_remove_item` / `vault_insert_item` / `vault_move_item`** (adapter ≥ 0.7.0; server ≥ 2026-09-06, D35) | `POST /vault/edit` with `{op: "remove-item" \| "insert-item", …}` + `POST /vault/move-item` |
 | One frontmatter array member (`related:`, `tags:`, `agent.tags_suggested`) | **`vault_patch_fm`** | `PATCH /sections/{record_id}/fm` via `vault-curl` |
 | Whole-document create or rewrite | **`vault_write_file`** (`expected_etag` when the read might be stale) | `vault-put --fm/--body` |
 | Replace a note, archiving the old one | **`vault_supersede`** | `POST /vault/supersede` via `vault-curl` |
@@ -33,7 +34,7 @@ in the same row.
 | Search-before-write | **`vault_propose`** | `POST /vault/propose` |
 | Raw inbox, cleanup-lint, embed-pending, incremental-reindex, run-all | **`vault_raw_inbox` / `vault_cleanup_lint` / `vault_embed_pending` / `vault_incremental_reindex` / `vault_run_scans`** | `vault-curl /maintenance/…` |
 | Repo leases — list/events, claim/renew/release/transfer | **`vault_lease_*`** (adapter ≥ 0.4.0; § Agent coordination below) | `vault-curl /leases[/events]` + `POST /leases/claim\|renew\|release\|transfer` |
-| Handoffs — create/list/get/events, claim/resolve/resubmit/note | **`vault_handoff_*`** (adapter ≥ 0.5.0; § Agent coordination below) | `vault-curl /handoffs[/{id}\|/events]` + `POST /handoffs[/claim\|resolve\|resubmit\|note]` |
+| Handoffs — create/list/get/events, claim/resolve/resubmit/note/verify | **`vault_handoff_*`** (adapter ≥ 0.5.0; `vault_handoff_verify` and `touches` ≥ 0.7.0; § Agent coordination below) | `vault-curl /handoffs[/{id}\|/events]` + `POST /handoffs[/claim\|resolve\|resubmit\|note\|verify]` |
 | Handoff artifact — the git patch being handed over | **`vault_handoff_put_artifact`** (adapter ≥ 0.6.0); **read it to a file**, not into context: `vault-curl /handoffs/{id}/artifact -s > work.patch` | `vault-curl /handoffs/{id}/artifact -X PUT --data-binary @work.patch` |
 | `/commit`, snapshots, `cleanup-tag-aliases`, `release-embedder`, `folder-listing`, individual `find-*` scans | **`vault-curl`** | — deliberately not exposed on MCP |
 
@@ -278,6 +279,12 @@ leases: a single-agent session that owns its cwd repo never files one.
   returns the original (`status: "existing"`) instead of filing twice. `from`
   is `{host, session, repo?}` — provenance only, nothing keys off it. **Keep
   your branch/worktree until the handoff resolves**; it is the backup copy.
+  **Declare what the work changes** in `touches: [{kind, key, operation}]`
+  (`kind`: `file` | `symbol` | `schema` | `config` | `api`; `operation`:
+  `add` | `extend` | `modify` | `replace` | `remove` | `rename`; server ≥
+  2026-09-06, D34) — said, never inferred from the prose: the owner's inbox
+  reports `overlaps` with the other in-flight handoffs to the same role from
+  exactly this list, and a handoff without it overlaps nothing.
 - **Attaching the work**: for anything the owner should *apply*, follow the
   create with `vault_handoff_put_artifact({id, content})` — a patch from
   `git format-patch --base=$(git merge-base main HEAD) main..HEAD --stdout`
@@ -287,12 +294,22 @@ leases: a single-agent session that owns its cwd repo never files one.
   singleton server's spool is the shared storage. 10 MB cap — past that,
   reference a branch instead of shipping a blob; `ext: "bundle"` with
   `encoding: "base64"` is the escape hatch for binary or multi-branch work.
-  The upload sets `ref` to `{type: "spool"}` itself. The artifact is captured
-  at submit time, so it no longer depends on your worktree surviving.
-- **Applying one** (you are the owner): stream it to a file rather than into
-  your context — `vault-curl /handoffs/<id>/artifact -s > work.patch` — then
-  **validation-first**: `git apply --check work.patch`, and only then
-  `git am --3way < work.patch`. A patch that will not apply is a `rejected`
+  The upload sets `ref` to `{type: "spool"}` itself, and reads the patch's
+  `base-commit:` trailer into `base_sha`. The artifact is captured at submit
+  time, so it no longer depends on your worktree surviving. **Then record the
+  gates you ran** with `vault_handoff_verify({id, check, sha, exit, by})`, one
+  call per check, `sha` being the commit the patch was cut from: a
+  verification is bound to that sha, and every read shows it `stale` once the
+  artifact's base moves, so a pass on an older patch is shown, never trusted.
+- **Applying one** (you are the owner): read the inbox item's `overlaps`
+  and each verification's `stale` first — an overlap is another in-flight
+  handoff on the same file or symbol, a stale pass is a gate that ran on a
+  patch that has since changed. Then stream the artifact to a file rather
+  than into your context — `vault-curl /handoffs/<id>/artifact -s >
+  work.patch` — and **validation-first**: `git apply --check work.patch`, and
+  only then `git am --3way < work.patch`. After your own gates pass on the
+  applied result, `vault_handoff_verify` with the applied sha, so the record
+  carries both sides' checks. A patch that will not apply is a `rejected`
   resolution with the failure in `result`, never a silent drop; the submitter
   wakes on the status, rebases, and resubmits the same handoff.
 - **Waiting on one**: poll `vault_handoff_get({id})` and watch `status`. When
@@ -310,8 +327,9 @@ leases: a single-agent session that owns its cwd repo never files one.
   return without one is a silent drop. Claims expire lazily (~30 min), so an
   abandoned review reopens rather than wedging the work.
 - **Reworking**: a returned handoff comes back to *you*. Fix it, then
-  `vault_handoff_resubmit({id, ref?, body?})` — same record, same id, so the
-  discussion and history stay in one place. Never file a fresh handoff for a
+  `vault_handoff_resubmit({id, ref?, body?, touches?})` — same record, same
+  id, so the discussion and history stay in one place; `touches` is replaced
+  whole when given, so restate the full list. Never file a fresh handoff for a
   second attempt.
 - **Discussion** rides `vault_handoff_note({id, author, text})`, append-only
   and attached to the work; refused once the handoff is done/rejected.
@@ -406,7 +424,13 @@ rather than a preference:
   into `queue-archive.md` means reproducing multi-KB paragraphs exactly.
   `vault_replace` takes `from`/`to` as strings, so that is you retyping them;
   `--replace-file` matches byte-for-byte against what `sed` cut. Retyping is
-  the risk, not the round-trip.
+  the risk, not the round-trip. **From D35 (2026-09-06) the server does the
+  move**: `vault_move_item({from_path, to_path, title, to_section, trail,
+  create_section})` locates the item by its bold title exactly once, inserts
+  the **Shipped** trail after the title, creates a new date block on request,
+  and writes the destination before the source — nothing is retyped and
+  nothing round-trips. The `sed` + `--replace-file` cut above is the fallback
+  on an adapter before 0.7.0 or a server before that date, not the recipe.
 - **A whole section is a server-side span, not a retyped block.** `## Active`,
   the `## GitHub` block in `state.md`, a decisions entry: read it with
   `vault_read_section({path, heading: "## Active"})` and rewrite it with
