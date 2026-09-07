@@ -25,6 +25,7 @@ in the same row.
 | --- | --- | --- |
 | Reads — document, folder, search, lint, status, suggestions, queue slices, graph | **MCP tools** | (always existed) |
 | Body edits — append, replace-a-string | **`vault_append` / `vault_replace`** | `vault-put --append/--replace` |
+| One `## Heading` section — read it, or replace its content leaving every other byte alone | **`vault_read_section` / `vault_replace_section`** (adapter ≥ 0.7.0; server ≥ 2026-09-06) | `vault-curl '/vault/<path>?section=<heading line>'` + `POST /vault/edit` with `{path, op: "replace-section", heading, body}` |
 | One frontmatter array member (`related:`, `tags:`, `agent.tags_suggested`) | **`vault_patch_fm`** | `PATCH /sections/{record_id}/fm` via `vault-curl` |
 | Whole-document create or rewrite | **`vault_write_file`** (`expected_etag` when the read might be stale) | `vault-put --fm/--body` |
 | Replace a note, archiving the old one | **`vault_supersede`** | `POST /vault/supersede` via `vault-curl` |
@@ -44,8 +45,9 @@ nothing inside the batch harnesses.
 
 **Prefer the narrow write over the whole-document one.** `vault_write_file`
 and `vault_update_piece` replace an entire document, so a mistake costs the
-whole document; `vault_append`, `vault_replace`, and `vault_patch_fm` are
-atomic server-side ops whose blast radius is the thing being changed. Reach
+whole document; `vault_append`, `vault_replace`, `vault_replace_section`, and
+`vault_patch_fm` are atomic server-side ops whose blast radius is the thing
+being changed. Reach
 for a whole-document write only when authoring a new note or genuinely
 rewriting one.
 
@@ -102,6 +104,7 @@ Registered as `mcp__vault__<name>`; fetch schemas with
 | --- | --- |
 | Session-start bundle (reindex + lint + suggestions + workflow + logs + project) | `vault_resume_bundle` |
 | Read a document (composes atomized folders from `<stem>.md`) | `vault_read_file` |
+| One section of a document, with the document's etag | `vault_read_section` (adapter ≥ 0.7.0) |
 | Frontmatter only, no body | `vault_read_meta` |
 | List a folder | `vault_list_folder` |
 | Search | `vault_search` (`mode=lexical` default, `semantic` opt-in) |
@@ -322,8 +325,8 @@ leases: a single-agent session that owns its cwd repo never files one.
 Still the right tool from a **script**, from a pre-0.1.0 adapter, or when a
 multi-pair all-or-nothing replace is wanted (the MCP `vault_replace` is one op
 per call; `vault-put` batches pairs into a single round-trip). From the agent
-on a parity adapter, prefer `vault_append` / `vault_replace` / `vault_write_file`
-— same server ops, no scratch files.
+on a parity adapter, prefer `vault_append` / `vault_replace` /
+`vault_replace_section` / `vault_write_file` — same server ops, no scratch files.
 
 `~/.claude/skills/vault/vault-put.mjs` replaces the hand-rolled jq/python
 payload-assembly blocks (which failed 4× in one session — reflect 2026-07-10;
@@ -404,10 +407,22 @@ rather than a preference:
   `vault_replace` takes `from`/`to` as strings, so that is you retyping them;
   `--replace-file` matches byte-for-byte against what `sed` cut. Retyping is
   the risk, not the round-trip.
+- **A whole section is a server-side span, not a retyped block.** `## Active`,
+  the `## GitHub` block in `state.md`, a decisions entry: read it with
+  `vault_read_section({path, heading: "## Active"})` and rewrite it with
+  `vault_replace_section({path, heading, body})` (vault-storage D30,
+  2026-09-06 — the heading is matched as a whole line, exactly once, with
+  code fences masked; the span runs to the next heading of the same or
+  higher level; the body is trimmed and framed; an absent or ambiguous
+  heading is a 409 `section_assert_failed`). Nothing is retyped and nothing
+  outside the span moves. It does **not** move a queue item: an item is a
+  slice of a section, and rewriting the section would round-trip the whole
+  Backlog through context — the item move stays on the file-based cut above.
 
 The boundary: **short strings you can type without risk go through
-`vault_replace` / `vault_patch_fm`** — the atomic server-side ops with the
-small blast radius. Drop to file-based reads and `vault-put --replace-file`
+`vault_replace` / `vault_patch_fm`, and a whole section through
+`vault_replace_section`** — the atomic server-side ops with the small blast
+radius. Drop to file-based reads and `vault-put --replace-file`
 only when the block is too large to reproduce by hand or the document is too
 large to pull into context. Reads you actually intend to *read* — a note you
 are about to reason about, a folder listing, a search — stay on MCP always.
