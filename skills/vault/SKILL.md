@@ -426,11 +426,15 @@ rather than a preference:
   `--replace-file` matches byte-for-byte against what `sed` cut. Retyping is
   the risk, not the round-trip. **From D35 (2026-09-06) the server does the
   move**: `vault_move_item({from_path, to_path, title, to_section, trail,
-  create_section})` locates the item by its bold title exactly once, inserts
-  the **Shipped** trail after the title, creates a new date block on request,
-  and writes the destination before the source — nothing is retyped and
-  nothing round-trips. The `sed` + `--replace-file` cut above is the fallback
-  on an adapter before 0.7.0 or a server before that date, not the recipe.
+  create_section})` locates the item by its bold title exactly once (the
+  `title` is the whole bold text, trailing period included — the same
+  string without the period is a 409 `item_assert_failed`, hit 2026-09-07),
+  inserts the **Shipped** trail after the title, creates a new date block on
+  request, and writes the destination before the source — nothing is retyped
+  and nothing round-trips. On an adapter before 0.7.0 the same call is
+  `POST /vault/move-item` through `vault-curl` with that JSON body; the
+  `sed` + `--replace-file` cut above is the fallback on a server before that
+  date, not the recipe.
 - **A whole section is a server-side span, not a retyped block.** `## Active`,
   the `## GitHub` block in `state.md`, a decisions entry: read it with
   `vault_read_section({path, heading: "## Active"})` and rewrite it with
