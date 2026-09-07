@@ -26,16 +26,18 @@
 //   duplicate      keyed by id:   "reject" | "related" | "merge-candidate" |
 //                                 {"action":"contradiction","note":"..."} | "skip" | null
 // null/skip/defer reopen the claim (when claimed) and leave the item pending.
+//   The report's `reopened[]` names those ids; under a claim holder the report
+//   is also written to a holder-named file beside the worksheet, which
+//   vault-sweep.mjs reads to floor a kind whose pending set is only skips.
 //
 // Exit codes: 0 ok · 1 HTTP/partial failures · 2 usage · 3 decisions rejected
 // before any write (unknown id, unknown tag on accept, bad edge type).
 // Exits non-zero — run solo or guard with `|| true` in parallel Bash batches.
 
 import {readFileSync, writeFileSync} from 'node:fs';
-import {join} from 'node:path';
-import {tmpdir} from 'node:os';
 import process from 'node:process';
 import {nearestTags, neighborPrefixes, NEIGHBOR_WINDOW} from './tag-distance.mjs';
+import {reportPathFor, worksheetPathFor} from './triage-report.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -306,10 +308,7 @@ const prepare = async () => {
   // concurrent sub-agents can't clobber each other: the harness pushes every
   // sibling to one shared session scratchpad, so any fixed filename collides by
   // construction, while the holder is unique per agent (CLAUDE.md § Scratch files).
-  if (opts.claim && !opts.out && holder) {
-    const safe = holder.replace(/[^a-zA-Z0-9._-]/g, '_');
-    opts.out = join(tmpdir(), `vault-triage-${safe}.json`);
-  }
+  if (opts.claim && !opts.out && holder) opts.out = worksheetPathFor(holder);
 
   const worksheet = {
     kind,
@@ -518,6 +517,7 @@ const resolve = async () => {
       accepted: 0,
       rejected: 0,
       skipped: 0,
+      reopened: [],
       failures: [],
       taxonomy_added: [],
       aliased: [],
@@ -715,11 +715,20 @@ const resolve = async () => {
     try {
       await api('POST', `/suggestions/${id}/reopen`);
     } catch (err) {
-      if (!(err instanceof ApiError) || err.code === 'already_pending') continue;
-      failure(`reopen:${id}`, err);
+      if (!(err instanceof ApiError)) continue;
+      if (err.code !== 'already_pending') {
+        failure(`reopen:${id}`, err);
+        continue;
+      }
     }
+    plan.report.reopened.push(id);
   }
 
+  plan.report.resolved_at = new Date().toISOString();
+  if (worksheet.holder) {
+    plan.report.report_file = reportPathFor(worksheet.holder);
+    writeFileSync(plan.report.report_file, JSON.stringify(plan.report, null, 2) + '\n');
+  }
   console.log(JSON.stringify(plan.report, null, 2));
   if (plan.report.failures.length) process.exit(1);
 };

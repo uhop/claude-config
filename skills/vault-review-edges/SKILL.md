@@ -50,7 +50,10 @@ Decisions map — one value per item id:
 
 A typed value = accept with that type; `"reject"` and `"cites"` both mean
 "the default cites is correct" (reject); `"skip"`/null leaves the item
-pending (claim reopened). `resolve` validates the whole file before any
+pending (claim reopened, listed in the report's `reopened[]`; under a claim
+holder the report is also left as a holder-named file that `/vault sweep`
+reads, so a pass's skips floor the kind instead of costing a second
+dispatch). `resolve` validates the whole file before any
 write (exit 3 on an unknown id or type), sends one resolve-batch — the
 server pins FM `edges:` per accept and settles rows as `fm-override` — and
 prints a JSON report. Exit 0 ok · 1 partial failures · 3 rejected pre-write.

@@ -57,7 +57,10 @@ gone), then batch-accepts; the reindex mirrors `related-to` edges.
 `contradiction` → batch-reject + the note surfaces in the report (no
 server-side contradiction surface yet). `merge-candidate` → left pending
 (claim reopened) and listed in the report for the main session.
-`skip`/null → left pending. Validation is all-before-any-write (exit 3);
+`skip`/null → left pending. Both land in the report's `reopened[]`, and under
+a claim holder the report is also left as a holder-named file that
+`/vault sweep` reads, so a pass's skips and merge candidates floor the kind
+instead of costing a second dispatch. Validation is all-before-any-write (exit 3);
 exit 0 ok · 1 partial failures. Run solo or `|| true` in parallel batches.
 
 ## Judgment — per pair

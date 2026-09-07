@@ -1135,10 +1135,18 @@ W=$(mktemp -d)
    becomes that kind's **stuck floor**; a later count above the floor
    reopens it), advances the § Ordering constraints stage DAG, rolls
    convergence rounds, and prints either the next dispatch plan or the
-   final `{status: "done"}` report. Two rounds is the normal fixpoint;
-   `--max-rounds` is a runaway cap, not a target.
+   final `{status: "done"}` report. A kind whose whole pending set is
+   what the last pass released back — skips, defers, merge candidates —
+   is floored at once, not after a second dispatch: the triage harness
+   leaves a per-holder report naming its `reopened` ids, `next` compares
+   them with the kind's pending list, and prints those items under
+   `skipped` for the main session to hand-triage (2026-09-06; a second
+   pass still runs when the count fell and unskipped items remain). Two
+   rounds is the normal fixpoint; `--max-rounds` is a runaway cap, not a
+   target.
 4. **Final summary** from the done report — `rounds` is the per-round
-   before/after convergence trail; `floors` and `residue` name what
+   before/after convergence trail; `floors`, `residue`, and `skipped`
+   (the items a pass declined to judge, by id and payload) name what
    survived and why (`reason`: converged / no_change_round /
    max_rounds); `one_shots` carries the cleanup/embed/expire results —
    **plus the itemized structural mutations collected from the sub-agent

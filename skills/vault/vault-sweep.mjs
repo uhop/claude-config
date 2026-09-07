@@ -22,11 +22,17 @@
 //   6 report (inefficiency_detected + infrastructure_upgrade triage — last,
 //     so review_backlog_high verification sees the post-drain queue)
 //
+// A kind whose whole pending set is what the last pass released back (skip /
+// defer / merge-candidate — the triage harness's per-holder report names
+// them) is floored at once and its items printed under `skipped`, instead of
+// costing a second dispatch to reach the same skips (filed 2026-09-06).
+//
 // Exit 0 (plans and done are both success) · 1 HTTP failure · 2 usage.
 
 import {readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import {reportPathFor} from './triage-report.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -171,6 +177,40 @@ const measure = async () => {
   };
 };
 
+// Ids the last pass released back to pending, from the report the triage
+// harness leaves per holder. Missing or pre-sweep report (a same-named holder
+// from an earlier sweep today) → empty set → the count-based floor decides.
+const reopenedBy = (state, kind) => {
+  const ids = new Set();
+  for (const holder of state.holders?.[kind] ?? []) {
+    let report;
+    try {
+      report = JSON.parse(readFileSync(reportPathFor(holder), 'utf8'));
+    } catch {
+      continue;
+    }
+    if (!(report.resolved_at >= state.started)) continue;
+    for (const id of report.reopened ?? []) ids.add(id);
+  }
+  return ids;
+};
+
+// page by items.length, never by the requested limit — the server caps at 100
+const pendingItems = async kind => {
+  const items = [];
+  for (let offset = 0; ;) {
+    const page = await api(
+      'GET',
+      `/suggestions?kind=${kind}&status=pending&limit=100&offset=${offset}`
+    );
+    if (!page.items.length) break;
+    for (const {id, payload} of page.items) items.push({id, payload});
+    offset += page.items.length;
+    if (offset >= page.total) break;
+  }
+  return items;
+};
+
 const actionSet = () => {
   const set = opts.include ?? ALL_KINDS;
   return set.filter(k => !opts.exclude.includes(k));
@@ -232,8 +272,12 @@ const plan = async (state, counts, worklist) => {
     }
     if (active.length) {
       const dispatch = [];
-      for (const kind of active)
-        dispatch.push(await buildDispatch(state, kind, counts[kind], worklist));
+      state.holders = {};
+      for (const kind of active) {
+        const entry = await buildDispatch(state, kind, counts[kind], worklist);
+        dispatch.push(entry);
+        state.holders[kind] = entry.agents.map(agent => agent.holder).filter(Boolean);
+      }
       state.pending = active;
       return {status: 'dispatch', round: state.round, stage: state.stage + 1, dispatch};
     }
@@ -253,6 +297,7 @@ const endOfRound = (state, counts) => {
       reason: !residue.length ? 'converged' : noChange ? 'no_change_round' : 'max_rounds',
       rounds: state.trail,
       floors: state.floors,
+      skipped: state.skipped ?? {},
       residue: Object.fromEntries(ALL_KINDS.filter(k => counts[k] > 0).map(k => [k, counts[k]])),
       one_shots: state.one_shots
     };
@@ -297,6 +342,8 @@ if (command === 'begin') {
     stage: 0,
     passes: {},
     floors: {},
+    holders: {},
+    skipped: {},
     pending: [],
     one_shots: oneShots,
     trail: [{round: 1, before: {...counts}}]
@@ -312,11 +359,26 @@ if (command === 'begin') {
   opts.include = state.include;
   opts.exclude = state.exclude;
   const {counts, worklist} = await measure();
-  // progress evaluation for the kinds the last plan dispatched: a count that
-  // stopped dropping is a stuck floor; a later count above it reopens the kind
+  // progress evaluation for the kinds the last plan dispatched: a pending set
+  // the pass released back whole is a floor now, with its items named; else a
+  // count that stopped dropping is a stuck floor; a count above a floor reopens
+  state.skipped ??= {};
+  const floored = {};
   for (const kind of state.pending ?? []) {
     const before = state.trail[state.trail.length - 1].before[kind];
     const last = state.lastCounts?.[kind] ?? before;
+    if (counts[kind] > 0) {
+      const reopened = reopenedBy(state, kind);
+      if (reopened.size) {
+        const pending = await pendingItems(kind);
+        if (pending.length && pending.every(item => reopened.has(item.id))) {
+          state.floors[kind] = counts[kind];
+          state.skipped[kind] = pending;
+          floored[kind] = pending;
+          continue;
+        }
+      }
+    }
     if (counts[kind] > 0 && counts[kind] >= last) state.floors[kind] = counts[kind];
     else if (kind in state.floors && counts[kind] > state.floors[kind]) delete state.floors[kind];
   }
@@ -328,6 +390,7 @@ if (command === 'begin') {
     if (!result) result = await plan(state, counts, worklist);
     if (!result) result = endOfRound(state, counts); // next round had nothing dispatchable
   }
+  if (result.status === 'dispatch' && Object.keys(floored).length) result.skipped = floored;
   saveState(state);
   emit(result);
 }

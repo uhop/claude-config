@@ -52,7 +52,10 @@ per-item `in_taxonomy` / `canonical` for `tag_suggestion`; `path_moved`
 flags where a record relocated since filing. `resolve` performs the
 taxonomy/alias POSTs, the per-record FM tag strips (server-side membership
 primitive — no client read-modify-write), one `resolve-batch`, and reopens
-claimed-but-skipped items; it prints a JSON report. Exit 0 ok · 1 partial
+claimed-but-skipped items, listed in the report's `reopened[]`; it prints a
+JSON report and, under a claim holder, also leaves it as a holder-named file
+that `/vault sweep` reads to floor a kind whose pending set is only skips.
+Exit 0 ok · 1 partial
 failures (`failures[]` in the report) · 3 decisions file rejected before
 any write. Run it solo or guard with `|| true` in parallel Bash batches.
 
