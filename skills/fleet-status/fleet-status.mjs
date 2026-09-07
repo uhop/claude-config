@@ -1170,7 +1170,12 @@ const fileItem = async () => {
   const body = readFileSync(bodyFile, 'utf8').trim();
   if (!body) fail(1, 'the item body is empty');
   const heading = /[.!?]$/.test(title) ? title : `${title}.`;
-  const itemText = `- **${heading}** ${body}`;
+  // every column-0 bullet is its own queue item (topics/project-queue-convention)
+  const continuation = body
+    .split('\n')
+    .map((line, i) => (i === 0 || !line.trim() ? line : `  ${line}`))
+    .join('\n');
+  const itemText = `- **${heading}** ${continuation}`;
   const docPath = `projects/${project}/queue.md`;
   const doc = await vaultGet(docPath);
   if (!doc) {

@@ -199,6 +199,10 @@ does the placement; you write the body:
   meaningful it is; your opinion; proposed actions; and, when a reply is warranted, a paste-ready
   draft response in its own fenced block per `topics/paste-ready-markdown-for-markdown-systems`.
   End with `Last seen: <collected_at>`. Preserve the prose on an update — the item accrues.
+- **Write the body at column 0; the script indents it.** Every line after the first is indented
+  by two spaces (blank lines stay blank), so bullets, a numbered list, and a fenced draft stay
+  inside the one item: the queue convention counts every column-0 bullet as an item, and a body
+  pasted verbatim was served as several (2026-09-06). Nested bullets keep their relative depth.
 - An item closes when Eugene archives it (`queue-archive.md`) or the thread closes upstream; a
   closed thread's item is not refiled.
 
