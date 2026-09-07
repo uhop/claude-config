@@ -235,7 +235,14 @@ claimed", which is why the claim moved into a hook.
     handoff (below) with the patch, doorbell via `SendMessage` if the holder
     is reachable. Keep the branch until it resolves.
   - **Unclaimed but dirty → do not claim**: someone's in-flight state is
-    present (possibly the user's); worktree + handover, and say so.
+    present (possibly the user's); worktree + handover, and say so. One
+    exception: the dirt is this session's own earlier side-claimed burst,
+    verified three ways — the dirty paths are exactly that burst's files,
+    `git -C <repo> diff --stat` matches what you left, and your own
+    sentences are in the diff. Then side-claim again with an attestation
+    naming the earlier burst and edit directly; a second burst on your own
+    uncommitted first one is one review unit. Dirt you cannot account for
+    is someone's (2026-09-06).
   - **Registry unreachable → assume held**: worktree + handover, as before.
     An outage costs throughput, never correctness.
 - **Holder id**: `<hostname>/<session-prefix>`, e.g. `nuke/59bd32b6` —

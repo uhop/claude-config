@@ -31,6 +31,7 @@ const FACTS = {
   ]),
   tags: new Map([['1.8.0', '2026-08-18']]),
   versions: new Set(['0.0.1', '1.8.0']),
+  manifests: ['package.json'],
   commits: new Map([
     [SHA_A, '2026-08-18'],
     [SHA_B, '2026-09-06']
@@ -100,7 +101,7 @@ test('versions: a release verb makes the claim; tags and package.json history an
     'Release 1.8.0 (2026-08-18) shipped; version 1.9.0 is next; released 0.0.1 first; tagged 1.8.0 on 2026-08-30.'
   );
   assert.deepEqual(details(r), [
-    'version: 1.9.0 — never a tag nor a package.json version here',
+    'version: 1.9.0 — never a tag nor a version in `package.json` here',
     'version: 1.8.0 was tagged 2026-08-18, the note pairs it with 2026-08-30'
   ]);
   assert.deepEqual(
@@ -114,6 +115,21 @@ test('versions: a release verb makes the claim; tags and package.json history an
   });
   assert.equal(bare.findings.length, 0);
   assert.match(bare.unchecked[0].detail, /no tags and no package.json/);
+});
+
+test('versions: a sub-package manifest answers its own versions; a miss names every manifest', () => {
+  const facts = {
+    ...FACTS,
+    versions: new Set(['1.8.0', '0.0.6']),
+    manifests: ['package.json', 'mcp/package.json']
+  };
+  const r = verifyClaims(
+    extractClaims('mcp released 0.0.6, then published 0.0.7 (2026-09-01).'),
+    facts
+  );
+  assert.deepEqual(details(r), [
+    'version: 0.0.7 — never a tag nor a version in `package.json` or `mcp/package.json` here'
+  ]);
 });
 
 test('counts: files in a directory and lines in a file, else unchecked', () => {

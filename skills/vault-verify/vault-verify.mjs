@@ -97,17 +97,23 @@ const tags = new Map(
     .filter(Boolean)
     .map(l => l.split(' '))
 );
-// Every version the package ever declared, so an unreleased 0.0.1 a note
-// cites is a real version here and not a missing tag.
+// Every version any committed package.json ever declared — sub-packages and
+// workspaces too, so a note citing mcp/'s 0.0.6 is not a missing root tag, and
+// an unreleased 0.0.1 is a real version here.
+const manifests = [...history.keys()]
+  .filter(p => /(^|\/)package\.json$/.test(p) && !p.includes('node_modules/'))
+  .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
 const versions = new Set();
-{
+for (const manifest of manifests) {
   let out = '';
   try {
-    out = git(root, 'log', '-p', '--format=', '--', 'package.json');
+    out = git(root, 'log', '--all', '-p', '--format=', '--', manifest);
   } catch {}
   for (const m of out.matchAll(/^\+\s*"version":\s*"([^"]+)"/gm)) versions.add(m[1]);
+  if (!tracked.has(manifest)) continue;
   try {
-    versions.add(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version);
+    const {version} = JSON.parse(readFileSync(join(root, manifest), 'utf8'));
+    if (version) versions.add(version);
   } catch {}
 }
 const topLevel = new Set();
@@ -125,7 +131,7 @@ const lineCount = path => {
   return n;
 };
 const exists = path => existsSync(join(root, path));
-const facts = {tracked, exists, history, tags, versions, commits, lineCount, topLevel};
+const facts = {tracked, exists, history, tags, versions, manifests, commits, lineCount, topLevel};
 
 // --- notes from the vault ------------------------------------------------
 const api = path =>

@@ -128,7 +128,7 @@ const dayDiff = (a, b) => Math.round((Date.parse(a) - Date.parse(b)) / 86400000)
 const TOLERANCE = 1; // a commit's author date is the day the work was done, give or take a timezone
 
 // facts: {tracked: Set<path>, exists(path) → bool, history: Map<path, {first, last}>,
-//         tags: Map<name, date>, versions: Set<semver>, commits: Map<sha, date>,
+//         tags: Map<name, date>, versions: Set<semver>, manifests: [path], commits: Map<sha, date>,
 //         lineCount(path) → n|null, topLevel: Set<dir>} — one git run each.
 export const verifyClaims = (claims, facts) => {
   const findings = [];
@@ -208,8 +208,14 @@ export const verifyClaims = (claims, facts) => {
             c,
             `${c.value} was tagged ${facts.tags.get(tag)}, the note pairs it with ${c.date}`
           );
-      } else if (!facts.versions.has(c.value))
-        push('version', c, `${c.value} — never a tag nor a package.json version here`);
+      } else if (!facts.versions.has(c.value)) {
+        const where = (facts.manifests ?? []).map(m => `\`${m}\``).join(' or ');
+        push(
+          'version',
+          c,
+          `${c.value} — never a tag nor a version in ${where || 'any package.json'} here`
+        );
+      }
     } else if (c.kind === 'count') {
       if (!c.target) {
         unchecked.push({

@@ -45,8 +45,9 @@ it solo or guard with `|| true` in a parallel Bash batch.
 ## What is a claim, and what answers it
 
 Everything comes from one git run each — `ls-files`, `log --all
---name-status`, the tag list, and every `"version"` the package.json ever
-declared — plus the working tree. Fenced code blocks are examples, not
+--name-status`, the tag list, and every `"version"` any committed
+`package.json` ever declared, sub-packages and workspaces included — plus
+the working tree. Fenced code blocks are examples, not
 claims, unless `--fenced`.
 
 - **PATH** — a backticked span with a slash (`skills/vault/tag-distance.mjs`,
@@ -67,11 +68,13 @@ claims, unless `--fenced`.
   day.
 - **VERSION** — a semver beside a release verb (`released 1.8.0`, `tagged
   0.4.0 on 2026-09-04`, `version 1.9.0`). Answered by the tags (naked, `v`,
-  or `<pkg>-` prefixed) or any package.json version ever committed, so an
-  unreleased `0.0.1` a note cites is real here. `npm 10.9.8` and another
-  package's `date-fns 4.4.0` carry no verb and are prose. Findings: *never
-  a tag nor a package.json version here*; a tag date that disagrees with
-  the paired date.
+  or `<pkg>-` prefixed) or a version any committed `package.json` ever
+  declared — the root's and every sub-package's (`mcp/package.json`), since
+  2026-09-06 — so an unreleased `0.0.1` a note cites is real here.
+  `npm 10.9.8` and another package's `date-fns 4.4.0` carry no verb and are
+  prose. Findings: *never a tag nor a version in `package.json` or
+  `mcp/package.json` here*, naming every manifest consulted; a tag date
+  that disagrees with the paired date.
 - **DATE** — a path paired with a date must have existed by then (first
   commit ≤ date + 1). This is the arms-before-the-catalogs class from the
   origin; it has fixtures and, so far, no real finding.
@@ -124,6 +127,10 @@ is wrong. Decision record: `projects/claude-config/decisions` D17.
   tracked and is now neither tracked nor on disk is *gone*.
 - **`queue-archive.md` and `corpus/` are skipped by default** and carry
   stale paths by nature; `--all` reads them when that is the question.
+- **Every committed `package.json` answers version claims**, a fixture
+  under a test directory included, so a version such a file declares passes
+  as real; the miss finding lists every manifest consulted, which is where
+  a fixture shows up.
 - Operates on **indexed records**; a note not yet imported is not read.
 
 ## When to run

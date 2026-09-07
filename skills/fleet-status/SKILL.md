@@ -189,7 +189,12 @@ does the placement; you write the body:
   resume finds more movement is replaced, never duplicated (ruled 2026-08-28). The title is
   therefore the key: `GitHub: <repo>#<number> — <title>` for an issue or PR,
   `GitHub: <repo> discussion #<number> — <title>` for a discussion,
-  `GitHub: <repo> <GHSA-id> — <summary>` for an advisory. Keep it stable across runs.
+  `GitHub: <repo> <GHSA-id> — <summary>` for an advisory. Events with no numbered thread key
+  on the counter instead: `GitHub: <repo> — Dependabot alerts open (<manifest dir>)`,
+  `GitHub: <repo> — code scanning alerts open`, and `GitHub: <repo> — CI <workflow> failing`;
+  the collected snapshot carries counts only, so the manifest directory comes from the alert
+  list you read for the pre-review (first used 2026-09-06 on vault-storage). Keep every title
+  stable across runs.
 - **Which events earn an item:** a new issue, PR, or discussion by a person; a comment by
   someone other than Eugene; reactions on an open item; any advisory event; a CI run that
   stopped succeeding; an alert count that rose. Counters (stars, forks, watchers) and bot
