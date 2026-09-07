@@ -291,8 +291,9 @@ Where Google is silent or house practice differs; each is a decision, not an ove
   looser.
 - **AI tells are banned in all prose** — every surface in § Scope, blog and articles included
   (Eugene, 2026-08-29: _"make sure that updated language rules are used in general for all
-  external texts in all projects"_). Calibrated twice against the blog's pre-LLM corpus, never
-  against a generic list (vault `projects/blog/writing-voice` § AI-tell calibration; fleet rule
+  external texts in all projects"_). Calibrated three times against the blog's pre-LLM corpus
+  (2026-08-14, 2026-08-29, 2026-09-07), never against a generic list (vault
+  `projects/blog/writing-voice` § AI-tell calibration; fleet rule
   `topics/ai-writing-tells-calibrated`); the full families, replacements, and budgets are in
   `references/ai-tells.md`. The families: the contrast-correction move ("it isn't X; it's Y",
   "not X — Y", "X is not A; it is B", "not just X, but Y"; state the positive claim directly),
@@ -301,9 +302,15 @@ Where Google is silent or house practice differs; each is a decision, not an ove
   warm-up and reveal openers ("To be clear,", "Here's the thing", "That said,", "Turns out",
   "Let's unpack"), staccato fragment pairs ("Fast. Simple."), headcounts ("most developers"),
   and Claude's own register words (_reach for_, _genuinely_, _quietly_, _seam_, _the shape of_,
-  _lever_, _load-bearing_ …; § High-frequency word list). Cadence is budgeted at Eugene's
+  _lever_, _load-bearing_ …; § High-frequency word list). The third pass measured Orwell's four
+  vices the same way: verbal false limbs (_give rise to_, _prior to_, _reach a conclusion_,
+  _going forward_), the _not un-_ formation, dying metaphors (_move the needle_, _under the
+  hood_, _deep dive_), meaningless praise (_intuitive_, _idiomatic_, _best practices_), and Latin
+  tags (_ad hoc_, _a priori_, _de facto_); each list holds only words at zero in his pre-LLM prose,
+  so _in order to_, _leverage_, _paradigm_, and _simple_ stay his. Cadence is budgeted at Eugene's
   pre-LLM 90th percentile per document: mean sentence length ≤ 18 words, em dashes ≤ 1.3 per
-  100 words, semicolons ≤ 2.8, _never_ / _nothing_ / _nobody_ ≤ 0.3, _rather than_ ≤ 0.1.
+  100 words, semicolons ≤ 2.8, _never_ / _nothing_ / _nobody_ ≤ 0.3, _rather than_ ≤ 0.1,
+  negators ≤ 2.2.
   Google doesn't name the tells; its "key point first, plain statement" rule produces the same
   text. Mechanical check for any Markdown file: `prose-tells --check <file>` in this skill's
   directory (a shim over `blog-hugo/tools/prose-tells`).
@@ -349,6 +356,16 @@ developer prose, preferred form first:
   _pays for itself_ / _earns its keep_ → _gets_ / _is worth it_; _the moment X_ → _when X_;
   _halves_ → _cuts in half_; _whoever_ → _anyone who_; _load-bearing_ → _the part everything
   depends on_; _through-line_ → _thread_; _papers over_ → _hides_.
+- **Orwell's operators and tags (measured 2026-09-07; full table in `references/ai-tells.md`):**
+  _give rise to_ → _cause_; _have the effect of_ → the verb itself; _make use of_ → _use_; _reach
+  a conclusion_ → _conclude_; _perform a check_ → _check_; _prior to_ → _before_; _subsequent to_
+  → _after_; _with respect to_ → _about_; _in the event of_ → _if_; _going forward_ / _where
+  appropriate_ / _at this point in time_ → drop; _not un-X_ → _X_; _ad hoc_ → _one-off_ /
+  _improvised_; _a priori_ → _in advance_; _de facto_ → _in practice_; _status quo_ → _the current
+  state_; _vis-à-vis_ → _compared with_; _whilst_ / _amongst_ → _while_ / _among_; _commence_ →
+  _start_; _aforementioned_ → _the earlier_ or the noun. In the blog voice _in order to_, _the fact
+  that_, _in terms of_, _leverage_, and _paradigm_ are Eugene's own words and carry no tell;
+  documentation still takes the short form.
 - **Modals:** _can_ = ability or optional; _might_ = possibility; _must_ = required; _may_ only for
   permission in a policy or legal sense; avoid _should_, _could_, _would_, _will_.
 - **Time and position words:** _after_ not _once_; _because_ not _since_ / _as_; _although_ not
@@ -386,6 +403,28 @@ developer prose, preferred form first:
   _platform-independent_ for _agnostic_; _dash-case_ for _kebab-case_; describe the capability
   instead of _first-class_; _everyone_ for _guys_.
 
+## Drafting discipline
+
+Orwell's method, from _Politics and the English Language_ (adopted 2026-09-07): get the meaning
+clear before the words, then choose the phrases instead of accepting the ones that arrive, then
+read the sentence as the reader will. A ready-made phrase saves the writer the trouble of thinking
+and hides the meaning from the writer too, which is why the tell families read as they do. Ask of
+every sentence:
+
+1. What am I trying to say?
+2. What words express it?
+3. What image or idiom makes it clearer?
+4. Is the image fresh enough to have an effect?
+5. Could I put it more shortly?
+6. Have I said anything avoidably ugly?
+
+Three tests settle the common cases. A metaphor you are used to seeing in print is dying: cut it,
+or use one you can see; a mixed metaphor proves you saw none. A praise word whose opposite would
+read as an opinion (_intuitive_, _robust_) points at no fact: state the measurable claim or cut it.
+A sentence that goes abstract where a fact belongs ("certain edge cases may exhibit degraded
+behavior") is avoiding the fact: write it ("it crashes when X"). Break any of these sooner than
+write something barbarous; the rules serve the meaning.
+
 ## Review procedure
 
 When asked to review, edit, or polish prose (the `docs-review` skill delegates here):
@@ -411,9 +450,11 @@ When asked to review, edit, or polish prose (the `docs-review` skill delegates h
 - [ ] No _please_, _simply_, _just_, _easy_, _should_ (for requirements), _currently_ / _new_ /
       _soon_, _e.g._ / _i.e._ / _etc._, _click on_, _above_ / _below_, superlatives, exclamation
       marks, AI tells (`references/ai-tells.md`: contrast-correction, stranded auxiliary,
-      self-clap, warm-up, staccato pair, headcount, Claude's register words).
+      self-clap, warm-up, staccato pair, headcount, Claude's register words, Orwell's false limbs,
+      litotes, dying metaphors, meaningless praise, Latin tags).
 - [ ] Cadence within budget: mean sentence ≤ 18 words, em dashes ≤ 1.3 per 100 words, semicolons
-      ≤ 2.8, _never_ / _nothing_ / _nobody_ ≤ 0.3, _rather than_ ≤ 0.1 (`prose-tells --check`).
+      ≤ 2.8, _never_ / _nothing_ / _nobody_ ≤ 0.3, _rather than_ ≤ 0.1, negators ≤ 2.2
+      (`prose-tells --check`).
 - [ ] Headings sentence case, no _-ing_ opener, no skipped levels; lists introduced, parallel,
       punctuated consistently; procedures one action per step.
 - [ ] Link text descriptive; "For more information, see …"; punctuation outside links.
