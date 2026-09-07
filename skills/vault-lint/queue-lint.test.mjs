@@ -1,5 +1,8 @@
 // Pins the QUEUE category's rules against the shapes the 2026-08-17 fleet
-// audit found and the 2026-09-06 calibration kept. Run: node --test skills/vault-lint/
+// audit found and the 2026-09-06 calibration kept. Since 2026-09-07 the rules
+// are read from the server (`GET /queue/lint`, vault-storage D25) and this copy
+// is the fallback for an older server; the same fixture pins the port in
+// vault-storage's tests/test-queue-lint.ts. Run: node --test skills/vault-lint/
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';

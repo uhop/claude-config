@@ -695,7 +695,8 @@ tool (embeddings / orphans / temporal anomalies / tag aliases — *not* hygiene,
 with one deliberate exception: since 2026-09-06 it also carries
 `queue_hygiene`, the QUEUE category's rules run server-side over every
 `queue.md` so the SessionStart brief can print a project's findings —
-vault-storage D25).
+vault-storage D25; `GET /queue/lint[?project=]` is that check uncapped, and
+what `/vault-lint --category=queue` reads on a server ≥ 2026-09-07).
 Call `vault_lint` for it; the curl form below is the fallback. `vault_lint`
 does return the `coverage.enrichment` block (`by_type` breakdown +
 `unenriched_records` worklist) that `/vault sweep` reads — verified

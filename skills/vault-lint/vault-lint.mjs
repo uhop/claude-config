@@ -7,7 +7,9 @@
 // Data source is vault-storage's /sections (bulk records incl. body), reached
 // through `vault-curl` — same auth path as every other vault skill. The only
 // required FM key not on /sections is `tags` (separate membership table); it is
-// out of scope for v1 (documented in SKILL.md).
+// out of scope for v1 (documented in SKILL.md). QUEUE reads the server's
+// `/queue/lint` (the canonical rules, vault-storage D25) and runs the copy in
+// ./queue-lint.mjs only against a server that predates the route.
 //
 // Usage:
 //   vault-lint.mjs                  full report
@@ -373,12 +375,19 @@ if (want('duplicates')) {
       }
 }
 
-// Queue hygiene: the rules live in ./queue-lint.mjs (pure, pinned by its
-// test); this block adds the one thing that needs the API — the convention's
-// cheap check, the served slice against the markdown's column-0 bullets.
+// Queue hygiene: the server's `queue_hygiene` rules are canonical (vault-storage
+// D25) and `GET /queue/lint` is their uncapped list. ./queue-lint.mjs is the same
+// rules for a server that predates the route (its JSON error carries no
+// `items`), and the fixture its test pins.
 if (want('queue')) {
+  let served = null;
+  try {
+    const r = api('/queue/lint');
+    if (Array.isArray(r.items)) served = r.items;
+  } catch {}
+  if (served) for (const f of served) Q.push({path: f.file_path, detail: f.finding});
   const QUEUE_RE = /^projects\/([^/]+)\/queue\.md$/;
-  for (const r of active) {
+  for (const r of served ? [] : active) {
     const m = QUEUE_RE.exec(r.file_path);
     if (!m) continue;
     const parsed = parseQueue(r.body == null ? '' : String(r.body));

@@ -89,13 +89,15 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
   log/state/queue-item/meta notes excluded). Heuristic — flagged for human
   review, not auto-merged.
 - **QUEUE** — the mechanics of `topics/project-queue-convention` that nothing
-  ran before 2026-09-06, over every `projects/*/queue.md`. Rules live in
-  `queue-lint.mjs` (pure, pinned by `queue-lint.test.mjs`); the harness adds
-  the one check that needs the API. Since 2026-09-06 the same rules run
+  ran before 2026-09-06, over every `projects/*/queue.md`. The rules run
   server-side as `/system/lint`'s `queue_hygiene` (`src/queue/lint.ts` in
-  vault-storage, identical on all 53 queues at the port) and the SessionStart
-  brief prints a project's findings; the server copy is canonical
-  (vault-storage D25) — a rule change lands there first.
+  vault-storage, identical on all 53 queues at the port), the SessionStart
+  brief prints a project's findings, and the server copy is canonical
+  (vault-storage D25) — a rule change lands there first. The harness reads
+  the full list from `GET /queue/lint` (server ≥ 2026-09-07; `/system/lint`
+  caps samples at ten) and falls back to its own copy in `queue-lint.mjs`
+  (pinned by `queue-lint.test.mjs`) only when the server predates the
+  route.
   - *Non-schema H2*: only `## Active` / `## Backlog` / `## Watching` parse, so
     an invented heading (`## Done`, `## Follow-ups`) holding work-shaped
     bullets — bold-titled or checkboxed — drops them from every queue view.
@@ -114,10 +116,11 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
     key and a column-0 sub-bullet is a stray item, not detail.
   - *Glued heading*: `…item.## Backlog` is a paragraph, and everything below
     it lands in the previous section.
-  - *Served count*: `GET /queue/projects/{name}` against the markdown's
-    column-0 bullets in schema sections. They must agree exactly — the
-    linter counts what the parser counts — so any difference is a stale slice
-    or parser drift: `vault_queue_reindex`, then re-lint.
+  - *Served count*: the `queue_items` slice against the markdown's column-0
+    bullets in schema sections, compared server-side (the fallback asks
+    `GET /queue/projects/{name}`). They must agree exactly — the linter
+    counts what the parser counts — so any difference is a stale slice or
+    parser drift: `vault_queue_reindex`, then re-lint.
 
   Calibrated 2026-09-06 on all 53 queues: 19 findings (six title markers,
   seven `[x]` items under one project's Active, six groups of unbolded
