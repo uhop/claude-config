@@ -52,6 +52,22 @@ user, not for this skill to overrule: if it surfaced actionable Backlog items
 that could ride along, confirm the release is still wanted *now* before
 bumping. Releasing past them is what causes the same-day second release.
 
+## Step 1b — Ride-alongs first, one commit each
+
+When the user takes a ride-along, land it **before** anything below, as a
+change he can commit on its own: the code and its test, nothing from the
+steps that follow. Stop after each one with "commit this" and continue the
+prep on his go; when he is not around, leave a per-commit path plan whose
+path sets do not overlap. The version bump, release notes, docs-currency
+fixes, dependency sweep, lockfile, and wiki index then form the **last**
+commit. A bump commit that also carries a fix hides the fix in the history.
+(Ruled 2026-09-08, install-artifact-from-github 1.8.1: the rebuild-message
+ride-along, the bump, and the notes were staged as one change; Eugene split
+them himself and asked that every prep sequence them this way — *"I would
+prefer if all ride-alones were separate commits and the version bump and
+final doc updates were the last commit. This way it is easy to track
+changes."*)
+
 ## Step 2 — Version bump
 
 Bump `version` in `package.json` per the tier the check picked.
@@ -142,5 +158,8 @@ native-addon project verifying its tag-triggered CI binary build.
 
 Report the digest summary, gates run, notes written, and the full list of
 uncommitted paths in every repo touched (parent + wiki submodule, wiki commit
-before the parent pointer bump). Do **not** commit, tag, or publish — the user
-commits, tags, and publishes after their own review.
+before the parent pointer bump), grouped in commit order: each ride-along
+(already committed under step 1b, or its own path set), then the wiki
+commit, then the parent commit that carries the bump, notes, lockfile, and
+pointer. Do **not** commit, tag, or publish — the user commits, tags, and
+publishes after their own review.
