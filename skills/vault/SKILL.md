@@ -895,6 +895,18 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      line (ruled 2026-08-29, less fluff; the one-line summary of a quiet
      repository belongs to `fleet-status.mjs show`, not to a resume).
    Never block the resume on GitHub: offline degrades to the baseline view.
+   **The resume files and stops.** An issue, PR, advisory, or CI failure this
+   step surfaces becomes a review item on the queue, written from what is at
+   hand — the thread, the code, the docs — and Eugene schedules it. Reproducing
+   it, measuring it, or fixing it inside the resume is out of scope until he
+   asks; the same holds for anything else the resume turns up (a dependency
+   bump, a drifted note). (Ruled 2026-09-08, install-artifact-from-github: a
+   pre-review of issue #30 grew a scratch fixture, a local corepack install,
+   and three package-manager measurements before he had seen the issue.
+   Eugene: *"I ask you to bootstrap a session with `/vault resume`, not
+   fixing issues and PRs without initial discussion."* Then: *"An issue should
+   be an item in a queue in the vault. We can schedule it at will. It is not
+   something that should be acted upon immediately."*)
 4. **Fallback (pre-bundle server).** A 404 / missing-tool error from the
    bundle means an older server — run the individual reads instead:
    `vault_lint`, `vault_suggestions_summary`, the two agent-workflow file
