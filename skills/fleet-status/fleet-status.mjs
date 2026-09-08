@@ -1199,26 +1199,15 @@ const fileItem = async () => {
     console.log(`${docPath}: item updated in place`);
     return;
   }
-  if (text.includes('\n## Active\n')) {
-    await vaultEdit(docPath, {
-      op: 'replace',
-      from: '\n## Active\n',
-      to: `\n## Active\n\n${itemText}\n`
-    });
-    console.log(`${docPath}: item inserted at the top of Active`);
-    return;
-  }
-  if (text.includes('\n## Backlog\n')) {
-    await vaultEdit(docPath, {
-      op: 'replace',
-      from: '\n## Backlog\n',
-      to: `\n## Active\n\n${itemText}\n\n## Backlog\n`
-    });
-    console.log(`${docPath}: Active section created with the item`);
-    return;
-  }
-  await vaultEdit(docPath, {op: 'append', text: `\n## Active\n\n${itemText}\n`});
-  console.log(`${docPath}: Active section appended with the item`);
+  // insert-item: replaces an (empty) placeholder, creates a missing Active (server ≥ 2026-09-06)
+  await vaultEdit(docPath, {
+    op: 'insert-item',
+    section: '## Active',
+    item: itemText,
+    position: 'start',
+    create_section: true
+  });
+  console.log(`${docPath}: item inserted at the top of Active`);
 };
 
 // ─── Show ────────────────────────────────────────────────────────────────────

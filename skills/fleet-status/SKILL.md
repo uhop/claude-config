@@ -179,7 +179,8 @@ one-line summary is `show --cwd`'s job.
 
 A review item is a queue item meant to review one change; it goes under `## Active` on the
 project's own `queue.md`, created in the convention's shape when the project has none. The script
-does the placement; you write the body:
+does the placement through the server's `insert-item` op (server ≥ 2026-09-06), which replaces an
+`(empty)` placeholder and creates a missing `## Active` before Backlog; you write the body:
 
 ```bash
 "$S" file --project NAME --title 'GitHub: OWNER/NAME#123 — Title of the issue' --body-file "$WORK/item.md"
