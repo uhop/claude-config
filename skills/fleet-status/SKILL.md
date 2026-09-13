@@ -133,8 +133,12 @@ stored views render.
    need to know:
 
    ```bash
-   jq '{totals, repos: [.repos[] | {repo, project, first_run, summary, errors, events}]}' "$WORK/github.json"
+   jq 'if .skipped then {skipped, reason, repo} else {totals, repos: [.repos[] | {repo, project, first_run, summary, errors, events}]} end' "$WORK/github.json"
    ```
+
+   `--cwd` and `--repo` write a skipped repository (not github.com, no remote, private) as a
+   top-level `{skipped, reason, …}` with no `repos` key, which the guard covers; `--fleet` always
+   writes `repos`.
 
    A repository with `error` set could not be read at all (renamed, deleted, or unreachable);
    `errors` lists partial failures inside an otherwise good read (one endpoint, one item's
