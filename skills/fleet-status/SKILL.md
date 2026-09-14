@@ -1,6 +1,6 @@
 ---
 name: fleet-status
-description: Collect the GitHub-side state of fleet repositories — security advisories (a CVE landing on a known GHSA), issues, PRs, discussions and the movement on them (comments, reactions), forks with the forker's login, star and watcher counts, releases, Dependabot and code-scanning alert counts, the last CI conclusion — diff it against the per-project baseline in the vault, file review-the-change items on each project's queue, and advance the baseline. Use when the user invokes /fleet-status (the fleet sweep), /fleet-status OWNER/NAME (one repository), or /fleet-status show (the dashboard in chat: the stored state and movement of one repository or the fleet, no GitHub access), or as the GitHub step of /vault resume for the current repository. Backed by `fleet-status.mjs` (read-only `gh api`; github.com only; public repositories only).
+description: Collect the GitHub-side state of fleet repositories — security advisories (a CVE landing on a known GHSA), issues, PRs, discussions and the movement on them (comments, reactions), forks with the forker's login, star and watcher counts, releases, Dependabot and code-scanning alert counts, the last CI conclusion — plus npm numbers for every package the account publishes (weekly downloads, top versions, deps.dev dependents, an all-time total) and each package's place in the `fleet-deps` graph; diff it against the per-project baseline in the vault, file review-the-change items on each project's queue, and advance the baseline. Use when the user invokes /fleet-status (the fleet sweep), /fleet-status OWNER/NAME (one repository), or /fleet-status show (the dashboard in chat: the stored state and movement of one repository or the fleet, no GitHub access), or as the GitHub step of /vault resume for the current repository. Backed by `fleet-status.mjs` (read-only `gh api`; github.com only; public repositories only).
 user_invocable: true
 ---
 
@@ -38,9 +38,24 @@ Per repository, all read-only through `gh api`:
   run as `event: dynamic` and are often the newest run). A repository with the feature turned
   off reports `unavailable`, not an error.
 
+- **Packages** (approved 2026-09-14) — every package the npm account publishes, found with the
+  registry's maintainer search and mapped to a project through its `repository` URL (a
+  non-fleet owner gets `<owner>-<repo>`, the `koajs-compress` precedent), plus every
+  `package.json` in dotfiles' `fleet-deps --json` graph. Per published package: the latest
+  version and its publish date; the last 7 days' downloads with their dates and 52 weekly
+  totals, rebuilt from npm every run; the publishes inside that window; the top five versions
+  by last week's downloads with the split by major, read only at 100 or more downloads a week,
+  below which the split is mirror traffic; direct dependents from deps.dev, summed over every
+  version, with the per-version counts and a history of one point per collection day that only
+  the baseline keeps; and an all-time total since the first publish or 2015-01-10, whichever is
+  later. Per package in the graph: its update level, what it uses, what uses it, and every
+  transitive dependent in update order. The account comes from `--npm-user`, else from the
+  publisher of a graph package whose manifest points back at its fleet repository.
+
 Not tracked, by ruling: commits and pushes (`git` and `check-drift.sh` cover them), private
-repositories, and dependents ("Used by" — no REST or GraphQL surface exists, and scraping the
-page was ruled out).
+repositories, GitHub's "Used by" (no REST or GraphQL surface exists, and scraping the page was
+ruled out), and dependents' names (deps.dev returns counts only, and npmjs.com's list needs a
+spoofed browser user agent).
 
 ## Invocation
 
@@ -83,6 +98,11 @@ WORK=$(mktemp -d)
   repository) or `--runs N` picks the runs.
 - The dotfiles shim `fleet-status` (`private_dot_local/bin/executable_fleet-status`) runs the
   same script from any shell on a host with claude-config installed.
+- `--no-packages` skips the packages pass; `--packages-only` skips the GitHub reads (the private
+  gate still runs for `--cwd` and `--repo`) and its commit writes only `## Packages`, never
+  `## GitHub`, so it refreshes the npm view without consuming GitHub events. `--npm-user LOGIN`
+  names the npm account when the graph cannot. `show --fleet --table --packages` prints the
+  standing npm numbers per published package, heaviest first.
 - `--since-days N` (default 30) sets the window for closed items on a first run; afterwards the
   window is the baseline's `collected_at`. Open items are read in full every run, because a
   reaction doesn't bump `updated_at`.
@@ -106,7 +126,7 @@ The executive view: what moved, at a glance. One line per repository with moveme
 action-worthy events only, ordered by weight — advisories; then new issues, PRs, and discussions
 by a person; then comments by someone else, state changes, releases, CI regressions, and alert
 counts that rose — and one `counters` line for the rest: stars, forks and watchers with their
-logins, reactions, bot items, and alert counts that fell. Then `first run`, `errors`, and
+logins, dependents by package, reactions, bot items, and alert counts that fell. Then `first run`, `errors`, and
 `quiet: N repositories`. Your own single comment on a thread and plain edits stay in the JSON.
 Titles are quoted; a new item and a comment carry an excerpt — the first meaningful line of the
 body, at most 120 characters (80 in the brief) — so a line reads as a summary without a click.
@@ -202,8 +222,8 @@ does the placement through the server's `insert-item` op (server ≥ 2026-09-06)
   stable across runs.
 - **Which events earn an item:** a new issue, PR, or discussion by a person; a comment by
   someone other than Eugene; reactions on an open item; any advisory event; a CI run that
-  stopped succeeding; an alert count that rose. Counters (stars, forks, watchers) and bot
-  traffic go to the digest and the resume output only — that boundary is a proposal, trim it
+  stopped succeeding; an alert count that rose. Counters (stars, forks, watchers, dependents)
+  and bot traffic go to the digest and the resume output only — that boundary is a proposal, trim it
   with Eugene.
 - **Body = the pre-review**, in this order: what changed (the event lines, with URLs); how
   meaningful it is; your opinion; proposed actions; and, when a reply is warranted, a paste-ready
@@ -221,11 +241,15 @@ does the placement through the server's `insert-item` op (server ≥ 2026-09-06)
 The baseline lives beside the drift check's, in `projects/<name>/state.md`, as a `## GitHub`
 section holding one fenced `json` block (the collected snapshot: metadata counts, advisories,
 open and recently updated items, discussions, fork logins, releases, alert counts, the last CI
-run, and `collected_at`). `commit` replaces the block in place (`POST /vault/edit`, asserted),
-appends the section to a `state.md` that lacks it, or creates the document with the drift
-check's frontmatter. `check-drift.sh --update` preserves the section when it rewrites its own
-block (patched 2026-08-28) — an older copy of that script on another host drops it, and the only
-cost is that the next collection there reads as a first run.
+run, and `collected_at`), followed by a `## Packages` section with the packages snapshot
+(`{collected_at, graph, packages: [{name, repo, published, npm, fleet}]}`, arrays of scalars on
+one line). Both close the document, in that order, so `commit` rewrites them together in one
+asserted `POST /vault/edit` replace (one write, one re-embed), appends them to a `state.md` that
+lacks them, or creates the document with the drift check's frontmatter; a document with
+anything else among them falls back to one edit per block. `check-drift.sh --update` preserves
+both when it rewrites its own block (`## GitHub` since 2026-08-28, `## Packages` since
+2026-09-14) — an older copy of that script on another host drops them, and the cost is that the
+next collection there reads as a first run and the dependents history restarts.
 
 Fleet-shared by construction: Eugene works from seven hosts, and a resume on one host makes
 what it saw not-new to the next sweep anywhere. That is the intended meaning of a shared
@@ -247,7 +271,14 @@ the daily by hand, and collections are never scheduled, by ruling ([[projects/ag
 
 The digest is `{collected_at, mode, gh_user, repos, totals}`; each entry in `repos` is
 `{repo, project, first_run, collected_at, events, summary, errors, snapshot}` or, when the
-repository could not be read, `{repo, project, error, events: [], summary}`. Event kinds:
+repository could not be read, `{repo, project, error, events: [], summary}`. The packages pass
+adds `packages` (the `## Packages` snapshot) and `packages_first_run` to the entry of the
+project the packages belong to; a fleet run adds an entry marked `github: false` for a project
+with published packages and no public fleet repository (the heya packages, `koa-compress`),
+which the brief counts for its counters but never as a repository. `totals.packages` counts the
+published packages, and failures of the pass as a whole (`fleet-deps`, the npm search) arrive in
+`package_errors`. A `--packages-only` digest carries `packages_only: true`, and so does its run
+record, which the stored views leave out of the fleet size. Event kinds:
 
 | Kind | Meaning |
 | --- | --- |
@@ -259,6 +290,7 @@ repository could not be read, `{repo, project, error, events: [], summary}`. Eve
 | `release.new`, `release.published` | A release object appeared or left draft |
 | `alerts.dependabot`, `alerts.code_scanning` | The open alert count moved |
 | `ci.conclusion` | The default branch's last run conclusion changed |
+| `package.dependents` | A package's deps.dev direct dependents count moved (`package`, `from`, `to`, `delta`); downloads raise no event, since small counts are mirror traffic and large ones move with the registry |
 
 Every event carries `kind` and `repo`; item events carry `number`, `title`, `author`, `bot`, and
 `url`. An item that is not in the baseline but predates it comes as `.updated` with
@@ -282,12 +314,26 @@ snapshot items and discussions store the same two fields.
   adds one call per 100 stars.
 - The digest page and every `state.md` carry `type: state`, so the enrichment and review sweeps
   leave them alone.
+- The packages pass reads with plain GETs, at most two requests at a time to `api.npmjs.org`,
+  their starts 250 ms apart: that host limits bursts and sends no rate-limit headers (two
+  back-to-back streams drew 429s after about 19 calls, 2026-09-14). Downloads go in bulk — up
+  to 128 unscoped names and 365 days per call, scoped names alone — so a run makes one window
+  read, one per-version read per package at 100 or more weekly downloads, and about 900
+  deps.dev dependents reads (eight at a time). The first run backfills all-time totals in
+  365-day chunks; afterwards the total settles the days older than three and re-reads the
+  rest. The fleet's 62 packages took 10 s on 2026-09-14. A package whose npm read fails keeps
+  its stored numbers, and a partial dependents read keeps the stored count, so a failure never
+  records a drop. Endpoint facts: `topics/npm-download-counts-are-not-users` § How to check
+  any package.
 
 ## Dependencies
 
 - `gh` — authenticated as the fleet's account on the host (`gh auth status`); `repo` scope
   covers advisories and both alert endpoints (verified 2026-08-28).
 - `git` — remote resolution for `--cwd`.
+- `fleet-deps` (dotfiles, `~/.local/bin`) — the fleet dependency graph; missing or failing, the
+  packages keep their npm numbers and lose only their relations for that run.
+- Network access to `api.npmjs.org`, `registry.npmjs.org`, and `api.deps.dev` — no keys.
 - `VAULT_API_URL` / `VAULT_API_TOKEN` — the baseline, the queue items, and the digest (server
   ≥ 2026-07-24 for `POST /vault/edit`).
 - `jq` — reading the digest in the procedure; the script itself doesn't need it.
