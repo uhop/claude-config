@@ -2507,6 +2507,24 @@ const projectFolders = async () => {
 const markdownTable = (head, rows) =>
   [head, head.map(() => '---'), ...rows].map(r => `| ${r.join(' | ')} |`).join('\n');
 
+// A latest major that holds every download (to the printed precision) says
+// nothing, so its cell stays empty.
+const latestMajorCell = n => {
+  if (!n.latest || !n.by_major || !n.versions_total) return '-';
+  const m = n.by_major[majorOf(n.latest)] ?? 0;
+  return Math.round((1000 * m) / n.versions_total) >= 1000 ? '' : share(m, n.versions_total);
+};
+
+// Outside a full top list the latest version is capped by the last one there;
+// outside a shorter list it had no downloads.
+const latestVersionCell = n => {
+  if (!n.latest || !n.versions_total) return '-';
+  const top = n.top_versions ?? [];
+  const hit = top.find(([v]) => v === n.latest);
+  if (hit) return share(hit[1], n.versions_total);
+  return top.length < TOP_VERSIONS ? '' : `≤${share(top[top.length - 1][1], n.versions_total)}`;
+};
+
 // Standing npm numbers per published package, heaviest first.
 const renderPackagesTable = async () => {
   const rows = [];
@@ -2526,7 +2544,8 @@ const renderPackagesTable = async () => {
         `${n.latest ?? '?'}${n.published_at ? ` (${n.published_at.slice(0, 10)})` : ''}`,
         n.week?.downloads ?? 0,
         n.week ? `${n.week.start} to ${n.week.end}` : '-',
-        n.latest && n.by_major ? share(n.by_major[majorOf(n.latest)] ?? 0, n.versions_total) : '-',
+        latestMajorCell(n),
+        latestVersionCell(n),
         num(n.dependents?.direct),
         p.fleet?.level ?? '-',
         short(snapshot.collected_at)
@@ -2534,7 +2553,7 @@ const renderPackagesTable = async () => {
     }
   rows.sort((a, b) => b[3] - a[3] || a[0].localeCompare(b[0]));
   for (const row of rows) row[3] = num(row[3]);
-  rows.push([`Total (${rows.length})`, '', '', num(weekly), '', '', '', '', '']);
+  rows.push([`Total (${rows.length})`, '', '', num(weekly), '', '', '', '', '', '']);
   return markdownTable(
     [
       'Package',
@@ -2543,6 +2562,7 @@ const renderPackagesTable = async () => {
       'Weekly',
       'Week',
       'Latest major',
+      'Latest version',
       'Dependents',
       'Level',
       'Collected'

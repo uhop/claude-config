@@ -111,7 +111,8 @@ WORK=$(mktemp -d)
   gate still runs for `--cwd` and `--repo`) and its commit writes only `## Packages`, never
   `## GitHub`, so it refreshes the npm view without consuming GitHub events. `--npm-user LOGIN`
   names the npm account when the graph cannot. `show --fleet --table --packages` prints the
-  standing npm numbers per published package, heaviest first.
+  standing npm numbers per published package, heaviest first, with the week's shares of the
+  latest major and the latest version; the major's cell is empty when it holds every download.
 - `--since-days N` (default 30) sets the window for closed items on a first run; afterwards the
   window is the baseline's `collected_at`. Open items are read in full every run, because a
   reaction doesn't bump `updated_at`.
