@@ -23,7 +23,14 @@ Per repository, all read-only through `gh api`:
   "CVE requested" flag; the trackable event is `cve_id` flipping from `null` on a known GHSA.
 - **Issues, PRs, discussions, and movement on them** — new items, state changes (open, closed,
   merged), comments (with who commented last), reactions on the item and on its comments. Bot
-  authors (`dependabot[bot]`) are flagged, not dropped.
+  authors (`dependabot[bot]`) are flagged, not dropped. Since 2026-09-14 each item also stores
+  its `assignees` and whether the collecting account (the snapshot's `gh_user`) answered it:
+  `owner_commented` (a comment anywhere in the thread) and `owner_reacted` (a reaction on the item
+  itself), each `null` when the run could not tell — a comment scan past the cap, a failed read.
+  For an issue or PR the reaction costs one extra read, made only for an open item with any
+  reactions; for a discussion the GraphQL query answers both (`viewerDidAuthor`,
+  `reactionGroups.viewerHasReacted`). `/ui/fleet.html` uses them to mark new items from people
+  that are still unanswered.
 - **Forks, with the forker's login** — one sorted call; removed forks show as removals.
 - **Watchers, with the login** (2026-09-05) — one paged call per repository, made only when the
   count moved or no list is stored yet, so `watcher.new` names the account. A watcher

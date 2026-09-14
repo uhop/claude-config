@@ -242,9 +242,10 @@ const DISCUSSIONS_QUERY = `query($owner: String!, $name: String!, $after: String
         author { login }
         category { name }
         reactions { totalCount }
+        reactionGroups { viewerHasReacted }
         comments(first: 100) {
           totalCount
-          nodes { updatedAt body author { login } reactions { totalCount } }
+          nodes { updatedAt body author { login } reactions { totalCount } viewerDidAuthor }
         }
       }
     }
@@ -496,7 +497,7 @@ const latestComment = comments => {
 
 const COMMENT_SCAN_CAP = 60;
 
-const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogins}) => {
+const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogins, ghUser}) => {
   const repo = `${owner}/${name}`,
     R = `repos/${owner}/${name}`;
   const errors = [];
@@ -577,6 +578,11 @@ const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogin
       comment_reactions: null,
       last_comment: null,
       labels: (it.labels ?? []).map(l => l.name),
+      assignees: (it.assignees ?? []).map(a => a.login).filter(Boolean),
+      // Whether the collecting account answered: a comment anywhere, a reaction
+      // on the item itself. null when this run could not tell.
+      owner_commented: null,
+      owner_reacted: null,
       html_url: it.html_url
     };
     if (isPr) record.draft = Boolean(it.draft);
@@ -601,10 +607,24 @@ const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogin
           0
         );
         record.last_comment = latestComment([...comments, ...reviews]);
+        record.owner_commented = [...comments, ...reviews].some(c => c.user?.login === ghUser);
       }
     } else if (record.comments === 0 && !isPr) {
       record.comment_reactions = 0;
+      record.owner_commented = false;
     }
+    // Reactions carry their author only in the per-item list: one read, and only
+    // for an open item that has any.
+    if (record.reactions === 0) record.owner_reacted = false;
+    else if (it.state === 'open')
+      record.owner_reacted = await guard(
+        `reactions:#${it.number}`,
+        async () =>
+          (await ghApi(`${R}/issues/${it.number}/reactions`, {paginate: true})).some(
+            r => r.user?.login === ghUser
+          ),
+        null
+      );
     items[it.number] = record;
   }
   // Carry forward closed items from the baseline that fell outside the window
@@ -636,6 +656,13 @@ const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogin
               reactions: d.reactions.totalCount,
               comment_reactions: d.comments.nodes.reduce((s, c) => s + c.reactions.totalCount, 0),
               last_comment: latestComment(d.comments.nodes),
+              // viewer* is the gh login the collector runs as.
+              owner_commented: d.comments.nodes.some(c => c.viewerDidAuthor)
+                ? true
+                : d.comments.totalCount > d.comments.nodes.length
+                  ? null
+                  : false,
+              owner_reacted: (d.reactionGroups ?? []).some(g => g.viewerHasReacted),
               url: d.url
             };
           if (!conn.pageInfo.hasNextPage) break;
@@ -744,6 +771,7 @@ const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogin
   const snapshot = {
     repo,
     html_url: repoMeta.html_url,
+    gh_user: ghUser,
     collected_at: collectedAt,
     window: {since, first_run: !baseline},
     meta,
@@ -1661,7 +1689,7 @@ const collect = async () => {
       try {
         entry = packagesOnly
           ? await probeRepo(t, mode === 'fleet')
-          : await collectRepo({...t, baseline, sinceDays, starLogins});
+          : await collectRepo({...t, baseline, sinceDays, starLogins, ghUser});
       } catch (err) {
         entry = {
           repo: `${t.owner}/${t.name}`,
