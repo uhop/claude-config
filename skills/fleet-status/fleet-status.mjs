@@ -196,6 +196,19 @@ class GhError extends Error {
   }
 }
 
+const ghError = (r, route, body = r.out) => {
+  let message = r.err || 'gh api failed',
+    status = null;
+  try {
+    const j = JSON.parse(body);
+    if (j.message) message = j.message;
+    if (j.status) status = Number(j.status);
+  } catch {}
+  const m = /HTTP (\d{3})/.exec(r.err ?? '');
+  if (m) status = Number(m[1]);
+  return new GhError(status, message, route);
+};
+
 // One REST read. With paginate, walks `page=` until a short page — never
 // `--paginate`, whose output shape depends on the gh version.
 const ghApi = async (route, {paginate = false, headers = []} = {}) => {
@@ -205,18 +218,7 @@ const ghApi = async (route, {paginate = false, headers = []} = {}) => {
     for (const h of headers) argv.push('-H', h);
     argv.push(paginate ? `${route}${sep}per_page=100&page=${n}` : route);
     const r = await runAsync('gh', argv);
-    if (!r.ok) {
-      let message = r.err || 'gh api failed',
-        status = null;
-      try {
-        const j = JSON.parse(r.out);
-        if (j.message) message = j.message;
-        if (j.status) status = Number(j.status);
-      } catch {}
-      const m = /HTTP (\d{3})/.exec(r.err ?? '');
-      if (m) status = Number(m[1]);
-      throw new GhError(status, message, route);
-    }
+    if (!r.ok) throw ghError(r, route);
     return r.out ? JSON.parse(r.out) : null;
   };
   if (!paginate) return page(1);
@@ -228,6 +230,26 @@ const ghApi = async (route, {paginate = false, headers = []} = {}) => {
     if (chunk.length < 100) break;
   }
   return all;
+};
+
+// A list that paginates by cursor only (the alert endpoints reject `page=`):
+// follow the Link header's rel="next" until it runs out or the page cap stops
+// it. `complete` is false only when the cap did.
+const CURSOR_PAGES_MAX = 20;
+const ghApiCursor = async route => {
+  const list = [];
+  let next = route;
+  for (let n = 0; next && n < CURSOR_PAGES_MAX; ++n) {
+    const r = await runAsync('gh', ['api', '-i', next]);
+    const split = r.out.search(/\r?\n\r?\n/);
+    const head = split < 0 ? r.out : r.out.slice(0, split),
+      body = split < 0 ? '' : r.out.slice(split).trim();
+    if (!r.ok) throw ghError(r, route, body);
+    list.push(...(body ? JSON.parse(body) : []));
+    const link = head.split(/\r?\n/).find(line => /^link:/i.test(line)) ?? '';
+    next = /<https:\/\/api\.github\.com\/([^>]+)>;\s*rel="next"/.exec(link)?.[1] ?? null;
+  }
+  return {list, complete: !next};
 };
 
 // Discussions exist only on GraphQL. The query is fixed text; the mutation
@@ -736,13 +758,12 @@ const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogin
       html_url: r.html_url
     };
 
-  // Dependabot alerts reject `page=` (cursor pagination only): one 100-item
-  // read for both alert lists, flagged when it may be short.
+  // Every page of both alert lists; `truncated` marks a count stopped by the cap.
   const alertSet = async (route, severity) => {
     try {
-      const list = await ghApi(`${route}&per_page=100`);
+      const {list, complete} = await ghApiCursor(`${route}&per_page=100`);
       const set = {open: list.length, by_severity: countBy(list, severity)};
-      if (list.length >= 100) set.truncated = true;
+      if (!complete) set.truncated = true;
       return set;
     } catch (err) {
       return {unavailable: err.message, status: err.status ?? null};
