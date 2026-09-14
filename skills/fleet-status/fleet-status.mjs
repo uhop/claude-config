@@ -2102,7 +2102,7 @@ const renderRepo = entry => {
     const bySeverity = Object.entries(a.by_severity ?? {})
       .map(([k, n]) => `${n} ${k}`)
       .join(', ');
-    return `${a.open}${a.truncated ? '+' : ''}${bySeverity ? ` (${bySeverity})` : ''}`;
+    return `${a.truncated ? '≥' : ''}${a.open}${bySeverity ? ` (${bySeverity})` : ''}`;
   };
   lines.push(
     `  alerts: dependabot ${alertText('dependabot')}, code scanning ${alertText('code_scanning')}; collected ${short(s.collected_at)}${s.window.first_run && !entry.stored ? ' (first run)' : ''}`
@@ -2505,7 +2505,7 @@ const renderTable = async () => {
     const noCve = published.filter(a => !a.cve_id).length;
     const alert = kind => {
       const a = b.alerts?.[kind];
-      return !a || a.unavailable ? 'off' : `${a.open}${a.truncated ? '+' : ''}`;
+      return !a || a.unavailable ? 'off' : `${a.truncated ? '≥' : ''}${a.open}`;
     };
     sum.issues += issues;
     sum.prs += prs;

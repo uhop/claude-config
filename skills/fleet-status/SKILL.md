@@ -307,8 +307,8 @@ snapshot items and discussions store the same two fields.
 - A reaction on a closed item older than the window is invisible until something else bumps the
   item.
 - Discussions are read 100 per page, five pages at most, newest-updated first.
-- Alert lists are one 100-item read each (the Dependabot endpoint rejects page numbers); past
-  100 open alerts the count carries `truncated: true` and is a floor.
+- Alert lists are one 100-item read each (the Dependabot endpoint rejects page numbers); a list
+  that comes back full (100) carries `truncated: true`, and its count is a floor, printed as `≥100`.
 - Reading 51 repositories costs a few hundred REST calls plus one GraphQL call per repository
   with discussions (nine on 2026-08-28) — well inside the 5,000-per-hour limit, and `--star-logins`
   adds one call per 100 stars.
