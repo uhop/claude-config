@@ -239,7 +239,7 @@ const DISCUSSIONS_QUERY = `query($owner: String!, $name: String!, $after: String
       pageInfo { hasNextPage endCursor }
       nodes {
         number title url body createdAt updatedAt closed isAnswered
-        author { login }
+        author { login __typename }
         category { name }
         reactions { totalCount }
         reactionGroups { viewerHasReacted }
@@ -463,7 +463,19 @@ const countBy = (list, key) =>
     return m;
   }, {});
 
-const isBot = login => /\[bot\]$/.test(login ?? '');
+// GitHub Apps log in as `name[bot]` and are typed Bot; older bots are plain
+// user accounts, so they are named here (all seen on fleet repositories or
+// common in their history).
+const LEGACY_BOTS = new Set([
+  'snyk-bot',
+  'gitter-badger',
+  'greenkeeperio-bot',
+  'renovate-bot',
+  'codecov-io',
+  'coveralls'
+]);
+const isBot = (login, type) =>
+  type === 'Bot' || /\[bot\]$/.test(login ?? '') || LEGACY_BOTS.has(login);
 
 // First meaningful line of a body, for the brief; the full text stays on GitHub.
 const EXCERPT_LEN = 120;
@@ -569,7 +581,7 @@ const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogin
       excerpt: excerptOf(it.body),
       state: isPr && it.pull_request?.merged_at ? 'merged' : it.state,
       author: it.user?.login ?? null,
-      bot: isBot(it.user?.login),
+      bot: isBot(it.user?.login, it.user?.type),
       created_at: it.created_at,
       updated_at: it.updated_at,
       comments: it.comments ?? 0,
@@ -649,6 +661,7 @@ const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogin
               closed: d.closed,
               answered: d.isAnswered,
               author: d.author?.login ?? null,
+              bot: isBot(d.author?.login, d.author?.__typename),
               category: d.category?.name ?? null,
               created_at: d.createdAt,
               updated_at: d.updatedAt,
