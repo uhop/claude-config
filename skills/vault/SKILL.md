@@ -667,8 +667,9 @@ are skipped — the user is still iterating on them.
    (the hash value also doesn't need explicit quoting under JSON — the
    value is a string in the JSON object, and the server's
    `yaml.stringify` emits the right YAML for it). The indexer picks
-   the block up on import and folds the summary into the chunk-prefix
-   at embed time.
+   the block up on import and embeds the summary as its own vector;
+   search scores a note by the better of its best chunk and its summary
+   (vault-storage D45; an older server prefixes it to every chunk).
 6. **Archive the source.** After successful ingestion of a single raw
    note, in this order:
    - PUT the source with `ready: "__unset__"` and `processed: true`
@@ -771,7 +772,7 @@ Save a session log.
    backticked path, never `[[logs/...]]`)
 4. **Enrich at capture.** Write the `agent:` block in the **same** PUT that
    creates the log — born-enriched, so the log is searchable-sharp while it's
-   hot (the `agent.summary` becomes a HyDE prefix at embed time), with no later
+   hot (the `agent.summary` gets its own vector at embed time), with no later
    backfill. Logs are append-only, so the block never re-stales. Use the JSON
    write path (`{frontmatter: {agent: {...}}, body: "..."}`); set
    `complexity: log-entry`; set `derived_from_hash: "auto"` — the server

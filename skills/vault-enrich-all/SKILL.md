@@ -185,8 +185,10 @@ writers are server-safe (atomic writes + `If-Match`, 2026-06-11).
 As of vault-storage schema 5/6 the indexer fully consumes the block:
 `records.agent_summary` / `agent_derived_from_hash` columns; the hash wraps
 into `embedInputHash` so summary changes invalidate chunks like body edits;
-the chunker prepends `${summary}\n\n` to every chunk as a HyDE-style
-anchor; hash drift files `agent_enrichment_stale`, auto-resolved
+the summary is embedded as its own vector, and search scores a note by
+the better of its best chunk and its summary (vault-storage D45; before it, the chunker
+prepended `${summary}\n\n` to every chunk, so a refresh re-embedded the
+whole note); hash drift files `agent_enrichment_stale`, auto-resolved
 `hash-matched` on the next refresh.
 
 ## Backend requirement
