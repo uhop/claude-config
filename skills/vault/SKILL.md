@@ -298,9 +298,13 @@ leases: a single-agent session that owns its cwd repo never files one.
   `base-commit:` trailer into `base_sha`. The artifact is captured at submit
   time, so it no longer depends on your worktree surviving. **Then record the
   gates you ran** with `vault_handoff_verify({id, check, sha, exit, by})`, one
-  call per check, `sha` being the commit the patch was cut from: a
-  verification is bound to that sha, and every read shows it `stale` once the
-  artifact's base moves, so a pass on an older patch is shown, never trusted.
+  call per check, `sha` being the head commit your gates ran on (the owner
+  passes the applied commit after `git am`). The record also carries the
+  artifact's sha256 at that moment, and every read shows it `stale` once the
+  artifact is replaced (server ≥ 2026-09-16, vault-storage D51; before that
+  the sha was compared with the base commit, which no gate runs on, so every
+  real verification read stale), so a pass on an older patch is shown, never
+  trusted.
 - **Applying one** (you are the owner): read the inbox item's `overlaps`
   and each verification's `stale` first — an overlap is another in-flight
   handoff on the same file or symbol, a stale pass is a gate that ran on a

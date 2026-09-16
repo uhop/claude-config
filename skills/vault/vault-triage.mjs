@@ -18,7 +18,7 @@
 //
 // Decisions file (JSON; either the bare map or {decisions: {...}}):
 //   new_tag        keyed by TAG:  {"action":"taxonomy","description"?} |
-//                                 {"action":"alias","canonical":"..."} |
+//                                 {"action":"alias","canonical":"...","description"?} |
 //                                 {"action":"reject"} | null
 //   tag_suggestion keyed by id:   "accept" | "reject" | "defer" | null
 //   edge_type      keyed by id:   "<edge-type>" | "reject" | "cites" | "skip" | null
@@ -521,6 +521,7 @@ const resolve = async () => {
       failures: [],
       taxonomy_added: [],
       aliased: [],
+      descriptions_updated: [],
       tags_stripped: [],
       related_added: [],
       merge_candidates: [],
@@ -548,7 +549,13 @@ const resolve = async () => {
         plan.tagOps.push({kind: 'taxonomy', tag, description: decision.description, item});
       else if (action === 'alias') {
         if (!decision.canonical) fail(3, `alias decision for "${tag}" needs a canonical`);
-        plan.tagOps.push({kind: 'alias', tag, canonical: decision.canonical, item});
+        plan.tagOps.push({
+          kind: 'alias',
+          tag,
+          canonical: decision.canonical,
+          description: decision.description,
+          item
+        });
       } else if (action === 'reject') plan.tagOps.push({kind: 'reject', tag, item});
       else fail(3, `unknown action "${action}" for tag "${tag}"`);
     }
@@ -662,6 +669,14 @@ const resolve = async () => {
           if (err.code !== 'conflict') throw err;
           // already in the taxonomy — the add auto-accept won't fire, settle explicitly
           plan.batch.push(...ids.map(id => ({id, decision: 'accept'})));
+        }
+        // A broadening alias rewrites its canonical's description in the same
+        // pass (PATCH /tags/taxonomy/{tag}, server ≥ 2026-09-16).
+        if (op.kind === 'alias' && op.description) {
+          await api('PATCH', `/tags/taxonomy/${encodeURIComponent(op.canonical)}`, {
+            description: op.description
+          });
+          plan.report.descriptions_updated.push({tag: op.canonical, description: op.description});
         }
       } else {
         for (const record of op.item.records) {

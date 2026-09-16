@@ -64,6 +64,8 @@ Decisions shapes:
 ```json
 {"coherent-concept": {"action": "taxonomy", "description": "one-line"},
  "ml":               {"action": "alias", "canonical": "machine-learning"},
+ "harnesses":        {"action": "alias", "canonical": "harness",
+                      "description": "Agent harnesses: Claude Code, OpenCode, and peers"},
  "wip-fix-later":    {"action": "reject"}}
 ```
 
@@ -76,7 +78,7 @@ Decisions shapes:
 | Action | When to choose | Effect |
 |---|---|---|
 | **taxonomy** | Genuinely new concept worth canonical vocabulary; distinct from every existing tag's meaning. | Tag minted; affected records auto-link; pending suggestions auto-accept. |
-| **alias** | Synonym / abbreviation / alternate spelling of an existing canonical (`ml` → `machine-learning`). The canonical must already exist. | Future uses auto-rewrite to canonical; records get the canonical link. |
+| **alias** | Synonym / abbreviation / alternate spelling of an existing canonical (`ml` → `machine-learning`). The canonical must already exist. When the alias broadens what the canonical covers (`harnesses` → `harness`, 2026-09-12), add `description`: the pass rewrites the canonical's description in the same call (server ≥ 2026-09-16). | Future uses auto-rewrite to canonical; records get the canonical link; with `description`, the canonical's description is replaced. |
 | **reject** | Typo, joke, single-use marker, oversharded ("misc-stuff"). | The tag is stripped from every affected record's FM; suggestions rejected. |
 
 Tag shape rules (taxonomy CHECK constraint): lowercase, alphanumeric +

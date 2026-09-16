@@ -114,6 +114,17 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
   - *Unbolded column-0 bullets* in a schema section: the parser counts every
     column-0 `-`/`*` bullet as an item, so an unbolded one is an item with no
     key and a column-0 sub-bullet is a stray item, not detail.
+  - *Bold-led paragraph nothing owns* (2026-09-16): `**Title.** text` at
+    column 0 with no item above it in a schema section is prose the parser
+    drops and the item ops cannot find (409 `item_assert_failed`); below an
+    item the same paragraph is that item's prose and is not a finding. Start
+    the line with `- `.
+  - *Placeholder that is not the bare `(empty)`* (2026-09-16): an
+    `(empty — last shipped …)` paragraph is prose that belongs in
+    queue-archive; write the bare form. The server's insert-item op replaces
+    either shape (server ≥ 2026-09-16).
+  - *Item beside a placeholder* (2026-09-16): a schema section holding both a
+    bullet and an `(empty…)` paragraph — remove the placeholder.
   - *Glued heading*: `…item.## Backlog` is a paragraph, and everything below
     it lands in the previous section.
   - *Served count*: the `queue_items` slice against the markdown's column-0

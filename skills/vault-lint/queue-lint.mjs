@@ -33,45 +33,57 @@ const H2_RE = /^## +(.+?)\s*$/;
 // server comparison exact.
 const BULLET_RE = /^[-*] +(?:\[([ xX~])\] +)?(.*)$/;
 const TITLE_RE = /^\*\*(.+?)\*\*/;
+const PLACEHOLDER_RE = /^\(empty\b/;
+const BARE_PLACEHOLDER = '(empty)';
 const GLUED_RE = /\S\s*#{2,3} +(Active|Backlog|Watching)\b/;
 
 export const parseQueue = body => {
-  const preamble = {heading: null, line: 0, known: false, prose: false, items: []};
+  const preamble = {heading: null, line: 0, known: false, prose: false, items: [], paragraphs: []};
   const sections = [];
   const glued = [];
   let current = preamble;
   const raw = (body ?? '').split('\n');
-  stripCode(body ?? '')
-    .split('\n')
-    .forEach((line, i) => {
-      const h2 = H2_RE.exec(line);
-      if (h2) {
-        const heading = h2[1];
-        current = {
-          heading,
-          line: i + 1,
-          known: SCHEMA_H2.includes(heading),
-          prose: PROSE_H2.some(re => re.test(heading)),
-          items: []
-        };
-        sections.push(current);
-        return;
-      }
-      if (/^#{1,6} /.test(line)) return;
-      if (GLUED_RE.test(line)) glued.push({line: i + 1, text: raw[i].trim()});
-      const b = BULLET_RE.exec(line);
-      if (!b) return;
-      // Structure comes from the code-stripped line; the title shown is the
-      // author's, with its code spans.
-      const t = TITLE_RE.exec(b[2]);
-      const first = BULLET_RE.exec(raw[i])[2];
-      current.items.push({
+  const masked = stripCode(body ?? '').split('\n');
+  masked.forEach((line, i) => {
+    const h2 = H2_RE.exec(line);
+    if (h2) {
+      const heading = h2[1];
+      current = {
+        heading,
         line: i + 1,
-        checkbox: b[1] ?? null,
-        title: t ? first.slice(2, 2 + t[1].length) : null,
-        first
-      });
+        known: SCHEMA_H2.includes(heading),
+        prose: PROSE_H2.some(re => re.test(heading)),
+        items: [],
+        paragraphs: []
+      };
+      sections.push(current);
+      return;
+    }
+    if (/^#{1,6} /.test(line)) return;
+    if (GLUED_RE.test(line)) glued.push({line: i + 1, text: raw[i].trim()});
+    const b = BULLET_RE.exec(line);
+    if (!b) {
+      // A column-0 paragraph start; `orphan` when no item above it owns it.
+      const prev = masked[i - 1] ?? '';
+      if (/^\S/.test(line) && (/^\s*$/.test(prev) || /^#{1,6}\s/.test(prev)))
+        current.paragraphs.push({
+          line: i + 1,
+          first: raw[i].trim(),
+          orphan: current.items.length === 0
+        });
+      return;
+    }
+    // Structure comes from the code-stripped line; the title shown is the
+    // author's, with its code spans.
+    const t = TITLE_RE.exec(b[2]);
+    const first = BULLET_RE.exec(raw[i])[2];
+    current.items.push({
+      line: i + 1,
+      checkbox: b[1] ?? null,
+      title: t ? first.slice(2, 2 + t[1].length) : null,
+      first
     });
+  });
   return {preamble, sections, glued};
 };
 
@@ -127,6 +139,22 @@ export const queueFindings = parsed => {
     if (plain.length)
       out.push(
         `${s.heading}: ${plural(plain.length, 'unbolded column-0 bullet')} counted as ${plain.length === 1 ? 'an item' : 'items'}, first "${short(plain[0].first)}" — bold a title, or indent detail under its item`
+      );
+    const boldLed = s.paragraphs.filter(p => p.orphan && TITLE_RE.test(p.first));
+    if (boldLed.length)
+      out.push(
+        `${s.heading}: ${plural(boldLed.length, 'bold-led paragraph')} with no item above ${boldLed.length === 1 ? 'it' : 'them'} — the parser drops it and the item ops cannot find it, first "${short(boldLed[0].first)}" — start the line with "- "`
+      );
+    const placeholders = s.paragraphs.filter(p => PLACEHOLDER_RE.test(p.first));
+    for (const p of placeholders) {
+      if (p.first !== BARE_PLACEHOLDER)
+        out.push(
+          `${s.heading}: placeholder is not the bare "(empty)" — "${short(p.first)}" — write the bare form; the prose belongs in queue-archive`
+        );
+    }
+    if (s.items.length && placeholders.length)
+      out.push(
+        `${s.heading}: ${plural(s.items.length, 'item')} and an "(empty…)" placeholder together — remove the placeholder`
       );
   }
   for (const g of parsed.glued)
