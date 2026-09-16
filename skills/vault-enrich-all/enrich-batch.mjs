@@ -354,13 +354,22 @@ const validate = (worksheet, enrichments) => {
       err('key_concepts must be a non-empty string array');
     if (!COMPLEXITY.includes(enrichment.complexity))
       err(`complexity must be one of ${COMPLEXITY.join(', ')}`);
+    // The three optional keys: `null` is absent, the same as the `?? []` /
+    // `?? {}` the write applies — a sub-agent writing JSON reaches for null on
+    // a field it has nothing for, and `Object.entries(null)` threw past the
+    // harness's clean fail(3) (apodict sweep, 2026-09-15).
     for (const field of ['tags_suggested', 'related_proposed'])
       if (
-        enrichment[field] !== undefined &&
+        enrichment[field] != null &&
         (!Array.isArray(enrichment[field]) || enrichment[field].some(v => typeof v !== 'string'))
       )
         err(`${field} must be a string array`);
-    if (enrichment.edge_classifications !== undefined) {
+    if (enrichment.edge_classifications != null) {
+      if (
+        typeof enrichment.edge_classifications !== 'object' ||
+        Array.isArray(enrichment.edge_classifications)
+      )
+        err('edge_classifications must be an object of wikilink → edge type');
       const links = new Set(item.body_wikilinks);
       for (const [key, type] of Object.entries(enrichment.edge_classifications)) {
         if (!links.has(key))

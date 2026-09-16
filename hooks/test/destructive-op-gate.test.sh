@@ -47,6 +47,16 @@ check DENY  'gh issue create --title x'
 check DENY  'git clean -fd'
 check ALLOW 'git clean -n'
 check ALLOW 'git status'
+# ── gh help flags never mutate (blocked 2026-09-13; exempted 2026-09-15) ──
+check ALLOW 'gh gist edit --help'
+check ALLOW 'gh gist edit -h'
+check ALLOW 'gh issue create --help'
+check ALLOW 'gh api --help'
+check ALLOW 'gh api -X POST --help'
+check ALLOW 'cd ~/x && gh release create --help'
+check DENY  'gh gist edit e6ead70c README.md'                # the real edit stays blocked
+check DENY  'gh gist edit e6ead70c -f README.md README.md'
+check DENY  'gh issue create --title "-h"'                   # a quoted value is not the flag
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

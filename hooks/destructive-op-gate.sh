@@ -77,16 +77,22 @@ analyze_segment() {
   # ── gh: deny outward GitHub-state mutations ──
   if [[ "$seg" =~ (^|[^[:alnum:]_./-])gh[[:space:]] ]]; then
     local -a _t; read -ra _t <<<"$seg"
-    local i=0 n=${#_t[@]} ghcmd="" ghsub=""
+    local i=0 n=${#_t[@]} ghcmd="" ghsub="" ghhelp=0
     while (( i < n )) && [[ "${_t[i]}" != "gh" ]]; do ((i++)); done
     ((i++))
     while (( i < n )); do
       local t="${_t[i]}"; ((i++))
+      # A help flag never mutates, wherever it sits: `gh gist edit --help`
+      # was blocked on 2026-09-13, and the usage the agent could not read cost
+      # a wrong paste (projects/claude-config/queue-archive, 2026-09-15).
+      [[ "$t" == "--help" || "$t" == "-h" ]] && ghhelp=1
       [[ "$t" == -* ]] && continue
-      if [[ -z "$ghcmd" ]]; then ghcmd="$t"; else ghsub="$t"; break; fi
+      if [[ -z "$ghcmd" ]]; then ghcmd="$t"; elif [[ -z "$ghsub" ]]; then ghsub="$t"; fi
     done
 
-    if [[ "$ghcmd" == "api" ]]; then
+    if (( ghhelp )); then
+      :
+    elif [[ "$ghcmd" == "api" ]]; then
       local is_get=0
       [[ "$seg" =~ (-X|--method)[[:space:]=]*(GET|get) ]] && is_get=1
       if [[ "$seg" =~ (-X|--method)[[:space:]=]*(POST|PUT|PATCH|DELETE|post|put|patch|delete) ]]; then
