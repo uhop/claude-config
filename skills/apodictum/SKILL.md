@@ -58,7 +58,15 @@ optimal: 'bound'` over the CLI. `/mcp` reconnect restarts a stdio server
 prompts you to reach for it. Treat MCP as stale after any `src/` change, and
 re-probe a query whose answer you already know before trusting the next
 verdict. Fixing the oracle and then analysing code with it is the ordinary
-shape of an apodictum session, not an edge case.
+shape of an apodictum session, not an edge case. **Since 2026-09-16 the MCP
+server may be answering through the apodictum service instead** (`APODICTUM_URL`
+and `APODICTUM_API_KEY` in its registration): then the process pins nothing,
+and what can be behind is the container. `apodictum_ops` says which mode is on
+(`engine.mode`), and in service mode compares `engine.served` with
+`engine.checkout`; a `SERVICE MISMATCH` block ahead of an answer means the
+image serves another engine than the tree you are editing — rebuild it (`cd
+~/servers/apodictum && docker compose up -d --build`) or use the CLI, which
+answers in-process unless the same variables are set in your shell.
 
 **An MCP server death is never cross-session interference.** `bin/mcp.js` is
 a stdio server holding no port, no socket, no lockfile, and no filesystem
