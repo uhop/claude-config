@@ -309,6 +309,11 @@ const inputFingerprint = input => {
   }
 };
 
+// Human time beside every epoch: a report names a moment by its ISO time and
+// its session's subject, never by `ts=` (reports/2026-09-15-nuke, the
+// evidence coordinates item); the epoch stays for the transcript lookup.
+const iso = ms => (ms == null ? null : new Date(ms).toISOString());
+
 // --- Detection ----------------------------------------------------------
 
 const signals = {
@@ -336,6 +341,10 @@ const userTurns = [];
 // Repeated-failure detection works across sessions: aggregate (toolName, errorSig) → count
 const failureBuckets = new Map();
 const failureExamples = new Map();
+// Distinct sessions per bucket: `occurrences` aggregates across the window,
+// and "4 occurrences" read as an over-count on 2026-09-11 when it was one
+// failure in each of four sessions under different project directories.
+const failureSessions = new Map();
 
 let sessionsAnalyzed = 0;
 
@@ -488,6 +497,7 @@ for (const t of transcripts) {
       project: t.project,
       session_id: t.session_id,
       ts: e.ts,
+      ts_iso: iso(e.ts),
       matched_text,
       excerpt
     };
@@ -519,7 +529,9 @@ for (const t of transcripts) {
   const erroredSigs = new Map(); // tool_use_id → error signature
   for (const e of events) {
     for (const err of e.errorResults) {
-      if (err.id) erroredSigs.set(err.id, errorSignature(err.text));
+      const sig = errorSignature(err.text);
+      // '' is a bare `Exit code N` with no error line: unsignable, uncounted.
+      if (err.id && sig) erroredSigs.set(err.id, sig);
     }
   }
   const loopBuckets = new Map();
@@ -554,6 +566,7 @@ for (const t of transcripts) {
       project: t.project,
       session_id: t.session_id,
       ts: tsList[0],
+      ts_iso: iso(tsList[0]),
       tool: name,
       repetitions: tsList.length,
       excerpt: `[stuck loop] tool=${name} repeated ${tsList.length}× with same input fingerprint, erroring identically each time`
@@ -572,6 +585,7 @@ for (const t of transcripts) {
       const reg = err.id ? toolUseRegistry.get(err.id) : null;
       const resolved = reg?.name ?? (i > 0 ? events[i - 1]?.toolNames?.[0] : null) ?? '(unknown)';
       const errSig = errorSignature(err.text);
+      if (!errSig) continue; // a bare `Exit code N`: nothing to bucket on
       const key = `${resolved}::${errSig}`;
       // Parallel calls fail as a unit: one permission rejection or one
       // cancelled batch is a single decision, but its N results arrive as N
@@ -586,6 +600,7 @@ for (const t of transcripts) {
       if (countedBatches.has(batchKey)) continue;
       countedBatches.add(batchKey);
       failureBuckets.set(key, (failureBuckets.get(key) ?? 0) + 1);
+      failureSessions.set(key, (failureSessions.get(key) ?? new Set()).add(t.session_id));
       if (!failureExamples.has(key)) {
         const ctxStart = Math.max(0, i - 2);
         const ctxEnd = Math.min(events.length, i + 1);
@@ -593,6 +608,7 @@ for (const t of transcripts) {
           project: t.project,
           session_id: t.session_id,
           ts: e.ts,
+          ts_iso: iso(e.ts),
           tool: resolved,
           error_text: err.text.slice(0, 300),
           excerpt: buildExcerpt(events.slice(ctxStart, ctxEnd))
@@ -606,8 +622,12 @@ for (const t of transcripts) {
   // whose driving turn was a correction is rework, and two releases inside one
   // session is the cadence rule firing. Fails open: no repo, no git, no
   // correlation — never an error, since most of the value is elsewhere.
-  const sessionStartMs = events[0].ts;
-  const sessionEndMs = events[events.length - 1].ts;
+  // The window is the earliest and latest row, not the first and last: rows
+  // can be out of order by a millisecond (blog-hugo 40b0306a, 2026-09-07),
+  // which put end_iso before start_iso.
+  const rowTs = events.map(e => e.ts).filter(ts => ts != null);
+  const sessionStartMs = rowTs.length ? Math.min(...rowTs) : events[0].ts;
+  const sessionEndMs = rowTs.length ? Math.max(...rowTs) : events[events.length - 1].ts;
   const correctionTs = new Set(
     signals.corrections.filter(c => c.session_id === t.session_id).map(c => c.ts)
   );
@@ -615,7 +635,11 @@ for (const t of transcripts) {
   // The user-turn listing. `adjacent`: only assistant text between this turn
   // and the previous human one — a reply with no tool call, so the two turns
   // are a quick exchange (a cluster). `correction`: the classifier already
-  // fired here, so the unmarked turns are the reading.
+  // fired here, so the unmarked turns are the reading. `did_you`: the bare
+  // announced-step check, measured rather than scored. `after_api_error`: the
+  // reply before this turn was the harness's `API Error:` row, so a run of
+  // "Try again." turns reads as an outage, not a cluster (2026-09-07: nine
+  // such turns during an SSL outage).
   let prevHuman = -1;
   for (let i = 0; i < events.length; i++) {
     const e = events[i];
@@ -623,14 +647,21 @@ for (const t of transcripts) {
     const between = prevHuman >= 0 ? events.slice(prevHuman + 1, i) : [];
     const adjacent =
       between.length > 0 && between.every(x => x.role === 'assistant' && !x.hasToolUse);
+    const prev = i > 0 ? events[i - 1] : null;
+    const afterAssistant = prev?.role === 'assistant';
+    const didYou = afterAssistant && classifyUserTurn(e.userText).did_you;
+    const afterApiError = afterAssistant && /^API Error\b/.test(prev.userText ?? '');
     userTurns.push({
       project: t.project,
       session_id: t.session_id,
       ts: e.ts,
+      ts_iso: iso(e.ts),
       first_line: firstLine(e.userText),
       chars: e.userText.length,
       ...(adjacent && {adjacent: true}),
-      ...(correctionTs.has(e.ts) && {correction: true})
+      ...(correctionTs.has(e.ts) && {correction: true}),
+      ...(didYou && {did_you: true}),
+      ...(afterApiError && {after_api_error: true})
     });
     prevHuman = i;
   }
@@ -646,11 +677,16 @@ for (const t of transcripts) {
     // correlation is enrichment; a broken repo must not fail the scan
   }
 
+  // `first_turn` is the naming aid: a report names a session by its subject
+  // and day, never by its id prefix (reports/2026-09-15-nuke, the evidence
+  // coordinates item), and the first human turn is where the subject starts.
+  const firstHuman = events.find(e => e.role === 'user' && e.userText);
   sessionGit.push({
     project: t.project,
     session_id: t.session_id,
     start_iso: new Date(sessionStartMs).toISOString(),
     end_iso: new Date(sessionEndMs).toISOString(),
+    first_turn: firstLine(firstHuman?.userText ?? '', 80),
     repo: git.repo,
     commits: git.commits.length,
     correction_driven_commits: git.correction_driven ?? 0,
@@ -664,6 +700,7 @@ for (const t of transcripts) {
       session_id: t.session_id,
       repo: git.repo,
       ts: sessionStartMs,
+      ts_iso: iso(sessionStartMs),
       ...git.multi_release,
       note:
         'More than one release in a single session. Possible, but it should be the ' +
@@ -684,6 +721,7 @@ for (const [key, count] of failureBuckets) {
   signals.repeated_failures.push({
     kind: 'repeated_failure',
     occurrences: count,
+    sessions: failureSessions.get(key)?.size ?? 1,
     ...ex
   });
 }

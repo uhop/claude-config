@@ -112,17 +112,38 @@ export const SURPRISE_PATTERNS = [
   /^(that'?s|this is|how)\s+(interesting|surprising|unexpected)\b/im
 ];
 
+// The bare announced-step check: "Did you <verb> …?" / "Did we …?" with no
+// quoted span, as a first line. Not a correction family — a marker on the
+// user-turn listing, so the reading pass sees it flagged and judges it. The
+// quoted form ("did you do \"Next leg…\"?") stays with `unlanded`. Measured
+// by hand across eight windows before this instrument existed: 3 of 6 were
+// announced-step checks, the rest genuine questions answered from the record
+// (projects/claude-config/queue, the 2026-08-25 item; instrument 2026-09-15).
+export const DID_YOU_PATTERN = /^(?:did|didn'?t|have|haven'?t)\s+(?:you|we)\b.*\?\s*$/i;
+
 // One user-authored turn → which families fire. Pass 1 of the scanner reads
 // these flags; the test reads them for the fixtures, so both see one function.
-export const classifyUserTurn = text => ({
-  negation: NEGATION_PATTERNS.some(re => re.test(text)),
-  observational: OBSERVATIONAL_CORRECTION_PATTERNS.some(re => re.test(text)),
-  unlanded: UNLANDED_CORRECTION_PATTERNS.some(re => re.test(text)),
-  scope_extension:
-    text.length <= SCOPE_EXTENSION_MAX_CHARS && SCOPE_EXTENSION_PATTERNS.some(re => re.test(text)),
-  confirmation: CONFIRMATION_PATTERNS.some(re => re.test(text)),
-  surprise: SURPRISE_PATTERNS.some(re => re.test(text))
-});
+// The short-turn gates read the FIRST LINE: a 34-character ask over a two-line
+// paste was missed while the whole turn was measured (2026-09-11). The
+// scope-extension patterns still run over the whole text when it is short,
+// since "…too" may close a second line.
+export const classifyUserTurn = text => {
+  const head = (text ?? '').split('\n', 1)[0].trim();
+  const unlanded = UNLANDED_CORRECTION_PATTERNS.some(re => re.test(text));
+  return {
+    negation: NEGATION_PATTERNS.some(re => re.test(text)),
+    observational: OBSERVATIONAL_CORRECTION_PATTERNS.some(re => re.test(text)),
+    unlanded,
+    scope_extension:
+      head.length <= SCOPE_EXTENSION_MAX_CHARS &&
+      SCOPE_EXTENSION_PATTERNS.some(re =>
+        re.test(text.length <= SCOPE_EXTENSION_MAX_CHARS ? text : head)
+      ),
+    did_you: !unlanded && head.length <= SCOPE_EXTENSION_MAX_CHARS && DID_YOU_PATTERN.test(head),
+    confirmation: CONFIRMATION_PATTERNS.some(re => re.test(text)),
+    surprise: SURPRISE_PATTERNS.some(re => re.test(text))
+  };
+};
 
 // --- Text helpers -------------------------------------------------------
 
@@ -178,10 +199,46 @@ const stripMachineText = s =>
     .replace(/^\s*Base directory for this skill:[\s\S]*/m, '')
     .trim();
 
-// Error signature: whitespace-collapsed, truncated, lowercased — the shape
-// Pass 3 buckets on, shared so Pass 2's stuck-loop key uses the same notion
-// of "the same error".
-export const errorSignature = text => (text ?? '').replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
+// Error signature: the tool's own error line, with the per-run noise removed,
+// whitespace-collapsed, capped and lowercased — the shape Pass 3 buckets on,
+// shared so Pass 2's stuck-loop key uses the same notion of "the same error".
+// Until 2026-09-15 it was the first 120 characters of the whole text, which
+// put the agent's own `echo` lines and a `mktemp` path in front of the error:
+// five identical jq failures signed five ways and reported `repeated_failures:
+// 0` (reports/2026-09-13-nuke P1). Now: strip ANSI, normalize `/tmp/tmp.*` and
+// the session scratchpad, drop the harness's `Exit code N` line and stack
+// frames, then take the first line that reads as an error. With no such line
+// a short text (one or two lines left) signs as its last line — a tool's
+// one-line refusal — and a long one signs as '' and is not counted: a
+// by-design non-zero exit (check-drift's report, a prettier summary over
+// stats) has no error line and different content each run, and a last-line
+// fallback over it bucketed six drift reports as one "repeated failure" on
+// the first validation scan. A text that is only `Exit code N` signs as ''
+// too: the harness line is identical across unrelated failures, and nine such
+// results in one session bucketed as one "repeated failure" on 2026-09-12.
+const ERROR_LINE =
+  /(?:error|exception|cannot|can't|could ?not|couldn't|denied|not found|no such|not permitted|refused|failed|failure|blocked|invalid|unknown command|enoent|eisdir|eacces|eexist|etimedout|econnrefused)\b/i;
+const NOISE_LINE = [
+  /^exit code \d+$/i,
+  /^traceback \(most recent call last\):?$/i,
+  /^file "/i,
+  /^at\s/,
+  /^\^+$/
+];
+export const normalizeErrorText = text =>
+  (text ?? '')
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    .replace(/\/tmp\/tmp\.[A-Za-z0-9]{6,}/g, '/tmp/tmp.*')
+    .replace(/\/tmp\/claude-1000\/[^/\s]+\/[0-9a-f-]{36}/g, '<scratch>');
+export const errorSignature = text => {
+  const lines = normalizeErrorText(text)
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !NOISE_LINE.some(re => re.test(l)));
+  const line =
+    lines.find(l => ERROR_LINE.test(l)) ?? (lines.length <= 2 ? lines[lines.length - 1] : '') ?? '';
+  return line.replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
+};
 
 // Known accepted-as-noise error signatures — suppressed from repeated_failures
 // to keep reports actionable. Each entry resolved via /clarify with explicit

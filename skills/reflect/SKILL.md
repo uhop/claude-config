@@ -69,13 +69,13 @@ Read all three to dedupe; write only to vault + claude-config.
      "prior_report": "[[projects/agent-workflow/reports/<name>]] — this host's previous report, null on a first run or a pre-2026-08-09 cache",
      "live_sessions": [{project, session_id, path, mtime_iso, age_seconds, first_row_iso}],
      "state_watermark_iso": "...",
-     "session_git": [{project, session_id, start_iso, end_iso, repo, commits, correction_driven_commits, shas}],
-     "user_turns": [{project, session_id, ts, first_line, chars, adjacent?, correction?}],
+     "session_git": [{project, session_id, start_iso, end_iso, first_turn, repo, commits, correction_driven_commits, shas}],
+     "user_turns": [{project, session_id, ts, ts_iso, first_line, chars, adjacent?, correction?, did_you?, after_api_error?}],
      "signals": {
-       "corrections":       [{kind, project, session_id, ts, matched_text, excerpt, unlanded?, scope_extension?}, ...],
+       "corrections":       [{kind, project, session_id, ts, ts_iso, matched_text, excerpt, unlanded?, scope_extension?}, ...],
        "confirmations":     [{...}],
-       "stuck_loops":       [{kind, project, session_id, tool, repetitions, excerpt}],
-       "repeated_failures": [{kind, occurrences, tool, project, session_id, excerpt}],
+       "stuck_loops":       [{kind, project, session_id, ts, ts_iso, tool, repetitions, excerpt}],
+       "repeated_failures": [{kind, occurrences, sessions, tool, project, session_id, ts, ts_iso, error_text, excerpt}],
        "surprises":         [{...}],
        "multi_release":     [{kind, project, session_id, repo, count, span_min, releases: [{sha, subject, driver}], note}]
      }
@@ -136,7 +136,24 @@ Read all three to dedupe; write only to vault + claude-config.
    replaces the ad hoc `jq` listing those runs built by hand. A run of
    `adjacent` turns is the fix-the-class cluster shape; a short `first_line`
    over a large `chars` is a short ask carrying a paste, the shape most worth
-   opening.
+   opening. Two more markers (2026-09-15): `did_you: true` is the bare
+   announced-step check, *"Did you <verb> …?"* / *"Did we …?"* with no quoted
+   span after an assistant turn — a measurement, not a correction: read it
+   and say in the report whether it checked a step the agent had announced
+   (3 of 6 did, by hand, before the marker existed) or asked a question the
+   record answered; `after_api_error: true` means the reply before the turn
+   was the harness's `API Error:` row, so a run of such turns is an outage,
+   not a cluster.
+
+   **`repeated_failures` aggregates across sessions and project directories;
+   `sessions` says how many.** "4 occurrences" was read as an over-count on
+   2026-09-11 when it was one failure in each of four sessions, some under
+   directories other than `~/Open`. The signature is the tool's own error
+   line — ANSI stripped, `/tmp/tmp.*` and the session scratchpad normalized,
+   the harness's `Exit code N` line and stack frames dropped — so an agent's
+   `echo` lines and a `mktemp` path no longer split one failure into five
+   (2026-09-13 P1). A result that is only `Exit code N` has no signature and
+   is not counted.
 
 3. **Dedupe against existing memory.** For each candidate signal, check whether the rule is already captured. Read in parallel:
    - `~/Open/claude-config/CLAUDE.md` (global rules)
@@ -187,14 +204,16 @@ Read all three to dedupe; write only to vault + claude-config.
    # Reflect — {date} · {host} (since {window_start_iso})
 
    ## Stats
-   - Sessions scanned: N
+   - Sessions scanned: N — name each by its subject and day, e.g. "apodict, arc 3 (2026-09-15)";
+     `session_git[].first_turn` is the starting point. Those names are the ones every
+     Evidence line below uses.
    - Signals: C corrections, F confirmations, L stuck loops, R repeated failures, S surprises
    - Already covered (cross-referenced existing rules): K
 
    ## High-confidence proposals
    ### P1: {short description}
    **Kind:** {kind} · **Destination:** {route} · **Recurrence:** {N sessions}
-   **Evidence:** project={...}, session={...}, ts={...}
+   **Evidence:** {project}, {session subject} (`{session prefix}`), {ts_iso} — the human coordinates first; the epoch stays in a trailing code span for the transcript lookup: (`ts={epoch}`)
    ```excerpt
    {excerpt from scan.json}
    ```

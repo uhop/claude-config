@@ -197,3 +197,106 @@ test('a sub-agent hand-back is machine traffic, whatever its trailer says', () =
     'Why did "Another Claude session sent a message:" show up twice?'
   );
 });
+
+test('error signature: one failure signs one way whatever the agent echoed in front of it', () => {
+  // the five `jq` shapes from the 2026-09-13 window (reports/2026-09-13-nuke P1)
+  const jq = [
+    'Exit code 5\njq: error (at /tmp/tmp.W7F2VvgCWw/github.json:7): Cannot iterate over null (null)',
+    'Exit code 5\nWORK=/tmp/tmp.WlXrNd11ki\nexit=0\njq: error (at /tmp/tmp.WlXrNd11ki/github.json:7): Cannot iterate over null (null)',
+    'Exit code 5\nskipped: private\nexit=0\n---\njq: error (at /tmp/tmp.FsMrb8jCIx/github.json:7): Cannot iterate over null (null)',
+    'Exit code 5\nWORK=/tmp/tmp.UnVipaKoSS\ncollect rc=0\njq: error (at /tmp/tmp.UnVipaKoSS/github.json:7): Cannot iterate over null (null)',
+    'Exit code 5\n---exit: 0\njq: error (at /tmp/tmp.PFW2oLCkWI/github.json:7): Cannot iterate over null (null)'
+  ];
+  const sigs = new Set(jq.map(errorSignature));
+  assert.equal(sigs.size, 1, [...sigs].join(' | '));
+  assert.equal(
+    [...sigs][0],
+    'jq: error (at /tmp/tmp.*/github.json:7): cannot iterate over null (null)'
+  );
+  // a different jq failure (stdin, another command) stays distinct
+  assert.notEqual(
+    errorSignature(
+      'Exit code 5\n{"count":0,"items":[]}\njq: error (at <stdin>:0): Cannot iterate over null (null)'
+    ),
+    [...sigs][0]
+  );
+  // the harness's exit line alone has nothing to bucket on
+  assert.equal(errorSignature('Exit code 1'), '');
+  assert.equal(errorSignature(''), '');
+  assert.equal(errorSignature(null), '');
+  // Python: the exception line, not the shared "Traceback" preamble or a frame
+  const py = err =>
+    `Exit code 1\nWORK=/tmp/tmp.jBaxDdmdIa\nTraceback (most recent call last):\n  File \x1b[35m"<stdin>"\x1b[0m, line \x1b[35m1\x1b[0m, in <module>\n${err}`;
+  assert.equal(
+    errorSignature(py("NameError: name 'x' is not defined")),
+    "nameerror: name 'x' is not defined"
+  );
+  assert.notEqual(
+    errorSignature(py("NameError: name 'x' is not defined")),
+    errorSignature(py('KeyError: 0'))
+  );
+  // Node: the Error line, with the scratchpad path normalized
+  const node =
+    'Exit code 1\nnode:fs:2167\n  const stats = binding.stat(\n                        ^\n\n' +
+    "Error: ENOENT: no such file or directory, stat '/tmp/claude-1000/-home-eugene-Open-apodict/5974e94e-f71c-41c0-a950-d79808152510/scratchpad/enum/probe4.mjs'\n" +
+    '    at Object.statSync (node:fs:2167:25)';
+  assert.equal(
+    errorSignature(node),
+    "error: enoent: no such file or directory, stat '<scratch>/scratchpad/enum/probe4.mjs'"
+  );
+  // a by-design non-zero exit with no error line and a long report signs as nothing:
+  // check-drift on drift, a prettier summary over stats (first validation scan, 2026-09-15)
+  assert.equal(
+    errorSignature(
+      'Exit code 1\nDRIFT since last baseline:\n  commit: f3c0d61 Even more issue mining.\n  % Total    % Received\nstate: 204'
+    ),
+    ''
+  );
+  assert.equal(
+    errorSignature(
+      'Exit code 1\ncitations corrected\nAll matched files use Prettier code style!\n0'
+    ),
+    ''
+  );
+  // a one-line refusal with no error word still signs as itself
+  assert.equal(
+    errorSignature('Exit code 143\nCommand timed out after 2m 0s'),
+    'command timed out after 2m 0s'
+  );
+  // single-line tool errors sign as themselves, so the suppression list still matches
+  assert.equal(errorSignature('No task found with ID: x'), 'no task found with id: x');
+  assert.equal(
+    errorSignature('File has not been read yet. Read it first before writing to it.'),
+    'file has not been read yet. read it first before writing to it.'
+  );
+});
+
+test('short-turn gates read the first line: a short ask over a paste still fires', () => {
+  // 2026-09-11: a 34-character first line over a two-line paste was missed
+  const pasted = 'Fix the t.co watch-line count too\n' + 'x'.repeat(300);
+  assert.equal(fires(pasted, 'scope_extension'), true);
+  // a short two-line turn keeps the whole-text test, so a closing "too" on line two fires
+  assert.equal(fires('one more thing:\nfix the trailer too', 'scope_extension'), true);
+  // a long single line still does not
+  assert.equal(fires('x'.repeat(200) + ' too', 'scope_extension'), false);
+});
+
+test('did_you marks the bare announced-step check and leaves the quoted form to unlanded', () => {
+  // 2026-09-11 hits (reports/2026-09-11-nuke)
+  for (const t of [
+    'Did you take into account for JS that it may use `.d.ts` files?',
+    'Did you updated the writing voice-related records in the vault?',
+    'Did we harvest TSX/JSX code?',
+    "Didn't we agree to keep the pin?"
+  ]) {
+    assert.equal(fires(t, 'did_you'), true, t);
+  }
+  // the quoted form is the unlanded cue, not this marker
+  const quoted = 'did you do "Next leg: the streamers and the tail"?';
+  assert.equal(fires(quoted, 'unlanded'), true);
+  assert.equal(fires(quoted, 'did_you'), false);
+  // not a question, not at the start, or too long: no mark
+  assert.equal(fires('Did you push.', 'did_you'), false);
+  assert.equal(fires('Pushed. Did you run the tests?', 'did_you'), false);
+  assert.equal(fires('Did you ' + 'really '.repeat(30) + 'check?', 'did_you'), false);
+});
