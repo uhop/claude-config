@@ -15,6 +15,8 @@ import {
   isAutomatedEntrypoint,
   firstLine,
   stripSyntheticBlocks,
+  renderExchange,
+  isHumanUserRow,
   USER_TURN_LINE_MAX
 } from './reflect-lib.mjs';
 
@@ -299,4 +301,82 @@ test('did_you marks the bare announced-step check and leaves the quoted form to 
   assert.equal(fires('Did you push.', 'did_you'), false);
   assert.equal(fires('Pushed. Did you run the tests?', 'did_you'), false);
   assert.equal(fires('Did you ' + 'really '.repeat(30) + 'check?', 'did_you'), false);
+});
+
+test('exchange rendering: human rows, tool calls and results, hand-backs left out', () => {
+  const rows = [
+    {
+      type: 'user',
+      timestamp: '2026-09-15T17:36:30.123Z',
+      origin: {kind: 'human'},
+      message: {content: "How come we don't have a link from Part 2 to Part 1???"}
+    },
+    {
+      type: 'assistant',
+      timestamp: '2026-09-15T17:36:34.000Z',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            name: 'Bash',
+            input: {command: 'grep -n ref index.md', description: 'Find refs'}
+          }
+        ]
+      }
+    },
+    {
+      type: 'user',
+      timestamp: '2026-09-15T17:36:35.000Z',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 't1',
+            content: '8:[Duff]({{% ref %}})\n9:more',
+            is_error: false
+          }
+        ]
+      }
+    },
+    {
+      type: 'user',
+      timestamp: '2026-09-15T17:36:36.000Z',
+      origin: {kind: 'peer'},
+      message: {
+        content:
+          'Another Claude session sent a message:\n<agent-message from="x">never do this</agent-message>'
+      }
+    },
+    {
+      type: 'assistant',
+      timestamp: '2026-09-15T17:36:48.000Z',
+      message: {
+        content: [{type: 'text', text: 'Part 2 does link to part 1. One mention later does not.'}]
+      }
+    }
+  ];
+  const out = renderExchange(rows, Date.parse('2026-09-15T17:36:30Z'), {before: 0, after: 4});
+  assert.equal(out.centre, 0);
+  assert.equal(out.first.timestamp, '2026-09-15T17:36:30.123Z');
+  const lines = out.text.split('\n');
+  assert.equal(lines[0], '── 2026-09-15T17:36:30Z USER');
+  assert.equal(lines[1], "How come we don't have a link from Part 2 to Part 1???");
+  assert.ok(
+    out.text.includes(
+      '── 2026-09-15T17:36:34Z ASSISTANT\n[tool_use Bash] {"command":"grep -n ref index.md"'
+    )
+  );
+  assert.ok(
+    out.text.includes('── 2026-09-15T17:36:35Z TOOL_RESULT\n[tool_result] 8:[Duff]({{% ref %}})')
+  );
+  assert.ok(!out.text.includes('never do this'), 'the hand-back row is not rendered');
+  assert.ok(out.text.endsWith('Part 2 does link to part 1. One mention later does not.'));
+  // the centre is the nearest row, so an epoch a second off still lands on the turn
+  assert.equal(
+    renderExchange(rows, Date.parse('2026-09-15T17:36:33Z'), {before: 0, after: 0}).centre,
+    1
+  );
+  assert.equal(renderExchange([], 0), null);
+  assert.equal(isHumanUserRow({type: 'user', origin: {kind: 'task-notification'}}), false);
+  assert.equal(isHumanUserRow({type: 'user'}), true);
 });

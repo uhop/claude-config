@@ -6,7 +6,7 @@ user_invocable: true
 
 # /clarify — drain the agent-workflow clarification queue
 
-Walks pending items in `projects/agent-workflow/clarify-queue.md` interactively. Each item carries a question, transcript refs, and candidate interpretations filed by `/reflect`. The user picks (or supplies an alternative), and the chosen interpretation gets promoted to the right destination — or the item gets rejected as a false positive.
+Walks pending items in `projects/agent-workflow/clarify-queue.md` interactively, **one item per turn, as a conversation**. Each item carries a question, a source moment, and candidate interpretations filed by `/reflect` or hung from its `--apply` walk. The context comes first, the user can go deeper, ask for an example, or have it researched, and only then picks (or supplies an alternative); the chosen interpretation gets promoted to the right destination — or the item gets rejected as a false positive, or hung again. (Eugene, 2026-09-15: *"sometimes I don't recognize the context and need it and more discussions/examples on it"* — [[projects/agent-workflow/feedback]] § A question carries its context and can be hung.)
 
 Resolved items move to `projects/agent-workflow/clarify-queue-archive.md` so the live queue stays focused on outstanding work.
 
@@ -19,7 +19,9 @@ Resolved items move to `projects/agent-workflow/clarify-queue-archive.md` so the
 /clarify --all          # walk every pending item (no cap)
 ```
 
-Manual cadence — no scheduling. Run when there's 10–15 minutes of focus available.
+Manual cadence — no scheduling. One item per turn, so there is no minimum sitting; stop whenever.
+
+The helper also files: `clarify-queue.mjs file --question="…?" --context=@ctx.md --candidates=@cands.md --source="…"` allocates the id and appends the block in the shape the parser reads (`--dry-run` to preview). `/reflect` step 7 and its "Hang it" option use it.
 
 ## Procedure
 
@@ -35,33 +37,35 @@ Manual cadence — no scheduling. Run when there's 10–15 minutes of focus avai
    (oldest first); `--id=Q-XXX` jumps to one; stop after `--limit=N`
    (default 5) unless `--all`.
 
-2. **Walk each item interactively.** For each item:
+2. **Walk each item as a conversation, one per turn.** For each item:
 
-   a. Surface the question, source ref, and any transcript excerpt the source ref points to — `Read` for local transcripts, `mcp__vault__vault_read_file` for vault paths (fall back to `vault-curl /vault/<path> -s` if that tool is absent).
+   a. **Context first, in chat.** The item's Question and Context lines, then the source moment rendered in human time: `~/.claude/skills/reflect/reflect-context.mjs --project=<dir> --session=<id prefix> --at=<ts>` from the Source line (his words and the reply that followed). For a vault-path source, `mcp__vault__vault_read_file` (fall back to `vault-curl /vault/<path> -s`). Name the session by its subject and day, never by its id.
 
-   b. Use `AskUserQuestion` with the candidate interpretations as options, plus "Reject as false positive" and "Defer" — let the user pick (or supply "Other" with a free-form interpretation).
+   b. **Offer the moves in prose, and take them before any options form:** *go deeper* (widen `--before`/`--after`, re-explain in plain words what the agent did and what he said), *show an example* (a concrete before/after under each candidate), *research it* (a lookup, or a sub-agent for anything longer), or *hang it again* (leave it pending). Ask the form only when he asks for it or picks a candidate outright.
+
+   c. **The form**, with each candidate's example in its `preview`:
 
       ```
       AskUserQuestion({
         question: "{the question from the Q entry}",
         header: "Clarify Q-{id}",
         options: [
-          {label: "{candidate a}", description: "{what this means / where it routes}"},
-          {label: "{candidate b}", description: "{...}"},
+          {label: "{candidate a}", description: "{what this means / where it routes}", preview: "{the example}"},
+          {label: "{candidate b}", description: "{...}", preview: "{...}"},
           {label: "Reject as false positive", description: "Not a real pattern — discard."},
-          {label: "Defer", description: "Leave in queue for next session."},
+          {label: "Hang it", description: "Leave it pending; pick it up with more discussion later."},
         ],
         multiSelect: false,
       })
       ```
 
-   c. **Route based on the answer:**
+   d. **Route based on the answer:**
 
       | Answer | Action |
       | --- | --- |
       | A specific interpretation | Promote per the routing table below; write the artifact; archive the Q-item. |
       | Reject as false positive | Archive the Q-item with a `Rejected:` annotation. |
-      | Defer | Skip — leave in `## Pending`. |
+      | Hang it (Defer) | Skip — leave in `## Pending`; add a `- **Note:**` line to the block if the discussion produced one. |
       | Other (free-form) | Treat the user's text as the authoritative interpretation; ask a follow-up if needed for routing; then promote + archive. |
 
 3. **Routing table** (same as `/reflect`):
@@ -101,8 +105,7 @@ Manual cadence — no scheduling. Run when there's 10–15 minutes of focus avai
 ## When NOT to use
 
 - Queue is empty (`## Pending` has `(empty)` or no `### Q-` blocks). Just say so and stop.
-- Less than 10 min available — `AskUserQuestion` per item adds up. Don't start unless there's time to finish at least 3 items.
-- Mid-flight on another task — clarify deserves focus. Hand it off as "let's clarify-queue once we're done with X."
+- Mid-flight on another task — clarify deserves focus. Hand it off as "let's clarify-queue once we're done with X." One item per turn means there is no minimum sitting; stopping after one is fine.
 
 ## Limitations
 

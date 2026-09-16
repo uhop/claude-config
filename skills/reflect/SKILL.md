@@ -111,8 +111,9 @@ Read all three to dedupe; write only to vault + claude-config.
 
    **Read `matched_text`, not `excerpt`, to see what fired.** `excerpt` is the
    preceding context (mostly the assistant's tool output); the user turn that
-   tripped the classifier is `matched_text`. Then read the transcript rows
-   around `ts` for the reply — the 2026-08-18 run first read `excerpt` alone
+   tripped the classifier is `matched_text`. Then render the moment with
+   `~/.claude/skills/reflect/reflect-context.mjs --project=<dir> --session=<prefix> --at=<ts>`
+   for the reply, in human time — the 2026-08-18 run first read `excerpt` alone
    and saw nothing but tool results.
 
    **Two populations: `sessions_scanned` and `automated`.** `sessions_scanned`
@@ -252,9 +253,18 @@ Read all three to dedupe; write only to vault + claude-config.
    ---
    ```
 
-7. **File ambiguous items to clarify-queue.** For each low/ambiguous candidate, append a block under `## Pending` in `projects/agent-workflow/clarify-queue.md`. Use `mcp__vault__vault_replace` anchored on the text you are inserting after — an atomic server-side edit whose blast radius is the block, not the document (fallback: `vault-put --replace`). Don't read-modify-PUT the whole file for an append.
+7. **File ambiguous items to clarify-queue.** For each low/ambiguous candidate, file it with the clarify helper, which allocates the next `Q-YYYY-MM-DD-NNN`, validates the five lines the walk reads, and appends the block under `## Pending` with `If-Match` (2026-09-15):
 
-   **Read the source exchange before filing — never write the entry from the scan excerpt.** `Read` the transcript rows around the signal's `ts` (the user turn *and* the assistant reply that followed it) and write the `Context:` and `Candidates:` from what is actually there. The scan excerpt is a truncated, regex-selected window: it routinely omits the reply that already answered the question, and a candidate built on a guessed mechanism is unbuildable at `/clarify` time. Filing is cheap; filing *wrong* costs the clarify walk, because the user is then choosing between options that cannot be implemented. If reading the source dissolves the ambiguity, don't file the item at all — resolve it in the report's "Already covered" or "False positives" section instead. (Origin: 2026-08-16 — `Q-2026-08-16-001` asked whether sub-agent progress labels should be descriptive, on the stated premise that "labels are agent-authored per dispatch". Two of its three candidates proposed a rule over those labels. The assistant reply four rows below the source turn already said the strings were the *harness's* per-tool-call activity glosses, which the agent does not author — so the item was rejected at `/clarify` as unbuildable, and one `Read` at filing time would have prevented it being filed.)
+   ```bash
+   ~/.claude/skills/clarify/clarify-queue.mjs file \
+     --question="<one sentence, ends with a question mark>" \
+     --context=@"$WORK/ctx.md" --candidates=@"$WORK/cands.md" \
+     --source="project \`<dir>\`, session \`<id>\`, ts <epoch_ms>; report [[projects/agent-workflow/reports/<name>]]"
+   ```
+
+   `@path` reads a value from a file, so the context and the candidates need no shell quoting; one candidate per line, numbered by the helper; `--dry-run` prints the block without writing. Never hand-roll the block: the heading shape below is what the parser reads, and a title on the id line unlisted an item on 2026-07-20.
+
+   **Read the source exchange before filing — never write the entry from the scan excerpt.** Run `~/.claude/skills/reflect/reflect-context.mjs --project=<dir> --session=<id prefix> --at=<ts>` — the rows around the moment in human time, the user turn *and* the assistant reply that followed it — and write the `Context:` and `Candidates:` from what is actually there. The scan excerpt is a truncated, regex-selected window: it routinely omits the reply that already answered the question, and a candidate built on a guessed mechanism is unbuildable at `/clarify` time. Filing is cheap; filing *wrong* costs the clarify walk, because the user is then choosing between options that cannot be implemented. If reading the source dissolves the ambiguity, don't file the item at all — resolve it in the report's "Already covered" or "False positives" section instead. (Origin: 2026-08-16 — `Q-2026-08-16-001` asked whether sub-agent progress labels should be descriptive, on the stated premise that "labels are agent-authored per dispatch". Two of its three candidates proposed a rule over those labels. The assistant reply four rows below the source turn already said the strings were the *harness's* per-tool-call activity glosses, which the agent does not author — so the item was rejected at `/clarify` as unbuildable, and one `Read` at filing time would have prevented it being filed.)
 
    **Read every store a candidate would route to before filing — "nothing there speaks to it" is a read, not an assumption.** Each `Candidates:` line names a destination (`projects/<name>/feedback.md`, `CLAUDE.md` § …); open each one and search it for the rule before writing the `Context:` claim that it is absent. Step 3 lists these files as dedupe inputs, but a broad step-3 skim does not test the specific rule a Q proposes — the check has to be per candidate, at filing time. (Origin: 2026-08-18 — `Q-2026-08-18-001` asked whether third-party names in negative anecdotes should be anonymized, stating that neither `projects/blog/feedback.md` nor `projects/articles/feedback.md` spoke to it; both carried the exact ruling, written the day before. It was archived at `/clarify` as already covered — a filing that cost a walk to un-file.)
 
@@ -275,23 +285,29 @@ Read all three to dedupe; write only to vault + claude-config.
 
    Two or three candidates; they must be genuinely distinct readings, not degrees of the same one. Include "no rule / one-off" whenever it is live — `/clarify` resolutions frequently land there, and omitting it biases the walk toward filing a rule.
 
-8. **Apply (if `--apply`).** Walk the high-confidence proposals one at a time:
+8. **Apply (if `--apply`).** Walk the high-confidence proposals **one per turn, each with its context in front of it** — never a run of bare "Apply P1?" questions. Eugene, 2026-09-15: *"sometimes I don't recognize the context and need it and more discussions/examples on it. Yet there is no way to 'hang a question' while working on it. I need to answer, say, 4 questions in the row with a minimal context."* ([[projects/agent-workflow/feedback]] § A question carries its context and can be hung.) For each proposal:
+
+   a. **Put the context in chat first**, in this order: the session named by its subject and day (from `session_git[].first_turn`, never the id prefix), the exchange from `~/.claude/skills/reflect/reflect-context.mjs --project=<dir> --session=<prefix> --at=<ts>` (his words and the reply that followed, in human time), why it matters now, and one example of the rule or change applied — a before/after, or the sentence the rule would have changed.
+
+   b. **Then the question**, with the proposed text in the option's `preview` so the diff is read where the choice is made:
 
    ```
    AskUserQuestion({
-     question: "Apply P1: {description}?",
+     question: "P1: {one sentence — what changes, where}?",
      header: "Apply P{N}",
      options: [
-       {label: "Apply as proposed", description: "Write the artifact as shown."},
+       {label: "Apply as proposed", description: "Write the artifact as shown.", preview: "{the proposed diff or body}"},
        {label: "Edit then apply", description: "Adjust the proposed text before writing."},
+       {label: "Hang it", description: "Park it on the clarify queue with this context; pick it up with more discussion later."},
        {label: "Skip this one", description: "Move on without applying."},
-       {label: "Move to clarify-queue", description: "Defer for a /clarify session."},
      ],
      multiSelect: false,
    })
    ```
 
-   On "Apply as proposed" → execute the write. For vault paths prefer the narrow op — `mcp__vault__vault_append` / `vault_replace` to extend a `feedback.md` or `queue.md`, `vault_write_file` only when authoring a whole new note (fallback: `vault-put --append/--replace`); for claude-config paths use `Edit` against the real file under `~/Open/claude-config/`, never the `~/.claude/` symlink. On "Edit then apply" → present the proposed body, ask for tweaks, then write. On "Skip" → no-op. On "Move to clarify-queue" → file a Q-entry.
+   c. **Route:** "Apply as proposed" → execute the write. For vault paths prefer the narrow op — `mcp__vault__vault_append` / `vault_replace` to extend a `feedback.md` or `queue.md`, `vault_write_file` only when authoring a whole new note (fallback: `vault-put --append/--replace`); for claude-config paths use `Edit` against the real file under `~/Open/claude-config/`, never the `~/.claude/` symlink. "Edit then apply" → present the proposed body, ask for tweaks, then write. "Hang it" → `clarify-queue.mjs file` (step 7) with the rendered exchange as the `Context:`, the proposal as candidate 1, and "no rule / one-off" as a candidate, so nothing is lost when he moves on; `/clarify` picks it up as a conversation. "Skip" → no-op.
+
+   Open ruling (2026-09-15, [[projects/agent-workflow/queue]]): whether a claude-config edit he reviews at commit time anyway should be applied and shown as a diff instead of asked. Until ruled, ask.
 
 9. **Update state.** After the report writes successfully:
 

@@ -294,3 +294,87 @@ export const firstLine = (text, cap = USER_TURN_LINE_MAX) => {
   const line = (text ?? '').split('\n', 1)[0].trim();
   return line.length > cap ? line.slice(0, cap - 1) + '…' : line;
 };
+
+// --- Exchange rendering -------------------------------------------------
+
+// A moment in a transcript rendered for a human: the rows around a timestamp
+// with ISO times and roles, the text the user typed and the assistant wrote,
+// each tool call as one line. This is what a question or a report quotes
+// (projects/agent-workflow/feedback § A question carries its context and can
+// be hung, 2026-09-15); `reflect-context.mjs` is the CLI over it. A user row
+// that is not the human's (`origin.kind` peer or task-notification) is left
+// out, the same rule the scanner applies.
+const rowTime = row => (row.timestamp ?? '').replace(/\.\d+Z$/, 'Z');
+const resultBody = block =>
+  typeof block.content === 'string'
+    ? block.content
+    : (block.content ?? [])
+        .filter(s => s?.type === 'text' && typeof s.text === 'string')
+        .map(s => s.text)
+        .join('\n');
+
+export const isHumanUserRow = row =>
+  row?.type === 'user' && !(typeof row.origin?.kind === 'string' && row.origin.kind !== 'human');
+
+export const renderRow = (row, {maxChars = 1500} = {}) => {
+  const cap = s => (s.length > maxChars ? s.slice(0, maxChars - 1) + '…' : s);
+  const c = row.message?.content;
+  if (row.type === 'user') {
+    if (typeof c === 'string') {
+      const text = stripSyntheticBlocks(c);
+      return text ? `── ${rowTime(row)} USER\n${cap(text)}` : null;
+    }
+    if (!Array.isArray(c)) return null;
+    const texts = c
+      .filter(b => b?.type === 'text' && typeof b.text === 'string')
+      .map(b => stripSyntheticBlocks(b.text))
+      .filter(Boolean);
+    if (texts.length) return `── ${rowTime(row)} USER\n${cap(texts.join('\n'))}`;
+    const results = c.filter(b => b?.type === 'tool_result');
+    if (!results.length) return null;
+    const lines = results.map(
+      b => `[tool_result${b.is_error ? ' ERROR' : ''}] ${firstLine(resultBody(b), 160)}`
+    );
+    return `── ${rowTime(row)} TOOL_RESULT\n${lines.join('\n')}`;
+  }
+  if (row.type === 'assistant') {
+    if (typeof c === 'string')
+      return c.trim() ? `── ${rowTime(row)} ASSISTANT\n${cap(c.trim())}` : null;
+    if (!Array.isArray(c)) return null;
+    const parts = [];
+    for (const b of c) {
+      if (b?.type === 'text' && typeof b.text === 'string' && b.text.trim())
+        parts.push(cap(b.text.trim()));
+      else if (b?.type === 'tool_use')
+        parts.push(
+          `[tool_use ${b.name ?? '(unknown)'}] ${firstLine(JSON.stringify(b.input ?? {}), 160)}`
+        );
+    }
+    return parts.length ? `── ${rowTime(row)} ASSISTANT\n${parts.join('\n')}` : null;
+  }
+  return null;
+};
+
+// The rows around `atMs`: `before` rows earlier and `after` rows later, over
+// the human and assistant rows that carry a timestamp. Returns the rendered
+// text and the index of the centre row, or null when nothing is renderable.
+export const renderExchange = (rows, atMs, {before = 2, after = 3, maxChars = 1500} = {}) => {
+  const usable = rows.filter(r => r?.timestamp && (r.type === 'assistant' || isHumanUserRow(r)));
+  if (!usable.length) return null;
+  const at = Number(atMs);
+  let centre = 0;
+  let best = Infinity;
+  usable.forEach((r, i) => {
+    const d = Math.abs(Date.parse(r.timestamp) - at);
+    if (d < best) {
+      best = d;
+      centre = i;
+    }
+  });
+  const slice = usable.slice(Math.max(0, centre - before), centre + after + 1);
+  const text = slice
+    .map(r => renderRow(r, {maxChars}))
+    .filter(Boolean)
+    .join('\n');
+  return {text, centre, first: usable.find(isHumanUserRow) ?? null};
+};
