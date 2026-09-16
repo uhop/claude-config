@@ -380,6 +380,14 @@ for (const t of transcripts) {
     }
     if (!INCLUDE_SIDECHAIN && row.isSidechain === true) continue;
     if (row.type !== 'user' && row.type !== 'assistant') continue;
+    // A user row whose `origin.kind` is not `human` is harness traffic — a
+    // sub-agent hand-back (`peer`) or a task notification — never the user,
+    // whatever its text says (2026-09-15, reports/2026-09-15-nuke P2: 13
+    // hand-backs scored as corrections). Rows without `origin` (tool results,
+    // `<bash-input>` echoes, local slash commands) fall through to the text
+    // stripper.
+    if (row.type === 'user' && typeof row.origin?.kind === 'string' && row.origin.kind !== 'human')
+      continue;
     if (entrypoint === null && row.type === 'user' && typeof row.entrypoint === 'string') {
       entrypoint = row.entrypoint;
     }

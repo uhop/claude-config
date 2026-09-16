@@ -159,7 +159,14 @@ const stripMachineText = s =>
     // trailer's own "never …" wording fires the patterns, so the whole
     // turn goes. Requires the envelope to follow the preamble, so a user
     // quoting the phrase keeps their text.
-    .replace(/Another Claude session sent a message:\s*<cross-session-message[\s\S]*/g, '')
+    // A background sub-agent's hand-back arrives the same way in an
+    // `<agent-message>` envelope (2026-09-15, reports/2026-09-15-nuke P2);
+    // the row loop drops it on `origin.kind`, and this is the fallback for a
+    // transcript without `origin`.
+    .replace(
+      /Another Claude session sent a message:\s*<(?:cross-session-message|agent-message)[\s\S]*/g,
+      ''
+    )
     // Continuation-summary turns (context-compaction handoffs) are the
     // assistant's own recap of the prior session arriving in a user-role row —
     // correction-dense by construction, since they replay the very language
@@ -194,8 +201,10 @@ export const SUPPRESSED_FAILURE_PATTERNS = [
   // registry probe: the error text is the enumeration, not a failure. The id is
   // whatever the agent types (probe-no-such-task, probe-none, nonexistent-probe,
   // …), so match `probe` anywhere in it (prefix 2026-08-30, reports/2026-08-30-nuke
-  // P2; regex 2026-09-03, reports/2026-09-03-nuke P2).
-  /no task found with id: \S*probe/
+  // P2; regex 2026-09-03, reports/2026-09-03-nuke P2), or the bare `x` the
+  // rule's own example shows, which the rule now prescribes (2026-09-15,
+  // reports/2026-09-15-nuke P1).
+  /no task found with id: (x\b|\S*probe)/
 ];
 export const isSuppressed = text =>
   SUPPRESSED_FAILURE_PATTERNS.some(s => (typeof s === 'string' ? text.includes(s) : s.test(text)));
