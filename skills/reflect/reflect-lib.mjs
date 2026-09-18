@@ -316,13 +316,24 @@ const resultBody = block =>
 export const isHumanUserRow = row =>
   row?.type === 'user' && !(typeof row.origin?.kind === 'string' && row.origin.kind !== 'human');
 
+// A message typed while the agent works is stored as an attachment, not a user
+// row (first seen 2026-08-18; reports/2026-09-17-nuke P2). Hand-backs can ride
+// the same mode, so their envelopes stay out.
+export const asHumanRow = row => {
+  const a = row?.type === 'attachment' ? row.attachment : null;
+  if (a?.type !== 'queued_command' || a.commandMode !== 'prompt' || typeof a.prompt !== 'string')
+    return row;
+  if (/^\s*<(?:agent-message|cross-session-message|task-notification)\b/.test(a.prompt)) return row;
+  return {...row, type: 'user', queued: true, message: {role: 'user', content: a.prompt}};
+};
+
 export const renderRow = (row, {maxChars = 1500} = {}) => {
   const cap = s => (s.length > maxChars ? s.slice(0, maxChars - 1) + '…' : s);
   const c = row.message?.content;
   if (row.type === 'user') {
     if (typeof c === 'string') {
       const text = stripSyntheticBlocks(c);
-      return text ? `── ${rowTime(row)} USER\n${cap(text)}` : null;
+      return text ? `── ${rowTime(row)} USER${row.queued ? ' (queued)' : ''}\n${cap(text)}` : null;
     }
     if (!Array.isArray(c)) return null;
     const texts = c
@@ -359,7 +370,9 @@ export const renderRow = (row, {maxChars = 1500} = {}) => {
 // the human and assistant rows that carry a timestamp. Returns the rendered
 // text and the index of the centre row, or null when nothing is renderable.
 export const renderExchange = (rows, atMs, {before = 2, after = 3, maxChars = 1500} = {}) => {
-  const usable = rows.filter(r => r?.timestamp && (r.type === 'assistant' || isHumanUserRow(r)));
+  const usable = rows
+    .map(asHumanRow)
+    .filter(r => r?.timestamp && (r.type === 'assistant' || isHumanUserRow(r)));
   if (!usable.length) return null;
   const at = Number(atMs);
   let centre = 0;

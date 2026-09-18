@@ -12,6 +12,7 @@
 import {execFileSync} from 'node:child_process';
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {asHumanRow} from '../reflect/reflect-lib.mjs';
 
 export const VERSION_BUMP =
   /^\s*(new version|version|release|bump(?:ing)? (?:the )?version|v?\d+\.\d+\.\d+)\b/i;
@@ -180,6 +181,7 @@ export const loadSessions = (projectDir, {root} = {}) => {
       if (!ts) continue;
       if (startMs === null || ts < startMs) startMs = ts;
       if (endMs === null || ts > endMs) endMs = ts;
+      r = asHumanRow(r);
       if (r.type !== 'user') continue;
       const c = r.message?.content;
       const text = Array.isArray(c)

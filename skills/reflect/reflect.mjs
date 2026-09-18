@@ -33,6 +33,7 @@ import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
 import {correlateSession} from '../process-review/git-correlate.mjs';
 import {
+  asHumanRow,
   classifyUserTurn,
   stripSyntheticBlocks,
   errorSignature,
@@ -387,6 +388,7 @@ for (const t of transcripts) {
     } catch {
       continue;
     }
+    row = asHumanRow(row);
     if (!INCLUDE_SIDECHAIN && row.isSidechain === true) continue;
     if (row.type !== 'user' && row.type !== 'assistant') continue;
     // A user row whose `origin.kind` is not `human` is harness traffic — a
@@ -408,7 +410,8 @@ for (const t of transcripts) {
     // a run of consecutive assistant rows with no user row between them is one
     // logical turn. Bumping on every user row keeps genuine retries distinct,
     // since those are always separated by their own error result.
-    if (row.type === 'user') turnSeq++;
+    // A queued message lands between the rows of one batch; it must not split it.
+    if (row.type === 'user' && !row.queued) turnSeq++;
     const f = flatten(row);
     // Register tool_use ids → names for later tool_result name lookup
     const content2 = row.message?.content;
@@ -432,6 +435,7 @@ for (const t of transcripts) {
       role: row.type,
       ts,
       turn: turnSeq,
+      queued: row.queued === true,
       userText: f.userText,
       toolResultText: f.toolResultText,
       errorResults: f.errorResults,
@@ -466,7 +470,8 @@ for (const t of transcripts) {
     if (e.role !== 'user' || !e.userText || e.userText.length < 3) continue;
 
     const text = e.userText;
-    const prevAssistant = i > 0 && events[i - 1].role === 'assistant';
+    // A queued message answers the work in progress, usually after a tool result.
+    const prevAssistant = e.queued || (i > 0 && events[i - 1].role === 'assistant');
     const fired = classifyUserTurn(text);
     const hasNegation = fired.negation;
     const hasObservational = fired.observational;
@@ -499,7 +504,8 @@ for (const t of transcripts) {
       ts: e.ts,
       ts_iso: iso(e.ts),
       matched_text,
-      excerpt
+      excerpt,
+      ...(e.queued && {queued: true})
     };
 
     // `unlanded` rides along so step 4 can score one hit as recurrence: the
@@ -649,7 +655,7 @@ for (const t of transcripts) {
       between.length > 0 && between.every(x => x.role === 'assistant' && !x.hasToolUse);
     const prev = i > 0 ? events[i - 1] : null;
     const afterAssistant = prev?.role === 'assistant';
-    const didYou = afterAssistant && classifyUserTurn(e.userText).did_you;
+    const didYou = (e.queued || afterAssistant) && classifyUserTurn(e.userText).did_you;
     const afterApiError = afterAssistant && /^API Error\b/.test(prev.userText ?? '');
     userTurns.push({
       project: t.project,
@@ -658,6 +664,7 @@ for (const t of transcripts) {
       ts_iso: iso(e.ts),
       first_line: firstLine(e.userText),
       chars: e.userText.length,
+      ...(e.queued && {queued: true}),
       ...(adjacent && {adjacent: true}),
       ...(correctionTs.has(e.ts) && {correction: true}),
       ...(didYou && {did_you: true}),

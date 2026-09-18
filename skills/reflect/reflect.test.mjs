@@ -17,6 +17,7 @@ import {
   stripSyntheticBlocks,
   renderExchange,
   isHumanUserRow,
+  asHumanRow,
   USER_TURN_LINE_MAX
 } from './reflect-lib.mjs';
 
@@ -379,4 +380,54 @@ test('exchange rendering: human rows, tool calls and results, hand-backs left ou
   assert.equal(renderExchange([], 0), null);
   assert.equal(isHumanUserRow({type: 'user', origin: {kind: 'task-notification'}}), false);
   assert.equal(isHumanUserRow({type: 'user'}), true);
+});
+
+test('a message typed mid-turn is a human turn; harness rows in the same shape are not', () => {
+  // vault-storage 0a3bc2ed, 2026-09-17T06:08:18Z — absent from every scan until P2
+  const queued = (commandMode, prompt) => ({
+    type: 'attachment',
+    timestamp: '2026-09-17T06:08:18.174Z',
+    attachment: {type: 'queued_command', commandMode, prompt}
+  });
+  const human = queued(
+    'prompt',
+    'Do it the old-fashioned way: write to console all important operations with timestamps.'
+  );
+  const row = asHumanRow(human);
+  assert.equal(row.type, 'user');
+  assert.equal(row.queued, true);
+  assert.equal(isHumanUserRow(row), true);
+  assert.equal(row.message.content, human.attachment.prompt);
+
+  const notification = queued('task-notification', '<task-notification>\n<task-id>a5d</task-id>');
+  assert.equal(asHumanRow(notification), notification);
+  for (const envelope of [
+    '<agent-message from="a1">done</agent-message>',
+    ' <cross-session-message>'
+  ]) {
+    const r = queued('prompt', envelope);
+    assert.equal(asHumanRow(r), r, envelope);
+  }
+  const user = {type: 'user', message: {content: 'ok'}};
+  assert.equal(asHumanRow(user), user);
+
+  const rows = [
+    {
+      type: 'assistant',
+      timestamp: '2026-09-17T06:08:15.000Z',
+      message: {content: [{type: 'text', text: 'That rules out the parse.'}]}
+    },
+    {
+      type: 'user',
+      timestamp: '2026-09-17T06:08:16.000Z',
+      message: {content: [{type: 'tool_result', tool_use_id: 't1', content: 'ok'}]}
+    },
+    human
+  ];
+  const out = renderExchange(rows, Date.parse(human.timestamp), {before: 2, after: 0});
+  assert.ok(
+    out.text.endsWith(
+      '── 2026-09-17T06:08:18Z USER (queued)\nDo it the old-fashioned way: write to console all important operations with timestamps.'
+    )
+  );
 });

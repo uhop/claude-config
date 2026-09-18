@@ -70,7 +70,7 @@ Read all three to dedupe; write only to vault + claude-config.
      "live_sessions": [{project, session_id, path, mtime_iso, age_seconds, first_row_iso}],
      "state_watermark_iso": "...",
      "session_git": [{project, session_id, start_iso, end_iso, first_turn, repo, commits, correction_driven_commits, shas}],
-     "user_turns": [{project, session_id, ts, ts_iso, first_line, chars, adjacent?, correction?, did_you?, after_api_error?}],
+     "user_turns": [{project, session_id, ts, ts_iso, first_line, chars, queued?, adjacent?, correction?, did_you?, after_api_error?}],
      "signals": {
        "corrections":       [{kind, project, session_id, ts, ts_iso, matched_text, excerpt, unlanded?, scope_extension?}, ...],
        "confirmations":     [{...}],
@@ -144,7 +144,13 @@ Read all three to dedupe; write only to vault + claude-config.
    (3 of 6 did, by hand, before the marker existed) or asked a question the
    record answered; `after_api_error: true` means the reply before the turn
    was the harness's `API Error:` row, so a run of such turns is an outage,
-   not a cluster.
+   not a cluster. `queued: true` (2026-09-17) marks a message typed while the
+   agent was working: Claude Code stores it as an `attachment` row of type
+   `queued_command`, not a `user` row, and every scan before this marker
+   dropped it, 224 messages on nuke from 2026-08-18. These are the turns
+   typed while watching the work, so they carry the densest steering; read
+   them first. A queued turn counts as a reply to the agent for the
+   correction and `did_you` gates, and the same mark appears on its signals.
 
    **`repeated_failures` aggregates across sessions and project directories;
    `sessions` says how many.** "4 occurrences" was read as an over-count on
