@@ -154,9 +154,19 @@ mandatory.
 
 ## Consumption modes
 
-- **Constructive** — gate your own edit: about to restructure a condition or
-  guard chain? Verify the hand pair (`equivalent` + `licenseDelta` — verdict
-  first, then license) or let `simplify` propose with a trail.
+- **Constructive** — gate your own edit. For a diff, start mechanically: from
+  the repository root, `node ~/Open/apodict/bin/gate.js --out "$WORK/batch.json"`
+  writes every request the change owes — each condition of two or more atoms
+  as `simplify` with `certify`, each guard of a ladder and branch of an
+  if-chain as `guardStatus`, named files whole — and lists the value-position
+  composites to read by hand (the §15 truthy projection, where a value meets a
+  member access). A C repository passes `bin/harvest.js`'s declaring flags
+  (`--headers c`, the assertion-macro flags). Answer with
+  `node ~/Open/apodict/bin/query.js --summary "$WORK/batch.json"` and keep the
+  records with `node ~/Open/apodict/bin/ledger.js record --store
+  ~/Open/apodict/dev-docs/campaign/records/<repo>.json "$WORK/batch.json"`.
+  For one restructuring, verify the hand pair (`equivalent` + `licenseDelta`
+  — verdict first, then license) or let `simplify` propose with a trail.
 - **Forensic** — invoked cleanup/audit of a gnarly file: conditions,
   guard liveness (`guardStatus`), cover exhaustiveness, exit
   distinguishability, loop invariants.
