@@ -291,8 +291,8 @@ Where Google is silent or house practice differs; each is a decision, not an ove
   looser.
 - **AI tells are banned in all prose** — every surface in § Scope, blog and articles included
   (Eugene, 2026-08-29: _"make sure that updated language rules are used in general for all
-  external texts in all projects"_). Calibrated three times against the blog's pre-LLM corpus
-  (2026-08-14, 2026-08-29, 2026-09-07), never against a generic list (vault
+  external texts in all projects"_). Calibrated four times against the blog's pre-LLM corpus
+  (2026-08-14, 2026-08-29, 2026-09-07, 2026-09-17), never against a generic list (vault
   `projects/blog/writing-voice` § AI-tell calibration; fleet rule
   `topics/ai-writing-tells-calibrated`); the full families, replacements, and budgets are in
   `references/ai-tells.md`. The families: the contrast-correction move ("it isn't X; it's Y",
@@ -310,7 +310,8 @@ Where Google is silent or house practice differs; each is a decision, not an ove
   so _in order to_, _leverage_, _paradigm_, and _simple_ stay his. Cadence is budgeted at Eugene's
   pre-LLM 90th percentile per document: mean sentence length ≤ 18 words, em dashes ≤ 1.3 per
   100 words, semicolons ≤ 2.8, _never_ / _nothing_ / _nobody_ ≤ 0.3, _rather than_ ≤ 0.1,
-  negators ≤ 2.2.
+  negators ≤ 2.2, and the "X, not Y" closer ≤ 0.05 (Eugene, 2026-09-17: _"I don't like 'X, not
+  Y'"_).
   Google doesn't name the tells; its "key point first, plain statement" rule produces the same
   text. Mechanical check for any Markdown file: `prose-tells --check <file>` in this skill's
   directory (a shim over `blog-hugo/tools/prose-tells`).
@@ -453,8 +454,8 @@ When asked to review, edit, or polish prose (the `docs-review` skill delegates h
       self-clap, warm-up, staccato pair, headcount, Claude's register words, Orwell's false limbs,
       litotes, dying metaphors, meaningless praise, Latin tags).
 - [ ] Cadence within budget: mean sentence ≤ 18 words, em dashes ≤ 1.3 per 100 words, semicolons
-      ≤ 2.8, _never_ / _nothing_ / _nobody_ ≤ 0.3, _rather than_ ≤ 0.1, negators ≤ 2.2
-      (`prose-tells --check`).
+      ≤ 2.8, _never_ / _nothing_ / _nobody_ ≤ 0.3, _rather than_ ≤ 0.1, negators ≤ 2.2, "X, not
+      Y" closers ≤ 0.05 (`prose-tells --check`).
 - [ ] Headings sentence case, no _-ing_ opener, no skipped levels; lists introduced, parallel,
       punctuated consistently; procedures one action per step.
 - [ ] Link text descriptive; "For more information, see …"; punctuation outside links.

@@ -5,8 +5,9 @@ agent produces — README, wiki, `dev-docs/`, release notes, GitHub issue, PR, a
 advisories, vault notes, chat replies, blog posts, and articles. This reference lists the families,
 the replacement move for each, the cadence budgets, and what is _not_ a tell.
 
-Provenance: three calibrations of Eugene's blog corpus — 123 pre-LLM posts (2005–2014, 60.8k prose
-words) against the 2026 posts and drafts — on 2026-08-14, 2026-08-29, and 2026-09-07. Every family
+Provenance: four calibrations of Eugene's blog corpus — 123 pre-LLM posts (2005–2014, 60.8k prose
+words) against the 2026 posts and drafts — on 2026-08-14, 2026-08-29, 2026-09-07, and 2026-09-17
+(the last one a budget for a construction Eugene ruled out, measured the same way). Every family
 below scored zero in the pre-LLM corpus (or one hit in twenty years) and 4–100 instances in 2026
 prose, except the five Orwell families of the third pass, which are prophylactic: zero pre-LLM and
 a handful of 2026 hits each. The external lists that nominated candidates (sloptells.com,
@@ -63,14 +64,15 @@ the register.
 Rates, not phrases. Each budget is the 90th percentile per document of Eugene's own pre-LLM prose;
 the 2026 drift is what it catches.
 
-| Metric                                                                             | Pre-LLM                       | 2026 drift                | Budget                                                                                           |
-| ---------------------------------------------------------------------------------- | ----------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------ |
-| Mean sentence length                                                               | 13 words                      | 18–21                     | ≤ 18 words per document (Google's 26-word cap per sentence still applies)                        |
-| Em dashes                                                                          | 0.75 per 100 words            | 2.5                       | ≤ 1.3 per 100 words: a comma, parentheses, a colon, or a period instead                          |
-| Semicolons                                                                         | 1.3 per 100 words             | 3.1                       | ≤ 2.8: split the sentence                                                                        |
-| Absolutes (never, nothing, nobody, no one)                                         | 0.07 per 100 words            | 0.47                      | ≤ 0.3: keep a fact or a quotation, cut the framing                                               |
-| "rather than"                                                                      | 0.02 per 100 words            | 0.1                       | ≤ 0.1: "instead of", ", not", or rephrase                                                        |
-| Negators (not, no, none, nor, neither, without, cannot, _n't_, plus the absolutes) | 1.44 per 100 words (p90 2.17) | 2.10 (7 of 16 posts over) | ≤ 2.2: say what is; cut the _not un-_ pair (Orwell's Laski specimen: five negatives in 53 words) |
+| Metric                                                                             | Pre-LLM                       | 2026 drift                    | Budget                                                                                           |
+| ---------------------------------------------------------------------------------- | ----------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------ |
+| Mean sentence length                                                               | 13 words                      | 18–21                         | ≤ 18 words per document (Google's 26-word cap per sentence still applies)                        |
+| Em dashes                                                                          | 0.75 per 100 words            | 2.5                           | ≤ 1.3 per 100 words: a comma, parentheses, a colon, or a period instead                          |
+| Semicolons                                                                         | 1.3 per 100 words             | 3.1                           | ≤ 2.8: split the sentence                                                                        |
+| Absolutes (never, nothing, nobody, no one)                                         | 0.07 per 100 words            | 0.47                          | ≤ 0.3: keep a fact or a quotation, cut the framing                                               |
+| "rather than"                                                                      | 0.02 per 100 words            | 0.1                           | ≤ 0.1: "instead of", or rephrase                                                                 |
+| Negators (not, no, none, nor, neither, without, cannot, _n't_, plus the absolutes) | 1.44 per 100 words (p90 2.17) | 2.10 (7 of 16 posts over)     | ≤ 2.2: say what is; cut the _not un-_ pair (Orwell's Laski specimen: five negatives in 53 words) |
+| "X, not Y" closer (", not Y" ending a clause: "the receipt, not the product.")     | 0.01 per 100 words (p90 0.04) | 0.17 in posts, 0.23 in drafts | ≤ 0.05: state the positive claim and drop the negated half, which usually adds nothing           |
 
 Inverse tell, reported but not budgeted: 2026 prose lost its exclamation marks, question marks, and
 parentheticals, each halved or worse. Too clean reads as generated too.
