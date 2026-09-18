@@ -4,7 +4,8 @@
 // mechanics and § Malformations the parser can't warn about: the queue_items
 // parser reads only the three schema H2s and drops the rest without a word,
 // an item edited to say SHIPPED is still an open item to every fleet view,
-// and a heading glued to the previous line is a paragraph. Filed 2026-08-18
+// a heading glued to the previous line is a paragraph, and a schema section
+// with nothing in it lacks the `(empty)` the convention writes. Filed 2026-08-18
 // from the fleet audit that found ~95 stranded items across five projects;
 // calibrated 2026-09-06 on all 53 queues (see vault-lint's SKILL.md).
 
@@ -38,7 +39,15 @@ const BARE_PLACEHOLDER = '(empty)';
 const GLUED_RE = /\S\s*#{2,3} +(Active|Backlog|Watching)\b/;
 
 export const parseQueue = body => {
-  const preamble = {heading: null, line: 0, known: false, prose: false, items: [], paragraphs: []};
+  const preamble = {
+    heading: null,
+    line: 0,
+    known: false,
+    prose: false,
+    items: [],
+    paragraphs: [],
+    blank: true
+  };
   const sections = [];
   const glued = [];
   let current = preamble;
@@ -51,14 +60,16 @@ export const parseQueue = body => {
       current = {
         heading,
         line: i + 1,
-        known: SCHEMA_H2.includes(heading),
+        known: SCHEMA_H2.some(h => h.toLowerCase() === heading.toLowerCase()),
         prose: PROSE_H2.some(re => re.test(heading)),
         items: [],
-        paragraphs: []
+        paragraphs: [],
+        blank: true
       };
       sections.push(current);
       return;
     }
+    if (raw[i].trim().length > 0) current.blank = false;
     if (/^#{1,6} /.test(line)) return;
     if (GLUED_RE.test(line)) glued.push({line: i + 1, text: raw[i].trim()});
     const b = BULLET_RE.exec(line);
@@ -156,6 +167,7 @@ export const queueFindings = parsed => {
       out.push(
         `${s.heading}: ${plural(s.items.length, 'item')} and an "(empty…)" placeholder together — remove the placeholder`
       );
+    if (s.blank) out.push(`${s.heading}: no item and no placeholder — write the bare "(empty)"`);
   }
   for (const g of parsed.glued)
     out.push(

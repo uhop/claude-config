@@ -125,6 +125,11 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
     either shape (server ≥ 2026-09-16).
   - *Item beside a placeholder* (2026-09-16): a schema section holding both a
     bullet and an `(empty…)` paragraph — remove the placeholder.
+  - *Empty schema section* (2026-09-17): nothing but blank lines under the
+    heading — no item, no placeholder, no prose, subsection, or fence. Write
+    the bare `(empty)`. The server's remove-item and move-item ops write it
+    themselves when they empty a section (server ≥ 2026-09-17); the fleet
+    sweep that day found twelve such sections in eight queues.
   - *Glued heading*: `…item.## Backlog` is a paragraph, and everything below
     it lands in the previous section.
   - *Served count*: the `queue_items` slice against the markdown's column-0

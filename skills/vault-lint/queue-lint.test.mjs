@@ -206,3 +206,19 @@ test('a paragraph starts after a heading, and a second column-0 line does not st
   assert.equal(twoLines.sections[0].paragraphs.length, 1);
   assert.equal(queueFindings(twoLines).filter(d => /bold-led paragraph/.test(d)).length, 1);
 });
+
+test('a schema section with nothing in it is reported; a subsection, a fence, or a prose H2 is not', () => {
+  const out = queueFindings(
+    parseQueue(
+      '## Active\n\n## Backlog\n\n### P1\n\n## See also\n\n## Watching\n\n```\nfenced\n```\n\n## backlog\n'
+    )
+  );
+  assert.deepEqual(
+    out,
+    [
+      'Active: no item and no placeholder — write the bare "(empty)"',
+      'backlog: no item and no placeholder — write the bare "(empty)"'
+    ],
+    out.join('\n')
+  );
+});
