@@ -598,12 +598,15 @@ MCP server surfaced that `mcpServers` had never been a recognized
 | Everything at priority N (Backlog) | `vault_queue_by_priority(n)` |
 | Fleet-wide Active / Watching | `vault_queue_by_section(section)` |
 
-Queue endpoints are backed by `queue_items`, a derivative the watcher keeps in
-sync with each project's `queue.md` and `queue-archive.md`. Markdown stays
-source of truth — see [[topics/project-queue-convention]] for the shape and
-[[projects/vault-storage/design/queue-items-table]] for schema + identity
-model. Call `vault_queue_reindex` after a multi-machine pull to repopulate
-slices the watcher didn't witness.
+Queue endpoints are backed by `queue_items`, a derivative every import keeps in
+sync with each project's `queue.md` and `queue-archive.md`: an API write's
+slice is current when the response returns, and a pull is covered by the
+incremental reindex (server ≥ 2026-09-19, vault-storage D61; before that only
+the watcher derived slices, so a pull needed `vault_queue_reindex`). Markdown
+stays source of truth — see [[topics/project-queue-convention]] for the shape
+and [[projects/vault-storage/design/queue-items-table]] for schema + identity
+model. `vault_queue_reindex` remains the recovery sweep when the queue lint
+reports a stale slice.
 
 ## Note format
 
