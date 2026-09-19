@@ -158,10 +158,16 @@ mandatory.
   the repository root, `node ~/Open/apodict/bin/gate.js --out "$WORK/batch.json"`
   writes every request the change owes — each condition of two or more atoms
   as `simplify` with `certify`, each guard of a ladder and branch of an
-  if-chain as `guardStatus`, named files whole — and lists the value-position
-  composites to read by hand (the §15 truthy projection, where a value meets a
-  member access). A C repository passes `bin/harvest.js`'s declaring flags
-  (`--headers c`, the assertion-macro flags). Answer with
+  if-chain as `guardStatus`, named files whole — and asks each value-position
+  composite the §15 check its consumer owes, as `valueEquivalent` (a member
+  read: can it be nullish?; `?.` or a JSX child: can it be falsy but not
+  nullish?; a call, an iteration, a template hole: can it be falsy?). A
+  refutation's witness and `results` name the world and the operand that
+  reach the state; read it against what the operands can hold, since a
+  producer the syntax cannot see (a `find`, a `split`) is your fact to pin. A
+  value only handed on is counted in one line, not listed. A C repository
+  passes `bin/harvest.js`'s declaring flags (`--headers c`, the
+  assertion-macro flags). Answer with
   `node ~/Open/apodict/bin/query.js --summary "$WORK/batch.json"` and keep the
   records with `node ~/Open/apodict/bin/ledger.js record --store
   ~/Open/apodict/dev-docs/campaign/records/<repo>.json "$WORK/batch.json"`.
