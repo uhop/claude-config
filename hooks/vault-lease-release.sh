@@ -12,6 +12,10 @@
 # § Session-lifetime claims. Holder-id convention (must match the claim hook
 # and vault-lease-gate.sh): <hostname>/<session-prefix>.
 #
+# A marker naming the holder is written before any network call and removed
+# only once nothing is left: a timeout or an unreachable server leaves it for
+# the next SessionStart to drain (lib/vault-lease-release.sh; 2026-09-19).
+#
 # FAILS OPEN, silently: SessionEnd stdout is not shown to anyone, and a hook
 # here must never hold up shutdown. Missing env/tools, unreachable server, a
 # sub-agent run (agent_id present) all exit 0. Never `force` — a lease held
@@ -35,26 +39,12 @@ session_id=$(jq -r '.session_id // ""' <<<"$payload" 2>/dev/null) || exit 0
 
 me="$(hostname -s)/${session_id:0:8}"
 
-resp=$(curl -sf --connect-timeout 1 --max-time 3 \
-  -H "Authorization: Bearer $VAULT_API_TOKEN" "$VAULT_API_URL/leases") || exit 0
-mine=$(jq -r --arg me "$me" '.items[]? | select(.holder == $me) | .resource' <<<"$resp" 2>/dev/null) || exit 0
-[[ -n "$mine" ]] || exit 0
+# shellcheck source=lib/vault-lease-release.sh source-path=SCRIPTDIR
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-lease-release.sh" || exit 0
 
-while IFS= read -r resource || [[ -n "$resource" ]]; do
-  [[ -n "$resource" ]] || continue
-  body=$(jq -cn --arg r "$resource" --arg h "$me" '{resource: $r, holder: $h}') || continue
-  curl -s -o /dev/null --connect-timeout 1 --max-time 3 \
-    -H "Authorization: Bearer $VAULT_API_TOKEN" -H 'Content-Type: application/json' \
-    --data-binary "$body" "$VAULT_API_URL/leases/release" || true
-done <<<"$mine"
+marker=$(lease_marker_of "$me")
+mkdir -p "$lease_pending_dir" 2>/dev/null && printf '%s\n' "$me" >"$marker" 2>/dev/null
 
-# Drop the gate's short-TTL cache entries for what we held, so a session
-# starting in the next few seconds does not read our stale "held by X".
-cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease"
-if [[ -d "$cache_dir" ]]; then
-  while IFS= read -r resource || [[ -n "$resource" ]]; do
-    [[ -n "$resource" ]] || continue
-    rm -f "$cache_dir/$(printf '%s' "$resource" | cksum | tr -d ' ')" 2>/dev/null || true
-  done <<<"$mine"
-fi
+leases=$(lease_list 2) || exit 0
+lease_release_held "$me" "$leases" 1 100 && rm -f "$marker"
 exit 0

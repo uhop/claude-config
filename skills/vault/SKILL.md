@@ -197,7 +197,15 @@ renews it on activity — every edit through the PreToolUse gate, and every
 tool call through the same script's `--touch` mode on PostToolUse
 (2026-09-05, so a Bash-only or MCP-only session stays live) — and re-claims
 after a TTL lapse when the repo is your own; `hooks/vault-lease-release.sh` (SessionEnd)
-releases every lease this holder has; TTL (4 h) covers a crash. Sub-agents
+releases every lease this holder has; TTL (4 h) covers a crash. Three
+guards against a dead session's lease (vault-storage D63, 2026-09-19): the
+server lets a cwd claim take a cwd lease unrenewed for an hour; the release
+hook leaves a marker when it cannot finish, and the next session start on
+the host releases what that holder still holds before claiming; and when the
+gate's periodic check finds your own repo held by someone else, it tells you
+once, in the context after a tool call, that you are subordinate now. An
+idle session can lose its lease this way, so read that notice before any
+direct edit, and treat a blocked edit the same way. Sub-agents
 never claim — the parent owns the repo. All fail-open. The result arrives
 as a `[vault] lease: …` line at session start, which is how you know your
 standing: **held by you** (edit freely), **unclaimed** (the vault was
@@ -212,10 +220,12 @@ holder id (verified 2026-08-19: holder `nuke/36eb0a3e` was
 `claude-config-ca [51bbb5]`) — send to the peer(s) named after the repo's
 basename and put the resource + holder id in the text so a non-holder can
 tell and ignore it. Record first, ring second. Taking the lease is the
-operator's act, never yours: he transfers, force-releases in the UI, or says
-*"take the lease"* — only then `vault_lease_release({resource, holder:
-<theirs>, force: true})` + your own claim. **Never `force` unbidden**; the
-flag is exposed to every token holder, so this is a rule, not a permission.
+operator's act, never yours, and it happens in the UI only (ruled
+2026-09-19): he transfers, or force-releases in `/ui/agents.html`. When he
+says *"take the lease"*, point him there; **never call `vault_lease_release`
+with `force`**, and never route a refused release through `vault-curl`. The
+flag is exposed to every token holder, so this is a rule, not a permission,
+and the auto-mode classifier refuses the call anyway.
 Before that ruling the section said single-agent sessions claim nothing;
 that left the registry unable to tell "nobody is there" from "nobody
 claimed", which is why the claim moved into a hook.

@@ -30,7 +30,8 @@
 # session that edits through Bash, or works through MCP tools alone, never
 # trips the Edit/Write matcher, so its lease used to expire mid-session and
 # the next agent read a live neighbour as a ghost (found 2026-08-20). Touch
-# mode never blocks and never prints: a fresh renew stamp costs a stat, a
+# mode never blocks, and prints only once, when a session's own repo turns
+# out held by someone else (2026-09-19): a fresh renew stamp costs a stat, a
 # stale one costs one lookup per RENEW_EVERY. Sub-agent payloads (agent_id)
 # exit at once — sub-agents never claim, and a re-claim under a different
 # session prefix would lock the parent out of its own repo.
@@ -285,14 +286,25 @@ if [[ $mode == touch ]]; then
   [[ -f "$stamp" ]] && read -r last <"$stamp" 2>/dev/null
   [[ ${last:-0} =~ ^[0-9]+$ ]] || last=0
   ((now - last < RENEW_EVERY)) && exit 0
+  prev_holder=$(sed -n 2p "$(cache_file_of "$resource")" 2>/dev/null)
   lookup "$resource" || exit 0
   if [[ -z "$holder" ]]; then claim_cwd "$resource" || exit 0; fi
   if [[ "$holder" == "$me" ]]; then
     renew_if_due "$resource"
   else
-    # Not ours: nothing to renew and nothing to say — stamp the check so a
-    # subordinate session asks once per RENEW_EVERY, not once per cache expiry.
+    # Stamp the check so a subordinate session asks once per RENEW_EVERY, not
+    # once per cache expiry.
     printf '%s\n' "$now" >"$stamp" 2>/dev/null || true
+    # The last check saw this session holding it: say so once, before the agent
+    # plans direct work (2026-09-19; a cwd lease unrenewed for an hour yields).
+    if [[ "$prev_holder" == "$me" ]]; then
+      if [[ "$kind" == "human" ]]; then
+        msg="[vault] lease: $resource is now held by $holder (human, operator-held); this session ($me) no longer holds it. Ask before editing this working tree; work goes in a worktree + a handoff to \"$resource\"."
+      else
+        msg="[vault] lease: $resource is now held by $holder; this session ($me) no longer holds it (a cwd lease left unrenewed for an hour passes to the next session that starts in the repo). You are SUBORDINATE now: read freely; every edit goes worktree + handoff to \"$resource\" (SendMessage the holder if ListAgents shows it). Taking it back is the operator's: the force release in /ui/agents.html."
+      fi
+      jq -cn --arg m "$msg" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}'
+    fi
   fi
   exit 0
 fi

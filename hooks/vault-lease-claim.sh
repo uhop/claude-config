@@ -9,7 +9,9 @@
 # where every session already starts. Renewal rides the lease gate — on every
 # edit (PreToolUse) and on every tool call (PostToolUse `--touch`, 2026-09-05,
 # so a Bash- or MCP-only session stays live); release rides the SessionEnd
-# hook; TTL covers a crash.
+# hook; TTL covers a crash. A release that could not finish left a marker;
+# this hook drains those before claiming, and a cwd lease unrenewed for an
+# hour yields to this claim on the server (2026-09-19, vault-storage D63).
 #
 # Design: vault projects/vault-storage/design/agent-coordination
 # § Session-lifetime claims. Holder-id convention (must match
@@ -55,12 +57,32 @@ fi
 resource="repo:$normalized"
 me="$(hostname -s)/${session_id:0:8}"
 
+# Leases a session ending on this host could not release. Budget: one list
+# call and two releases, so a slow server costs this hook ~3 s at most.
+# shellcheck source=lib/vault-lease-release.sh source-path=SCRIPTDIR
+if . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-lease-release.sh" 2>/dev/null; then
+  markers=("$lease_pending_dir"/*)
+  if [[ -e "${markers[0]}" ]] && leases=$(lease_list 1); then
+    budget=2
+    for marker in "${markers[@]}"; do
+      dead=$(head -n1 "$marker" 2>/dev/null)
+      if [[ -z "$dead" ]]; then
+        rm -f "$marker"
+        continue
+      fi
+      lease_release_held "$dead" "$leases" 1 "$budget" && rm -f "$marker"
+      budget=$((budget - lease_posts))
+      ((budget > 0)) || break
+    done
+  fi
+fi
+
 body=$(jq -cn --arg r "$resource" --arg h "$me" \
   '{resource: $r, holder: $h, kind: "agent", priority: "cwd"}') || exit 0
 
 # -w appends the status on its own line so a 409 body is still readable
 # (curl -f would discard it, and the 409 body is the whole point).
-raw=$(curl -s --connect-timeout 1 --max-time 3 \
+raw=$(curl -s --connect-timeout 1 --max-time 2 \
   -H "Authorization: Bearer $VAULT_API_TOKEN" -H 'Content-Type: application/json' \
   --data-binary "$body" -w $'\n%{http_code}' "$VAULT_API_URL/leases/claim") || exit 0
 code=${raw##*$'\n'}
@@ -72,7 +94,11 @@ case "$code" in
       def ttl: ((.lease.expires_at // "" | if . == "" then null else
         ((. | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - now) / 3600 | floor end) // null);
       def hours: (ttl | if . == null then "" else " (TTL \(.)h)" end);
-      if .status == "preempted" then
+      if .status == "preempted" and .prior.priority == "cwd" then
+        "[vault] lease: \($r) — claimed (cwd) as \($me)\(hours), taking over from \(.prior.holder), " +
+        "unrenewed since \(.prior.renewed_at) (a cwd lease yields after an hour without renewal). " +
+        "Renews on activity; released at session end."
+      elif .status == "preempted" then
         "[vault] lease: \($r) — claimed (cwd) as \($me)\(hours), preempting a side holder — it learns " +
         "at its next edit. Renews on activity; released at session end."
       elif .status == "renewed" then
@@ -92,7 +118,8 @@ case "$code" in
         "[vault] lease: \($r) is held by \(.holder) (\(.priority // "agent"), since \(.claimed_at // "?"), " +
         "renewed \(.renewed_at // "?")) — you are SUBORDINATE as \($me): read freely; every edit goes " +
         "worktree + handoff to \"\($r)\" (SendMessage the holder if ListAgents shows it). Taking the " +
-        "lease is the operator'"'"'s call — only on an explicit \"take the lease\"."
+        "lease is the operator'"'"'s: the force release in /ui/agents.html. A cwd lease left unrenewed " +
+        "for an hour passes to the next session that starts here."
       end' <<<"$resp" 2>/dev/null || exit 0
     ;;
 esac

@@ -61,6 +61,16 @@ run "$CLAIM" '{"session_id":"deadbeefcafe","cwd":"/"}' VAULT_API_URL=http://127.
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "claim: unreachable server must exit 0 silently"
 rmdir "$nonrepo"
 
+# A release that cannot reach the server leaves a marker for the next start; no env, no marker.
+ST=$(mktemp -d)
+MARK="$ST/claude-vault-lease/pending-release/$(hostname -s)_deadbeef"
+run "$RELEASE" '{"session_id":"deadbeefcafe","cwd":"/"}' VAULT_API_URL= VAULT_API_TOKEN= XDG_STATE_HOME="$ST"
+[[ $rc -eq 0 && ! -e "$MARK" ]] && ok || bad "release: no env must not write a marker"
+run "$RELEASE" '{"session_id":"deadbeefcafe","cwd":"/"}' VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=x XDG_STATE_HOME="$ST"
+[[ $rc -eq 0 && -z "$out" && "$(cat "$MARK" 2>/dev/null)" == "$(hostname -s)/deadbeef" ]] && ok ||
+  bad "release: an unreachable server must leave a marker naming the holder"
+rm -rf "$ST"
+
 # ── LIVE: round-trip on a throwaway repo with a fake remote ──────────────
 if [[ -z "${VAULT_API_URL:-}" || -z "${VAULT_API_TOKEN:-}" ]] ||
    ! curl -sf --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $VAULT_API_TOKEN" \
@@ -149,6 +159,43 @@ else
   touch_ "$(jq -nc --arg s "$S2" --arg c "$W" '{session_id:$s,cwd:$c,agent_id:"sub-1"}')"
   holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
   [[ $rc -eq 0 && -z "$holder" ]] && ok || bad "touch: a sub-agent payload must never claim (rc=$rc holder='$holder')"
+
+  # 12a. a release the server never saw leaves a marker; the next session's claim drains it
+  #      and claims instead of starting subordinate to a ghost (2026-09-19)
+  ST=$(mktemp -d)
+  cachefile() { printf '%s/%s' "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease" "$(printf '%s' "$RES" | cksum | tr -d ' ')"; }
+  run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')" XDG_STATE_HOME="$ST"
+  run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')" VAULT_API_URL=http://127.0.0.1:9 XDG_STATE_HOME="$ST"
+  marker="$ST/claude-vault-lease/pending-release/$(hostname -s)_${S1:0:8}"
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  [[ -e "$marker" && "$holder" == "$ME1" ]] && ok || bad "release: a stranded release must leave the marker and the lease (holder='$holder')"
+  run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S2" '{session_id:$s,cwd:$c}')" XDG_STATE_HOME="$ST"
+  [[ $rc -eq 0 && "$out" == *"claimed (cwd) as $ME2"* && ! -e "$marker" ]] && ok ||
+    bad "claim: the next session must drain the marker and claim (out=$out)"
+  run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S2" '{session_id:$s,cwd:$c}')" XDG_STATE_HOME="$ST"
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  [[ -z "$holder" && -z "$(ls -A "$ST/claude-vault-lease/pending-release" 2>/dev/null)" ]] && ok ||
+    bad "release: a release that finishes must leave no marker (holder='$holder')"
+  rm -rf "$ST"
+
+  # 12b. --touch tells a session once that its own repo is now held by someone else
+  run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
+  printf '0\n%s\nagent\n' "$ME1" >"$(cachefile)"
+  curl -s -o /dev/null "${hdr[@]}" -H 'Content-Type: application/json' \
+    --data-binary "$(jq -nc --arg r "$RES" '{resource:$r,holder:"test-cleanup",force:true}')" \
+    "$VAULT_API_URL/leases/release"
+  run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S2" '{session_id:$s,cwd:$c}')"
+  printf '0\n' >"$(stampfile "$RES")"
+  touch_ "$(jq -nc --arg s "$S1" --arg c "$W" '{session_id:$s,cwd:$c}')"
+  note=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$out" 2>/dev/null)
+  [[ $rc -eq 0 && "$note" == *"now held by $ME2"* && "$note" == *SUBORDINATE* ]] && ok ||
+    bad "touch: a session that lost its repo must be told once (out=$out)"
+  printf '0\n' >"$(stampfile "$RES")"
+  printf '0\n%s\nagent\n' "$ME2" >"$(cachefile)"
+  touch_ "$(jq -nc --arg s "$S1" --arg c "$W" '{session_id:$s,cwd:$c}')"
+  [[ $rc -eq 0 && -z "$out" ]] && ok || bad "touch: the notice must not repeat (out=$out)"
+  run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S2" '{session_id:$s,cwd:$c}')"
+  rm -f "$(cachefile)"*
 
   # 13. the Bash gate (2026-09-06, option 1): session 1 holds; session 2's write-shaped Bash
   #     into the held repo is blocked, reads and scratch writes pass, the holder's own writes pass
