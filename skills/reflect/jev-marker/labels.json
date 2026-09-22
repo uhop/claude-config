@@ -1,0 +1,655 @@
+{
+  "written": "2026-09-22",
+  "labels": {
+    "1787621163992": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-25-nuke.md"
+    },
+    "1787631884466": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-08-25-nuke.md"
+    },
+    "1787687001044": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-25-nuke.md"
+    },
+    "1787619056464": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-08-25-nuke.md"
+    },
+    "1787620112394": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-08-25-nuke.md"
+    },
+    "1787636091734": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-08-25-nuke.md"
+    },
+    "1787636643483": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-08-25-nuke.md"
+    },
+    "1787708539790": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-08-26-nuke.md"
+    },
+    "1787795678040": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-08-26-nuke.md"
+    },
+    "1787797494633": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-08-26-nuke.md"
+    },
+    "1787720956817": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-26-nuke.md"
+    },
+    "1787721298373": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-26-nuke.md"
+    },
+    "1787796698217": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-26-nuke.md"
+    },
+    "1787720223500": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-26-nuke.md"
+    },
+    "1787889259025": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-08-29-nuke.md"
+    },
+    "1787977487377": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-08-29-nuke.md"
+    },
+    "1787976849133": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-08-29-nuke.md"
+    },
+    "1787885637736": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-29-nuke.md"
+    },
+    "1787871218590": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-29-nuke.md"
+    },
+    "1787973154617": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-29-nuke.md"
+    },
+    "1787978225086": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-29-nuke.md"
+    },
+    "1787945775580": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-29-nuke.md"
+    },
+    "1787945814013": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-29-nuke.md"
+    },
+    "1788033290969": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-08-30-nuke.md"
+    },
+    "1788054890414": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-08-30-nuke.md"
+    },
+    "1788064487903": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-08-30-nuke.md"
+    },
+    "1788126224319": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-08-31-nuke.md"
+    },
+    "1788152171442": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-08-31-nuke.md"
+    },
+    "1788141940422": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-08-31-nuke.md"
+    },
+    "1788141705236": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-08-31-nuke.md"
+    },
+    "1788226060753": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-01-nuke.md"
+    },
+    "1788226670036": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-01-nuke.md"
+    },
+    "1788232705710": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-09-01-nuke.md"
+    },
+    "1788233826967": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-01-nuke.md"
+    },
+    "1788234167337": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-01-nuke.md"
+    },
+    "1788229370926": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-01-nuke.md"
+    },
+    "1788319442078": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-02-nuke.md"
+    },
+    "1788319345973": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-02-nuke.md",
+      "withheld": true
+    },
+    "1788322266443": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-09-02-nuke.md"
+    },
+    "1788394903909": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-03-nuke.md"
+    },
+    "1788408769737": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-03-nuke.md"
+    },
+    "1788481376581": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-04-nuke.md"
+    },
+    "1788577172405": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-11-nuke.md"
+    },
+    "1788989159085": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-11-nuke.md"
+    },
+    "1788985123095": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-09-11-nuke.md"
+    },
+    "1789152869414": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-09-11-nuke.md"
+    },
+    "1789158264391": {
+      "label": "signal",
+      "kind": "report:needs",
+      "source": "2026-09-11-nuke.md"
+    },
+    "1788808416193": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-11-nuke.md"
+    },
+    "1788808422423": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-11-nuke.md"
+    },
+    "1788808425510": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-11-nuke.md"
+    },
+    "1788808430610": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-11-nuke.md"
+    },
+    "1789241676289": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-13-nuke.md"
+    },
+    "1789240586677": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-13-nuke.md"
+    },
+    "1789243164512": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-13-nuke.md"
+    },
+    "1789337258971": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789452251333": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789451244822": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789494080731": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789417089342": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789332269429": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789331491060": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789491801164": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789452305138": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789362458702": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789481838192": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789489683618": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789424377966": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789497769098": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789484011001": {
+      "label": "signal",
+      "kind": "report:observations",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789341896814": {
+      "label": "signal",
+      "kind": "report:observations",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789356298654": {
+      "label": "signal",
+      "kind": "report:observations",
+      "source": "2026-09-15-nuke.md"
+    },
+    "1789591014489": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-09-16-nuke.md"
+    },
+    "1789623249038": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-17-nuke.md"
+    },
+    "1789706675427": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md",
+      "withheld": true
+    },
+    "1789707620050": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-19-nuke.md",
+      "withheld": true
+    },
+    "1789793592792": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-19-nuke.md",
+      "withheld": true
+    },
+    "1789836080477": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-19-nuke.md",
+      "withheld": true
+    },
+    "1789839890434": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789706793695": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789704666149": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789843618543": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789845206465": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789842689413": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789842743599": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789843788704": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789845440871": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789845471135": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789694137828": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789694445914": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789791933506": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789793232166": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789784467427": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789784207369": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789789926057": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789789978331": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789790234279": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789678514467": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789699670681": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789700812410": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789785906567": {
+      "label": "signal",
+      "kind": "report:observations",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789698242931": {
+      "label": "signal",
+      "kind": "report:observations",
+      "source": "2026-09-19-nuke.md"
+    },
+    "1789945216424": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789945378469": {
+      "label": "signal",
+      "kind": "report:high-confidence",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789878195569": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789859589371": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789918265905": {
+      "label": "signal",
+      "kind": "report:medium-confidence",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789873791769": {
+      "label": "signal",
+      "kind": "report:needs",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789864250409": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789871648870": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789872089025": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789958781276": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1790024386186": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1790019543294": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1790020159339": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1790020993135": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789861774931": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789859878953": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789956852297": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789956893827": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789970481695": {
+      "label": "signal",
+      "kind": "report:already",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789857928091": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789872334800": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789851217545": {
+      "label": "fp",
+      "kind": "report:false",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789971263148": {
+      "label": "signal",
+      "kind": "report:observations",
+      "source": "2026-09-22-nuke.md"
+    },
+    "1789793325531": {
+      "label": "signal",
+      "source": "hand",
+      "withheld": true,
+      "kind": "hand:withheld"
+    },
+    "1787871943873": {
+      "label": "signal",
+      "source": "hand",
+      "withheld": true,
+      "kind": "hand:withheld"
+    },
+    "1789676375337": {
+      "label": "unlabeled",
+      "kind": "hand",
+      "source": "hand",
+      "withheld": false
+    },
+    "1788480314952": {
+      "label": "unlabeled",
+      "kind": "hand",
+      "source": "hand",
+      "withheld": false
+    }
+  },
+  "note": "ts \u2192 label; the turn text is in the transcript, not here (this repository is public)"
+}

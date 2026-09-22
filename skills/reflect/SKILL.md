@@ -149,7 +149,16 @@ Read all three to dedupe; write only to vault + claude-config.
    `queued_command`, not a `user` row, and every scan before this marker
    dropped it, 224 messages on nuke from 2026-08-18. These are the turns
    typed while watching the work, so they carry the densest steering; read
-   them first. A queued turn counts as a reply to the agent for the
+   them first.
+
+   **A Jev arm was measured on this pass (2026-09-22,
+   `skills/reflect/jev-marker/`; vault
+   `projects/claude-config/measurements/2026-09-22-jev-reflect-marker`).** On
+   corrections alone the model loses to the cues above; a `rule` criterion
+   (the engineer states how the agent should work in general) finds the
+   standing preferences no cue can name, and a `withheld` criterion separates
+   the "what is the name of arc N" ask at 0.7. Not wired: if it ships, it is an
+   opt-in rank on `user_turns` for this reading pass, never a filter. A queued turn counts as a reply to the agent for the
    correction and `did_you` gates, and the same mark appears on its signals.
 
    **`repeated_failures` aggregates across sessions and project directories;
