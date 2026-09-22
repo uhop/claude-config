@@ -183,6 +183,13 @@ Read all three to dedupe; write only to vault + claude-config.
    (2026-09-13 P1). A result that is only `Exit code N` has no signature and
    is not counted.
 
+   **The window under-sizes a stable signature.** A repeated failure with a
+   fixed error line recurs outside the window too: on 2026-09-22 the scan
+   showed 3 and 4 occurrences of two signatures, and one `grep -l` over every
+   transcript on the host showed 21 and 16 sessions. Before sizing such a
+   failure in the report, grep the host's transcripts for its error line and
+   report both numbers.
+
 3. **Dedupe against existing memory.** For each candidate signal, check whether the rule is already captured. Read in parallel:
    - `~/Open/claude-config/CLAUDE.md` (global rules)
    - `~/.claude/projects/<hash>/memory/*.md` for the relevant project hash
