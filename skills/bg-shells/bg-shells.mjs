@@ -15,12 +15,18 @@
 //      same modern shape, text form.
 //   3) `bash_<n>` token in the result body — legacy Claude Code.
 //
-// Kill detection accepts both `TaskStop(task_id|shell_id)` (modern) and
-// `KillShell(shell_id)` (legacy).
+// Completion: the harness writes a `<task-notification>` block naming the
+// task id and its status (`completed`, `failed`, `killed`) — as a
+// `queue-operation` row while a turn is running, or inside the user row that
+// delivers it — so a shell with one is done whether or not the agent ever
+// read it (2026-09-22). Kill detection accepts both `TaskStop(task_id|shell_id)`
+// (modern) and `KillShell(shell_id)` (legacy). A shell with neither is `live`,
+// and that is the only status a done-claim may not carry.
 //
 // Usage:
 //   bg-shells.mjs                       # list as text
 //   bg-shells.mjs --json                # JSON output
+//   bg-shells.mjs --live                # only shells with no completion and no stop
 //   bg-shells.mjs --session=<path>      # override session JSONL path
 //   bg-shells.mjs --all-sessions        # walk every session in the cwd's project dir
 //                                       # (use when the current session split or
@@ -46,7 +52,14 @@ const opt = (name, fallback) => {
 
 const SESSION_OVERRIDE = opt('--session', null);
 const AS_JSON = opt('--json', false) === true;
+const LIVE_ONLY = opt('--live', false) === true;
 const ALL_SESSIONS = opt('--all-sessions', false) === true;
+
+const NOTIFICATION_RE = /<task-notification>([\s\S]*?)<\/task-notification>/g;
+const TASK_ID_RE = /<task-id>([A-Za-z0-9_-]+)<\/task-id>/;
+const STATUS_RE = /<status>([a-z_-]+)<\/status>/;
+const SUMMARY_RE = /<summary>([^<]*)<\/summary>/;
+const EXIT_RE = /\(exit code (-?\d+)\)/;
 
 const cwdToProjectDir = cwd => cwd.replace(/\//g, '-');
 
@@ -109,6 +122,8 @@ const shellsBySession = [];
 for (const sessionPath of sessionPaths) {
   const content = readFileSync(sessionPath, 'utf8');
   const killedIds = new Set();
+  // task id → {status, exit, summary} from the harness's completion block.
+  const notified = new Map();
   // tool_use_id → tentative bash entry. Every Bash tool_use lands here; only
   // entries that pick up a shell_id (from the corresponding tool_result) are
   // confirmed as background and emitted.
@@ -116,6 +131,24 @@ for (const sessionPath of sessionPaths) {
 
   for (const line of content.split('\n')) {
     if (!line) continue;
+
+    // The notification is read off the raw line: it appears in rows of more
+    // than one type (queue-operation, user), and the tags survive JSON
+    // escaping untouched.
+    if (line.includes('<task-notification>')) {
+      for (const m of line.matchAll(NOTIFICATION_RE)) {
+        const block = m[1];
+        const id = TASK_ID_RE.exec(block)?.[1];
+        if (!id) continue;
+        const summary = (SUMMARY_RE.exec(block)?.[1] ?? '').replace(/\\"/g, '"');
+        notified.set(id, {
+          status: STATUS_RE.exec(block)?.[1] ?? 'completed',
+          exit: EXIT_RE.exec(summary)?.[1] ?? null,
+          summary
+        });
+      }
+    }
+
     let row;
     try {
       row = JSON.parse(line);
@@ -183,12 +216,22 @@ for (const sessionPath of sessionPaths) {
     if (m) entry.shell_id = m[1];
   }
 
-  const shells = [...bashByUseId.values()].filter(e => e.shell_id);
+  let shells = [...bashByUseId.values()].filter(e => e.shell_id);
   for (const sh of shells) {
-    sh.status = killedIds.has(sh.shell_id)
-      ? 'killed'
-      : 'started (run/exit state unknown — check via TaskOutput)';
+    const note = notified.get(sh.shell_id);
+    if (killedIds.has(sh.shell_id)) {
+      sh.status = 'killed';
+      sh.live = false;
+    } else if (note) {
+      sh.status = `done (${note.status}${note.exit === null ? '' : `, exit ${note.exit}`})`;
+      sh.live = false;
+      sh.summary = note.summary;
+    } else {
+      sh.status = 'live (no completion notification and no stop in the transcript)';
+      sh.live = true;
+    }
   }
+  if (LIVE_ONLY) shells = shells.filter(sh => sh.live);
 
   shellsBySession.push({session: sessionPath, shells});
 }
@@ -199,10 +242,15 @@ if (AS_JSON) {
   for (const {session, shells} of shellsBySession) {
     console.log(`Session: ${session}`);
     if (shells.length === 0) {
-      console.log('  No background shells found in this transcript.\n');
+      console.log(
+        LIVE_ONLY
+          ? '  No live background shells.\n'
+          : '  No background shells found in this transcript.\n'
+      );
       continue;
     }
-    console.log(`  Found ${shells.length} background Bash call(s):\n`);
+    const live = shells.filter(sh => sh.live).length;
+    console.log(`  Found ${shells.length} background Bash call(s), ${live} live:\n`);
     for (const sh of shells) {
       const cmd = sh.command.replace(/\s+/g, ' ');
       const cmdPreview = cmd.length > 120 ? cmd.slice(0, 119) + '…' : cmd;
@@ -213,5 +261,7 @@ if (AS_JSON) {
       console.log();
     }
   }
-  console.log('Use TaskOutput(task_id) to peek pending output; TaskStop(task_id) to terminate.');
+  console.log(
+    'Peek: Read the output file the launch result named (…/tasks/<id>.output). Stop: TaskStop(task_id).'
+  );
 }
