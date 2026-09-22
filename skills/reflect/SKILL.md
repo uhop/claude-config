@@ -151,14 +151,26 @@ Read all three to dedupe; write only to vault + claude-config.
    typed while watching the work, so they carry the densest steering; read
    them first.
 
-   **A Jev arm was measured on this pass (2026-09-22,
-   `skills/reflect/jev-marker/`; vault
-   `projects/claude-config/measurements/2026-09-22-jev-reflect-marker`).** On
-   corrections alone the model loses to the cues above; a `rule` criterion
-   (the engineer states how the agent should work in general) finds the
-   standing preferences no cue can name, and a `withheld` criterion separates
-   the "what is the name of arc N" ask at 0.7. Not wired: if it ships, it is an
-   opt-in rank on `user_turns` for this reading pass, never a filter. A queued turn counts as a reply to the agent for the
+   **Jev is on demand here, never a step** (Eugene, 2026-09-22: *"Let's run
+   without Jev for now, keep it on demand. But you can suggest when to use
+   it."*). The arm in `skills/reflect/jev-marker/` measured it on 902 turns
+   (the public repositories plus blog-hugo; apodict is never sent): on
+   corrections alone the model loses to the cues above; a `rule` criterion,
+   the engineer stating how the agent should work in general, finds the
+   standing preferences no cue can name, 22 of its 25 strongest flags real;
+   `withheld` separates the "what is the name of arc N" ask at 0.7 with about
+   1.3% of turns flagged; `sibling` ranks the "…too" turns beside the
+   `scope_extension` cue. Numbers and hand reads: vault
+   `projects/claude-config/measurements/2026-09-22-jev-reflect-marker`.
+   Suggest a run, one line in the report, when the window is large (over
+   about 400 turns, where a two-cent rank beats reading in scan order); when
+   the prior report's headline came from this reading pass rather than the
+   cues, twice running; when a queue item asks for a read of one turn class
+   over weeks, the way the withheld item did; or when a feedback sweep is
+   wanted, since a `rule` pass over a month lists the preferences stated
+   in-session and captured nowhere. The run is `build --scan <scan.json>`,
+   `ask --arm rule --all`, `score --arm rule`, then read `top_rule` and
+   `top_withheld`; a flag orders the reading and never hides a turn. A queued turn counts as a reply to the agent for the
    correction and `did_you` gates, and the same mark appears on its signals.
 
    **`repeated_failures` aggregates across sessions and project directories;

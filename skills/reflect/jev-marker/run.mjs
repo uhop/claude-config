@@ -12,7 +12,8 @@
 // built and never sent unless `--all` says so.
 //
 //   node run.mjs build --scan scan.json                → states.json
-//   node run.mjs ask --arm before|after [--all] [--limit N] → responses-<arm>.json (needs TYPESAFE_API_KEY)
+//   node run.mjs ask --arm before|after|rule [--all] [--limit N] → responses-<arm>.json (needs TYPESAFE_API_KEY)
+//     --all adds the private repositories Eugene allowed (blog-hugo); apodict is never asked or scored
 //   node run.mjs score --arm before|after              → score-<arm>.json + a summary
 import {readFileSync, writeFileSync} from 'node:fs';
 import {homedir} from 'node:os';
@@ -41,6 +42,10 @@ const PRIVATE = new Set([
   '-home-eugene-Open-blog-hugo',
   '-home-eugene-Open-articles'
 ]);
+// Eugene, 2026-09-22: "Private repos: apodict --- no, blog-hugo --- yes." Articles was not named and stays out.
+// `--all` reaches SENDABLE_PRIVATE only; a NEVER_SEND project is neither asked nor scored.
+const SENDABLE_PRIVATE = new Set(['-home-eugene-Open-blog-hugo']);
+const NEVER_SEND = new Set([...PRIVATE].filter(p => !SENDABLE_PRIVATE.has(p)));
 const TURN_MAX = 1500;
 const BEFORE_MAX = 700;
 const AFTER_MAX = 500;
@@ -129,6 +134,10 @@ const SKIP =
 
 const build = () => {
   const scan = JSON.parse(readFileSync(opt('--scan', join(here, 'scan.json')), 'utf8'));
+  // the scope-extension cue rides on the corrections signals, not on the turn listing
+  const scopeTs = new Set(
+    (scan.signals?.corrections ?? []).filter(c => c.scope_extension).map(c => c.ts)
+  );
   const bySession = new Map();
   for (const t of scan.user_turns) {
     const k = `${t.project}/${t.session_id}`;
@@ -185,7 +194,7 @@ const build = () => {
         skip,
         regex: {
           correction: !!t.correction,
-          scope_extension: !!t.scope_extension,
+          scope_extension: scopeTs.has(ts),
           did_you: !!t.did_you,
           queued: !!t.queued
         },
@@ -271,7 +280,12 @@ const ask = async () => {
   const {states} = JSON.parse(readFileSync(join(here, 'states.json'), 'utf8'));
   const all = flag('--all');
   const todo = states
-    .filter(s => !s.skip && (all || !s.private))
+    .filter(
+      s =>
+        !s.skip &&
+        !NEVER_SEND.has(s.project) &&
+        (!s.private || (all && SENDABLE_PRIVATE.has(s.project)))
+    )
     .slice(0, Number(opt('--limit', states.length)));
   const out = new Array(todo.length);
   let next = 0,
@@ -297,7 +311,7 @@ const ask = async () => {
   const lat = ok.map(r => r.ms).sort((a, b) => a - b);
   const pct = p => lat[Math.min(lat.length - 1, Math.floor((lat.length * p) / 100))];
   process.stdout.write(
-    `arm ${arm}${all ? ' (all sessions)' : ' (public sessions)'}: asked ${out.length}, ok ${ok.length}, errors ${out.length - ok.length}\n` +
+    `arm ${arm}${all ? ' (public + allowed private sessions)' : ' (public sessions)'}: asked ${out.length}, ok ${ok.length}, errors ${out.length - ok.length}\n` +
       `wall ${(wall / 1000).toFixed(1)}s at concurrency ${CONCURRENCY}; latency p50 ${pct(50) | 0}ms p95 ${pct(95) | 0}ms max ${lat[lat.length - 1] | 0}ms\n` +
       `input tokens ${tokens}, cost $${(tokens * PRICE_PER_INPUT_TOKEN).toFixed(4)}\n`
   );
@@ -317,7 +331,7 @@ const score = () => {
   );
   const byId = new Map(results.filter(r => r.answers).map(r => [r.id, r.answers]));
   const rows = states
-    .filter(s => byId.has(s.id))
+    .filter(s => byId.has(s.id) && !NEVER_SEND.has(s.project))
     .map(s => ({...s, p: byId.get(s.id), lab: labels[String(s.ts)] ?? null}));
   const pos = rows.filter(r => r.lab?.label === 'signal');
   const fps = rows.filter(r => r.lab?.label === 'fp');
