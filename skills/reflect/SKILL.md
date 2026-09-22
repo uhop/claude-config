@@ -217,8 +217,8 @@ Read all three to dedupe; write only to vault + claude-config.
 
    | Signal shape | Destination |
    | --- | --- |
-   | Single-project correction (recurring or decisive) | vault `projects/<name>/feedback.md` (append section) |
-   | Cross-project correction (cuts across ≥ 2 projects) | claude-config `~/Open/claude-config/CLAUDE.md` (append section) |
+   | Single-project correction (recurring or decisive) about a fact of that repository | vault `projects/<name>/feedback.md` (append section) |
+   | Cross-project correction, or a coding or process practice stated in one project — fleet-wide by default unless he scoped it (CLAUDE.md § Ambiguity, 2026-09-22) | claude-config `~/Open/claude-config/CLAUDE.md` (append section) |
    | Repeated tool failure → fixable in a real codebase | that project's vault `queue.md` Backlog |
    | Repeated tool failure → fixable via skill / hook / settings | claude-config (`skills/`, `hooks/`, `settings.json` — delegate to `update-config` if a settings change; delegate to `fewer-permission-prompts` if it's permission noise) |
    | Stuck loop pattern (recurring across sessions) | `projects/agent-workflow/queue.md` Backlog with proposed mitigation |
