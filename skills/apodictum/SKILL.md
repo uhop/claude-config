@@ -171,6 +171,16 @@ mandatory.
   `node ~/Open/apodict/bin/query.js --summary "$WORK/batch.json"` and keep the
   records with `node ~/Open/apodict/bin/ledger.js record --store
   ~/Open/apodict/dev-docs/campaign/records/<repo>.json "$WORK/batch.json"`.
+  **That store is inside apodict's working tree**, so the global
+  § Cross-repo work rules apply to it. From a session that doesn't hold the
+  apodict lease, record into a scratch store (`--store "$WORK/<repo>.json"`)
+  so the corpus note can cite the hashes, then file a `run-check` handoff to
+  `repo:github.com/uhop/apodict` with `batch.json` attached: the owner runs
+  the same `ledger.js record` into the real store, and the records come out
+  with the same hashes. Never write into the checkout from outside.
+  (2026-09-24: a nano-bench session wrote 29 records straight into apodict's
+  tree while another session held it, and they were swept into an
+  unrelated apodict commit.)
   For one restructuring, verify the hand pair (`equivalent` + `licenseDelta`
   — verdict first, then license) or let `simplify` propose with a trail.
 - **Forensic** — invoked cleanup/audit of a gnarly file: conditions,
