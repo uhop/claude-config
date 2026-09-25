@@ -178,7 +178,8 @@ measurement found 80 cross-repo Bash writes in 21 sessions over 30 days): it
 parses the command for the repositories its write targets name —
 redirections, `sed -i`, `tee`, `cp`/`mv`/`rsync` destinations, `rm`, `mkdir`,
 `touch`, `prettier --write`, `npm install`, the working-tree-mutating `git`
-verbs (never `worktree`, never `apply --check`) — with `cd` tracked and
+verbs (never `worktree`, never `apply --check`), and a path-like value of
+`--store`, `--out`, `--output` or `-o` after any command (2026-09-25) — with `cd` tracked and
 heredoc bodies ignored, and blocks when any of those checkouts is held by
 someone else. What it cannot parse it allows (a write inside `python - <<EOF`,
 a path in a variable), so it narrows the gap rather than closing it.

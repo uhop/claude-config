@@ -43,8 +43,12 @@
 # for the effective directory, and collects the write targets it understands:
 # redirections, `sed -i`, `tee`, `cp`/`mv`/`rsync`/`ln` destinations, `rm`,
 # `mkdir`, `touch`, `chmod`, `truncate`, `prettier --write`, `npm install`,
-# and the working-tree-mutating `git` verbs (never `worktree`, never
-# `apply --check`). Each target resolves to the main checkout that contains
+# the working-tree-mutating `git` verbs (never `worktree`, never
+# `apply --check`), and a path-like value of `--store`, `--out`, `--output`
+# or `-o` after any command (2026-09-25: `node ~/Open/apodict/bin/ledger.js
+# record --store <apodict path>` wrote into a held apodict twice in one day;
+# 30 days held 2,934 such flags, 6 naming another repo, all `--store`).
+# Each target resolves to the main checkout that contains
 # it; a checkout whose lease someone else holds blocks the call. Measured
 # 2026-09-05: 80 such commands in 21 sessions over 30 days, claude-config the
 # top target. Whatever the extractor does not understand is allowed — a write
@@ -85,7 +89,7 @@ if [[ $mode == edit ]]; then
       # indicator costs one jq and exits — this path runs on every Bash call.
       cmd=$(jq -r '.tool_input.command // ""' <<<"$payload" 2>/dev/null)
       [[ -n "$cmd" ]] || exit 0
-      [[ "$cmd" =~ (sed[[:space:]]+-|>|tee|cp[[:space:]]|mv[[:space:]]|rm[[:space:]]|rmdir|mkdir|touch|chmod|chown|truncate|ln[[:space:]]|rsync|install|prettier|npm[[:space:]]|pnpm[[:space:]]|yarn[[:space:]]|git[[:space:]]) ]] || exit 0
+      [[ "$cmd" =~ (sed[[:space:]]+-|>|tee|cp[[:space:]]|mv[[:space:]]|rm[[:space:]]|rmdir|mkdir|touch|chmod|chown|truncate|ln[[:space:]]|rsync|install|prettier|npm[[:space:]]|pnpm[[:space:]]|yarn[[:space:]]|git[[:space:]]|--store|--out|[[:space:]]-o[[:space:]=]) ]] || exit 0
       [[ -x /usr/bin/python3 ]] || exit 0
       ;;
     *) exit 0 ;;
@@ -342,6 +346,9 @@ ALL_ARGS = {'rm', 'rmdir', 'mkdir', 'touch', 'unlink', 'tee'}
 SKIP_ONE = {'chmod', 'chown', 'truncate'}
 DEST_LAST = {'cp', 'mv', 'rsync', 'ln', 'install'}
 NPM_WRITES = {'install', 'i', 'ci', 'update', 'uninstall', 'link', 'rebuild', 'add', 'remove', 'dedupe'}
+OUT_FLAGS = {'--store', '--out', '--output', '-o'}
+# -o takes no value (or no path) here
+NO_VALUE_O = {'grep', 'egrep', 'fgrep', 'rg', 'ug', 'ugrep', 'ls', 'ps', 'find', 'bfs', 'jq', 'git'}
 
 def resolve(tok, eff):
     if not tok or tok in ('-', '/dev/null') or tok.startswith(('&', '<')):
@@ -426,6 +433,16 @@ for seg in segs:
     elif name in ('npm', 'pnpm', 'yarn'):
         if nonflag and nonflag[0] in NPM_WRITES:
             targets.append(eff)
+    if name in NO_VALUE_O:
+        continue
+    for k, a in enumerate(args):
+        flag, _, val = a.partition('=')
+        if flag not in OUT_FLAGS:
+            continue
+        if not val and k + 1 < len(args):
+            val = args[k + 1]
+        if not val.startswith('-') and ('/' in val or '.' in val or val.startswith('~')):
+            targets.append(resolve(val, eff))
 
 # 3. Targets → main checkouts. A `.git` file under worktrees/ is a linked
 #    worktree (allowed by protocol); under modules/ it is a submodule, its own
