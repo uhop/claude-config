@@ -197,7 +197,9 @@ verdict, and `/release-prep` fixes it.
 
 Report:
 
-- **Ready or not**, in the first line.
+- **Ready or not**, in the first line. When 0c found ride-along candidates,
+  the first line says so — "ready after you decide on N ride-alongs", never a
+  bare "ready".
 - **Recommended tier** and the one-line reason, or "nothing user-observable —
   no release" when 0a came up empty.
 - **Queue state** (0c): what is Active, what in the Backlog is actionable, and
@@ -206,6 +208,16 @@ Report:
 - **Ride-alongs and unqueued work** (0d): what could land in this release
   instead of the next one, and anything known-but-unfiled, stated as a proposal
   to queue.
+- **The ride-along decision, asked here.** When there is at least one
+  candidate, end the report with an `AskUserQuestion`: one multi-select
+  question listing each candidate, plus "none". Asking changes nothing on disk,
+  so it belongs to this read-only skill; `/release-prep` then takes the answer
+  as given and does not ask again. A candidate framed as "optional" in the
+  prose and raised as a question only at prep time reads as a surprise after a
+  "ready" verdict. (Origin: node-re2 2026-09-26 — the check called the release
+  ready and the dead `getUtf8Length` cleanup optional; the prep asked, and
+  Eugene took it. *"It'll be better if `/release-check` suggested
+  ride-alongs, rather than `/release-prep`."*)
 - **What `/release-prep` would do**: the version it would land on, the digest
   `action` items it would clear, the docs it would fix, the deps it would bump.
 - **Blockers** that `/release-prep` cannot clear on its own (failing gates, a

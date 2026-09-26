@@ -48,9 +48,10 @@ resolved before anything below, or reported and the prep abandoned. Do not prep
 on top of a known blocker.
 
 The check's queue and ride-along findings (its 0c/0d) are decisions for the
-user, not for this skill to overrule: if it surfaced actionable Backlog items
-that could ride along, confirm the release is still wanted *now* before
-bumping. Releasing past them is what causes the same-day second release.
+user, not for this skill to overrule. The check asks the ride-along question
+itself (its Step 3); take that answer as given. Ask here only when no check in
+this session settled it, such as a prep run cold. Releasing past an unasked
+ride-along is what causes the same-day second release.
 
 ## Step 1b — Ride-alongs first, one commit each
 
