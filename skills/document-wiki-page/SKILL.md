@@ -115,7 +115,7 @@ If the new page deserves a landing-page mention, update `wiki/Home.md` with a li
 If the wiki carries `search-index.json` (fleet slice 21, [[topics/fleet-conventions-bundle]]), rebuild it after any page edit and commit it with the page:
 
 ```bash
-cd <wiki> && npx wiki-search-index --wiki . --repo OWNER/REPO
+cd <wiki> && npx -y wiki-search-index@latest --wiki . --repo OWNER/REPO
 ```
 
 Pass `--repo` explicitly; a submodule's origin often defeats the builder's inference. A page shipped without the rebuilt index is an omission to disclose (CLAUDE.md § Deliberate omissions), never a silent skip. (Origin: 2026-09-16, dotfiles wiki `06e1aef` shipped `dcm.md` edits with a stale index; Eugene: "Could you regenerate the wiki index file?")

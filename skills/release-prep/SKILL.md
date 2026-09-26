@@ -136,7 +136,7 @@ project deviation (note it in the report).
 ## Step 7 — Regenerate the wiki search index, last
 
 After every wiki edit **and after the formatter has run over them**, from the
-wiki dir: `npx wiki-search-index --wiki . --repo OWNER/REPO`. Order matters —
+wiki dir: `npx -y wiki-search-index@latest --wiki . --repo OWNER/REPO`. Order matters —
 regenerating before `prettier --write` touches a wiki page re-stales the index
 immediately, and the digest's `wiki_search_index` check will flag it on the
 re-run. (Hit 2026-08-18.)

@@ -68,7 +68,7 @@ Two tiers. **Prefer wiki-search** (ranked, deep-linked results; in-place search 
 **a) Build the wiki-search index** (builder ≥ 0.1.3 — older versions don't decode HTML entities and produce junk tokens on entity-converted wikis):
 
 ```bash
-cd <wiki> && npx wiki-search-index --wiki . --repo OWNER/REPO
+cd <wiki> && npx -y wiki-search-index@latest --wiki . --repo OWNER/REPO
 ```
 
 Pass `--repo` explicitly — submodule origins routinely defeat the builder's inference (SSH remotes without `.git`, `*.wiki.git` suffixes). Commit the resulting `search-index.json` with the wiki. An index does **not** go stale on its own — rebuild it whenever wiki *content* changes (fold into any wiki-editing session). The adopter how-to is the wiki-search wiki's `Add-Search` page (includes optional staleness automation).

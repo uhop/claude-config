@@ -306,7 +306,7 @@ check('ai_docs', {
     check('wiki_search_index', {
       status: staleSources.length ? 'action' : 'ok',
       note: staleSources.length
-        ? 'regenerate: npx wiki-search-index --wiki . --repo OWNER/REPO'
+        ? 'regenerate: npx -y wiki-search-index@latest --wiki . --repo OWNER/REPO'
         : undefined,
       newer_than_index: staleSources
     });
