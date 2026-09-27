@@ -1225,7 +1225,11 @@ W=$(mktemp -d)
    do not run there either, so nothing is deleted on a dry run.
 2. **Dispatch** every entry in the plan's `dispatch` array as parallel
    sub-agents — one Agent call per agent entry, fired in the same
-   message, labeled with the kind:
+   message, labeled with the kind, with `subagent_type: "vault-sweep"`
+   (`agents/vault-sweep.md`: Sonnet at `medium` effort, no global
+   `CLAUDE.md`, no advisor call, a report of five lines at most; a
+   `general-purpose` agent inherits the session's `xhigh` effort and the
+   advisor, which measured 85–161 s per call on 2026-09-27):
    - `vault-enrich-all` entries: its § Sub-agent mode prompt; pass
      `--records=<records_file>` when the plan sharded the worklist,
      else `--limit=<limit>`; `mode: "stale"` → `--stale`.

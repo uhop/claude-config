@@ -90,8 +90,7 @@ silent-divergence accepts); re-fixing 18 of 21 decisions cost more than the
 token differential ever saved.
 
 ```
-subagent_type: general-purpose
-model: sonnet
+subagent_type: vault-sweep
 description: Triage N edge_type suggestions
 prompt: |
   Read ~/.claude/skills/vault-review-edges/SKILL.md. Using the vault-triage
@@ -102,8 +101,7 @@ prompt: |
   worksheet by holder, collision-proof when sibling agents share one scratchpad.
   Default to "reject" (cites is correct) when in doubt — don't force a type;
   honor any `prior` field. Use "skip" for items you genuinely can't judge.
-  Return: the harness's JSON report plus a one-paragraph summary noting
-  skipped items.
+  Return: the harness's JSON report and at most five lines on skips and failures.
 ```
 
 ## When this is the right tool

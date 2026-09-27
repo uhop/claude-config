@@ -183,8 +183,7 @@ hash surfaces entirely, but per-note summary quality still needs multi-step
 reasoning — the quality bar above is the judgment that remains.
 
 ```
-subagent_type: general-purpose
-model: sonnet
+subagent_type: vault-sweep
 description: Enrich N vault notes with agent: blocks
 prompt: |
   Read ~/.claude/skills/vault-enrich-all/SKILL.md. Using the enrich-batch
@@ -195,7 +194,7 @@ prompt: |
   The harness prints the worksheet to stdout — don't redirect it to a fixed
   scratchpad filename; if you must write it to a file, namespace the name
   uniquely (sibling agents share one scratchpad).
-  Return: the apply report plus a one-paragraph summary.
+  Return: the apply report and at most five lines on skips and failures.
 ```
 
 ### Sharded dispatch (used by `/vault sweep`)

@@ -112,8 +112,7 @@ payloads); the harness has since removed hand-rolled writes entirely, but
 the cost-asymmetry record stands.
 
 ```
-subagent_type: general-purpose
-model: sonnet
+subagent_type: vault-sweep
 description: Triage N duplicate suggestions
 prompt: |
   Read ~/.claude/skills/vault-review-duplicates/SKILL.md. Using the
@@ -126,7 +125,7 @@ prompt: |
   NEVER merge: mark true duplicates "merge-candidate" for the main
   session. When in doubt between "related" and "reject", prefer "reject" —
   cross-references must reflect real kinship, not embedding coincidence.
-  Return: the harness's JSON report plus a one-paragraph summary.
+  Return: the harness's JSON report and at most five lines on skips and failures.
 ```
 
 The main session reviews `merge_candidates` from the report and executes

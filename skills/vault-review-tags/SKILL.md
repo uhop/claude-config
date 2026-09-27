@@ -163,8 +163,7 @@ inverted the accept-bias and wrongly stripped tags from 11 of 15 records
 wrong-rejects are data loss (FM strip), so the cheap model is unsafe here.
 
 ```
-subagent_type: general-purpose
-model: sonnet
+subagent_type: vault-sweep
 description: Triage N tag suggestions
 prompt: |
   Read ~/.claude/skills/vault-review-tags/SKILL.md. Using the vault-triage
@@ -175,8 +174,7 @@ prompt: |
   under --claim the harness auto-names the worksheet by holder, collision-proof
   when sibling agents share one scratchpad. Use "defer"/null rather than forcing
   a decision on genuinely ambiguous items — the harness reopens them.
-  Return: the harness's JSON report plus a one-paragraph summary noting any
-  ambiguous items you skipped.
+  Return: the harness's JSON report and at most five lines on skips and failures.
 ```
 
 ## When this is the right tool

@@ -21,7 +21,11 @@ Once both are bootstrapped, `playbash-{daily,weekly,clean}` (from dotfiles) will
 
 ## What gets installed
 
-Top-level `CLAUDE.md`, `settings.json`, and the contents of `commands/`, `skills/`, and `hooks/` are symlinked into `~/.claude/`. Anything else in `~/.claude/` (per-host `settings.local.json`, runtime caches, `plugins/`, `projects/`, `sessions/`, etc.) is left untouched.
+Top-level `CLAUDE.md`, `settings.json`, and the contents of `commands/`, `skills/`, `hooks/`, and `agents/` are symlinked into `~/.claude/`. Anything else in `~/.claude/` (per-host `settings.local.json`, runtime caches, `plugins/`, `projects/`, `sessions/`, etc.) is left untouched.
+
+### `agents/`
+
+- `vault-sweep.md` — the sub-agent type `/vault sweep` dispatches for its enrichment, tag, edge, and duplicate passes: Sonnet at `medium` effort with `omitClaudeMd`, told not to call the advisor and to report in five lines at most. A `general-purpose` sub-agent inherits the session's `effortLevel` and advisor instead.
 
 ### `hooks/`
 
