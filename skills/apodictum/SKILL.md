@@ -158,7 +158,7 @@ mandatory.
   the repository root, `node ~/Open/apodict/bin/gate.js --out "$WORK/batch.json"`
   writes every request the change owes — each condition of two or more atoms
   as `simplify` with `certify`, each guard of a ladder and branch of an
-  if-chain as `guardStatus`, named files whole — and asks each value-position
+  if-chain as `guardStatus`, named files added and asked whole — and asks each value-position
   composite the §15 check its consumer owes, as `valueEquivalent` (a member
   read: can it be nullish?; `?.` or a JSX child: can it be falsy but not
   nullish?; a call, an iteration, a template hole: can it be falsy?). A
