@@ -82,14 +82,15 @@ is no vault-triage.mjs harness kind for reports.
    - **`infrastructure_upgrade` → leave pending.** Reopen if claimed;
      surface verbatim in the report.
 
-4. **Resolve** the batch and reopen skips — `mcp__vault__vault_resolve_suggestions_batch{resolved_by, items: [{id, decision}]}`, then `vault_reopen_suggestion{id}` for claimed-but-left items. The batch call is always 200: check `failed` and the per-item `results[].error` before treating it as a clean drain.
+4. **Resolve** the batch and reopen skips — `mcp__vault__vault_resolve_suggestions_batch{resolved_by, items: [{id, decision}]}`, then `vault_reopen_suggestion{id, holder}` for claimed-but-left items, `holder` being the claim's holder: the server refuses a claim release from anyone else (409 `claimed_by_other`, vault-storage 2026-09-26). An adapter before that change has no `holder` parameter; use the fallback's `reopen` line there. The batch call is always 200: check `failed` and the per-item `results[].error` before treating it as a clean drain.
 
    Fallback (pre-0.1.0 adapter):
 
    ```bash
    vault-curl /suggestions/resolve-batch -X POST -H 'Content-Type: application/json' \
      --data-binary '{"resolved_by": "H", "items": [{"id": "…", "decision": "reject"}]}'
-   vault-curl /suggestions/<id>/reopen -X POST   # claimed-but-left items
+   vault-curl /suggestions/<id>/reopen -X POST -H 'Content-Type: application/json' \
+     --data-binary '{"holder": "H"}'   # claimed-but-left items
    ```
 
 5. **Report** one line per item: signal, current/threshold, disposition,

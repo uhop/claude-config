@@ -728,7 +728,7 @@ const resolve = async () => {
 
   for (const id of plan.reopen) {
     try {
-      await api('POST', `/suggestions/${id}/reopen`);
+      await api('POST', `/suggestions/${id}/reopen`, {holder: worksheet.holder});
     } catch (err) {
       if (!(err instanceof ApiError)) continue;
       if (err.code !== 'already_pending') {
@@ -757,7 +757,7 @@ const release = async () => {
   let released = 0;
   for (const item of mine) {
     try {
-      await api('POST', `/suggestions/${item.id}/reopen`);
+      await api('POST', `/suggestions/${item.id}/reopen`, {holder: opts.holder});
       ++released;
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;

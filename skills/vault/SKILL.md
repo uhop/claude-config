@@ -1177,8 +1177,9 @@ The resulting stage DAG:
 `POST /suggestions/resolve-batch` with `resolved_by` = that holder —
 the reservation makes the batches disjoint by construction, and it
 also de-conflicts overlapping sweeps from separate sessions. Skipped
-items are released with `reopen` (or lapse at the claim TTL, default
-30 min). On a pre-claim server the old rule stands: never two
+items are released with `reopen`, passing the same holder, since the
+server refuses a release from anyone else (or they lapse at the claim
+TTL, default 30 min). On a pre-claim server the old rule stands: never two
 same-kind triage agents — they pull the same queue head and duplicate
 or contradict each other's decisions. Enrichment backfill shards by
 explicit worklist chunks instead (§ Procedure step 4) — coverage is
