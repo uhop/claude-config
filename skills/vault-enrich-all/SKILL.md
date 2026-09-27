@@ -43,7 +43,7 @@ W=$(mktemp -d)
 
 # 1. prepare — server worklist + per-note context → worksheet
 "$E" prepare --limit=30 --out="$W/ws.json"          # missing blocks (add --type=T to narrow)
-"$E" prepare --stale --out="$W/ws.json"             # drifted blocks (from the suggestions queue)
+"$E" prepare --stale --out="$W/ws.json"             # drifted blocks (from the suggestions queue; --full-threshold=F, default 0.4)
 "$E" prepare --records="$W/chunk.txt" --out="$W/ws.json"   # explicit shard (paths or ids, one per line)
 
 # 2. judge — write the enrichment content per note (see § Generate enrichment fields)
@@ -53,7 +53,7 @@ W=$(mktemp -d)
 "$E" apply --worksheet="$W/ws.json" --enrichments="$W/enr.json"
 ```
 
-Each worksheet item carries the note's `body`, `title`, `type`,
+Each worksheet item carries the note's `body` (or a `delta`, below), `title`, `type`,
 `existing_tags` / `existing_related`, the extracted `body_wikilinks` (the
 exact keys `edge_classifications` may use), pre-filtered `related_candidates`
 (embedding neighbours at distance ≤ 0.30, minus links the note already has),
@@ -61,6 +61,30 @@ and — in `--stale` mode — the `current_agent` block to refresh rather than
 recreate. The worksheet header carries the full tag taxonomy (for
 `tags_suggested` discipline) and the coverage counts; empty-body notes are
 excluded and listed under `needs_a_body`.
+
+**Delta items (`read: "delta"`, `--stale` only).** When the server has an
+enrichment baseline for a note and its body changed by at most the threshold
+since, the item carries `delta` instead of `body`: `added_chunks` (the text
+of every chunk not there at the last enrichment, each prefixed with its
+heading path), the removed chunk count and bytes, and `changed_fraction`.
+Rolling notes (queues, decision logs, archives) usually arrive this way: a
+day of appends to a 1.3 MB decisions log was 1.2% of its chunks (measured
+2026-09-27). Judge a delta item as a revision of `current_agent`:
+
+- Rewrite the summary's "newest" clause from the added chunks, and keep what
+  the rest of the summary says about the note. The note's own title, type, and
+  `existing_tags` say what it is.
+- Take `tags_suggested` and `edge_classifications` from the added text only.
+  `body_wikilinks` still lists every link in the whole body, so the key check
+  in `apply` is unchanged.
+- Removed chunks come as a count, never as text. When `removed_bytes` is
+  large next to `added_bytes`, or the added text contradicts the summary,
+  return `null` for the note and let a full read (`--full-threshold=0`)
+  handle it.
+
+`read: "full"` items carry `body` as before: no baseline yet (a note never
+enriched since the server gained baselines, or stale across a full reindex),
+a change past the threshold, or a server without the route.
 
 `apply` rejects the whole file before any write (exit 3) on unknown paths,
 short summaries, bad `complexity`, non-wikilink `edge_classifications` keys,
@@ -142,7 +166,7 @@ the scaffold empty is the user's call.
 ## Report summary
 
 ```
-Enriched N notes: <new> new, <stale> refreshed, <skipped> skipped,
+Enriched N notes: <new> new, <stale> refreshed (<delta> from a delta), <skipped> skipped,
   needs a body: <paths>, errors: <count>
 <remaining> still unenriched — re-run /vault-enrich-all for the next batch.
 ```

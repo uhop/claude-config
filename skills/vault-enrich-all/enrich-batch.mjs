@@ -9,8 +9,12 @@
 // content; `apply` validates it all before any write and PUTs each block
 // through the JSON path with If-Match + current-path resolution.
 //
-//   enrich-batch prepare [--limit=N] [--stale] [--type=T] [--records=FILE] [--out=FILE]
+//   enrich-batch prepare [--limit=N] [--stale] [--full-threshold=F] [--type=T] [--records=FILE] [--out=FILE]
 //   enrich-batch apply --worksheet=FILE --enrichments=FILE [--dry-run]
+//
+// A --stale item whose body changed by at most F (default 0.4) of its chunk
+// bytes since its last enrichment carries `delta` (the added chunks) instead
+// of `body`; the rest carry the whole body (vault-storage enrichment-delta).
 //
 // Enrichments file (JSON; bare map or {enrichments: {...}}), keyed by
 // file_path exactly as in the worksheet; null = skip:
@@ -56,7 +60,7 @@ const base = process.env.VAULT_API_URL?.replace(/\/+$/, ''),
 if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
 
 const usage = `Usage:
-  enrich-batch prepare [--limit=N] [--stale] [--type=T] [--records=FILE] [--out=FILE]
+  enrich-batch prepare [--limit=N] [--stale] [--full-threshold=F] [--type=T] [--records=FILE] [--out=FILE]
   enrich-batch apply --worksheet=FILE --enrichments=FILE [--dry-run]`;
 
 const [command, ...rest] = process.argv.slice(2);
@@ -66,6 +70,7 @@ if (!['prepare', 'apply'].includes(command))
 const opts = {
   limit: 30,
   stale: false,
+  fullThreshold: 0.4,
   type: null,
   records: null,
   out: null,
@@ -83,6 +88,9 @@ for (const arg of rest) {
       break;
     case '--stale':
       opts.stale = true;
+      break;
+    case '--full-threshold':
+      opts.fullThreshold = +value;
       break;
     case '--type':
       opts.type = value;
@@ -108,6 +116,7 @@ for (const arg of rest) {
 }
 if (!Number.isInteger(opts.limit) || opts.limit < 1 || opts.limit > 200)
   fail(2, '--limit must be 1..200');
+if (!(opts.fullThreshold >= 0 && opts.fullThreshold <= 1)) fail(2, '--full-threshold must be 0..1');
 
 class ApiError extends Error {
   constructor(status, code, message) {
@@ -287,6 +296,13 @@ const prepare = async () => {
           .filter(row => !known.has((row.file_path ?? '').replace(/\.md$/, '')))
           .map(row => ({file_path: row.file_path, title: row.title, distance: row.distance}));
       } catch {}
+      let delta = null;
+      if (opts.stale && fm.frontmatter.agent?.summary) {
+        try {
+          const {data} = await api('GET', `/sections/${candidate.record_id}/enrichment-delta`);
+          if (data.baseline && data.changed_fraction <= opts.fullThreshold) delta = data;
+        } catch {}
+      }
       items.push({
         record_id: candidate.record_id,
         file_path: record.file_path,
@@ -302,11 +318,24 @@ const prepare = async () => {
           : {}),
         body_wikilinks: links,
         related_candidates: similar,
-        body: record.body
+        ...(delta
+          ? {
+              read: 'delta',
+              delta: {
+                body_bytes: delta.body_bytes,
+                chunks: delta.chunks,
+                added_bytes: delta.added_bytes,
+                removed_bytes: delta.removed_bytes,
+                changed_fraction: delta.changed_fraction,
+                added_chunks: delta.added_chunks
+              }
+            }
+          : {read: 'full', body: record.body})
       });
     })
   );
   items.sort((a, b) => a.file_path.localeCompare(b.file_path));
+  const deltas = items.filter(item => item.read === 'delta').length;
 
   const worksheet = {
     mode: opts.stale ? 'stale' : 'missing',
@@ -317,6 +346,9 @@ const prepare = async () => {
       unenriched: coverage.unenriched,
       worklist_truncated: (coverage.unenriched_records?.length ?? 0) < coverage.unenriched
     },
+    ...(opts.stale
+      ? {reads: {delta: deltas, full: items.length - deltas, full_threshold: opts.fullThreshold}}
+      : {}),
     taxonomy,
     needs_a_body: needsBody,
     items,
@@ -326,7 +358,7 @@ const prepare = async () => {
   if (opts.out) {
     writeFileSync(opts.out, output + '\n');
     console.log(
-      `worksheet: ${opts.out} — ${items.length} item(s) (${worksheet.mode}), ${coverage.unenriched} unenriched total${needsBody.length ? `, ${needsBody.length} need a body` : ''}`
+      `worksheet: ${opts.out} — ${items.length} item(s) (${worksheet.mode}${opts.stale ? `, ${deltas} read as a delta` : ''}), ${coverage.unenriched} unenriched total${needsBody.length ? `, ${needsBody.length} need a body` : ''}`
     );
   } else console.log(output);
 };
