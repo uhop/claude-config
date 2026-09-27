@@ -12,7 +12,9 @@
 //     holder-namespaced temp file (collision-proof for concurrent agents).
 //   vault-triage resolve <kind> --worksheet=FILE --decisions=FILE
 //                        [--label=L] [--dry-run]
-//   vault-triage release <kind> --holder=H
+//   vault-triage release <kind> --holder=H | --worksheet=FILE
+//     Reopens what the worksheet's claim still holds, with its claim_token;
+//     --holder finds the worksheet at its holder-namespaced default path.
 //
 // kinds: new_tag | tag_suggestion | edge_type | duplicate
 //
@@ -70,7 +72,7 @@ if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see
 const usage = `Usage:
   vault-triage prepare <kind> [--limit=N] [--claim] [--holder=H] [--ttl=S] [--scan[=DIST]] [--out=FILE]
   vault-triage resolve <kind> --worksheet=FILE --decisions=FILE [--label=L] [--dry-run]
-  vault-triage release <kind> --holder=H
+  vault-triage release <kind> --holder=H | --worksheet=FILE
 kinds: ${KINDS.join(' | ')}`;
 
 const [command, kind, ...rest] = process.argv.slice(2);
@@ -281,6 +283,7 @@ const prepare = async () => {
   let items,
     holder = null,
     claimed = false,
+    claimToken = null,
     totalPending;
   if (opts.claim) {
     holder =
@@ -294,6 +297,7 @@ const prepare = async () => {
     });
     items = response.items;
     claimed = response.claimed > 0;
+    claimToken = response.claim_token ?? null;
     totalPending = response.remaining_pending + response.claimed;
   } else {
     const response = await api(
@@ -315,6 +319,7 @@ const prepare = async () => {
     generated_at: new Date().toISOString(),
     claimed,
     holder: claimed ? holder : null,
+    claim_token: claimed ? claimToken : null,
     total_pending: totalPending,
     items: [],
     decisions_template: {}
@@ -715,7 +720,11 @@ const resolve = async () => {
   for (let i = 0; i < plan.batch.length; i += 100) {
     const items = plan.batch.slice(i, i + 100);
     try {
-      const response = await api('POST', '/suggestions/resolve-batch', {resolved_by: label, items});
+      const response = await api('POST', '/suggestions/resolve-batch', {
+        resolved_by: label,
+        ...(worksheet.claim_token ? {claim_token: worksheet.claim_token} : {}),
+        items
+      });
       plan.report.accepted += response.accepted;
       plan.report.rejected += response.rejected;
       for (const result of response.results)
@@ -728,7 +737,11 @@ const resolve = async () => {
 
   for (const id of plan.reopen) {
     try {
-      await api('POST', `/suggestions/${id}/reopen`, {holder: worksheet.holder});
+      await api(
+        'POST',
+        `/suggestions/${id}/reopen`,
+        worksheet.claim_token ? {claim_token: worksheet.claim_token} : undefined
+      );
     } catch (err) {
       if (!(err instanceof ApiError)) continue;
       if (err.code !== 'already_pending') {
@@ -750,20 +763,30 @@ const resolve = async () => {
 
 // --- release -----------------------------------------------------------------
 
+// A holder name can be reused (two same-day sweeps), so the worksheet's token
+// decides what is ours; an item re-claimed under the same name answers 409.
 const release = async () => {
-  if (!opts.holder) fail(2, 'release needs --holder');
+  const path = opts.worksheet ?? (opts.holder ? worksheetPathFor(opts.holder) : null);
+  if (!path) fail(2, 'release needs --holder or --worksheet');
+  let worksheet;
+  try {
+    worksheet = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    fail(2, `release: no readable worksheet at ${path}`);
+  }
+  if (!worksheet.claim_token) fail(2, `release: ${path} records no claim token`);
   const response = await api('GET', `/suggestions?kind=${kind}&status=claimed&limit=100`);
-  const mine = response.items.filter(item => item.claimed_by === opts.holder);
+  const mine = response.items.filter(item => item.claimed_by === worksheet.holder);
   let released = 0;
   for (const item of mine) {
     try {
-      await api('POST', `/suggestions/${item.id}/reopen`, {holder: opts.holder});
+      await api('POST', `/suggestions/${item.id}/reopen`, {claim_token: worksheet.claim_token});
       ++released;
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;
     }
   }
-  console.log(`released ${released} of ${mine.length} claimed by ${opts.holder}`);
+  console.log(`released ${released} of ${mine.length} claimed by ${worksheet.holder}`);
 };
 
 try {

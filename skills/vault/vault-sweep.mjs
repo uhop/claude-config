@@ -29,6 +29,7 @@
 //
 // Exit 0 (plans and done are both success) · 1 HTTP failure · 2 usage.
 
+import {randomBytes} from 'node:crypto';
 import {readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -216,8 +217,10 @@ const actionSet = () => {
   return set.filter(k => !opts.exclude.includes(k));
 };
 
+// The nonce keeps two same-day sweeps apart: their holders name worksheet and
+// report files, which a shared name would overwrite.
 const holderFor = (state, kind, i) =>
-  `sweep-${state.started.slice(0, 10)}-${kind}-r${state.round}p${state.passes[kind]}${i > 0 ? `-${i}` : ''}`;
+  `sweep-${state.started.slice(0, 10)}-${state.nonce ?? ''}${kind}-r${state.round}p${state.passes[kind]}${i > 0 ? `-${i}` : ''}`;
 
 const buildDispatch = async (state, kind, count, worklist) => {
   ++state.passes[kind] || (state.passes[kind] = 1);
@@ -334,6 +337,7 @@ if (command === 'begin') {
   const state = {
     file: opts.state,
     started: new Date().toISOString(),
+    nonce: `${randomBytes(3).toString('hex')}-`,
     include: opts.include,
     exclude: opts.exclude,
     maxPasses: opts.maxPasses,

@@ -4,9 +4,12 @@
 #
 # The SessionStart claim (vault-lease-claim.sh) and any side leases the agent
 # took for cross-repo bursts all sit under one holder id, so the release is
-# "everything held by me", not "the cwd repo": a side lease the agent forgot
-# to release goes too. An explicit release beats waiting out a 4 h TTL — the
-# next session in that repo would otherwise start subordinate to a ghost.
+# "everything held by me", not "the cwd repo". Since vault-storage D67 a
+# release presents the claim's token, so what goes is what the hooks kept a
+# token for: the cwd lease. A side lease claimed through the MCP adapter
+# answers 409 and lapses at its TTL (a cwd claim preempts it meanwhile). An
+# explicit release beats waiting out a 4 h TTL — the next session in that
+# repo would otherwise start subordinate to a ghost.
 #
 # Design: vault projects/vault-storage/design/agent-coordination
 # § Session-lifetime claims. Holder-id convention (must match the claim hook

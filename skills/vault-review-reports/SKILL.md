@@ -47,7 +47,7 @@ is no vault-triage.mjs harness kind for reports.
 1. **Claim** (concurrent/sweep) or list (solo):
 
    - solo — `mcp__vault__vault_list_suggestions{kind: ["inefficiency_detected", "infrastructure_upgrade"], status: ["pending"], limit: 20}`; both kinds in one call, and `expand: "context"` inlines the record briefs.
-   - sweep — `mcp__vault__vault_claim_suggestions{kind, holder, limit}`, holder from the dispatch plan.
+   - sweep — `mcp__vault__vault_claim_suggestions{kind, holder, limit}`, holder from the dispatch plan. Keep the `claim_token` each claim returns: resolving and reopening the batch need it.
 
    Fallback (pre-0.1.0 adapter):
 
@@ -58,6 +58,7 @@ is no vault-triage.mjs harness kind for reports.
    # sweep: claimed batch per kind, holder from the dispatch plan
    vault-curl /suggestions/claim -X POST -H 'Content-Type: application/json' \
      --data-binary '{"kind": "inefficiency_detected", "holder": "H", "limit": 20}'
+   # keep .claim_token from each response
    ```
 
 2. **Verify against live data** — the payload carries filing-time numbers;
@@ -82,15 +83,15 @@ is no vault-triage.mjs harness kind for reports.
    - **`infrastructure_upgrade` → leave pending.** Reopen if claimed;
      surface verbatim in the report.
 
-4. **Resolve** the batch and reopen skips — `mcp__vault__vault_resolve_suggestions_batch{resolved_by, items: [{id, decision}]}`, then `vault_reopen_suggestion{id, holder}` for claimed-but-left items, `holder` being the claim's holder: the server refuses a claim release from anyone else (409 `claimed_by_other`, vault-storage 2026-09-26). An adapter before that change has no `holder` parameter; use the fallback's `reopen` line there. The batch call is always 200: check `failed` and the per-item `results[].error` before treating it as a clean drain.
+4. **Resolve** the batch and reopen skips — `mcp__vault__vault_resolve_suggestions_batch{resolved_by, claim_token, items: [{id, decision}]}`, then `vault_reopen_suggestion{id, claim_token}` for claimed-but-left items, with the token the claim returned: the server settles a claimed item for that token only (409 `claimed_by_other`, vault-storage D67). An adapter without the `claim_token` parameter predates that change; use the fallback lines there. The batch call is always 200: check `failed` and the per-item `results[].error` before treating it as a clean drain.
 
    Fallback (pre-0.1.0 adapter):
 
    ```bash
    vault-curl /suggestions/resolve-batch -X POST -H 'Content-Type: application/json' \
-     --data-binary '{"resolved_by": "H", "items": [{"id": "…", "decision": "reject"}]}'
+     --data-binary '{"resolved_by": "H", "claim_token": "T", "items": [{"id": "…", "decision": "reject"}]}'
    vault-curl /suggestions/<id>/reopen -X POST -H 'Content-Type: application/json' \
-     --data-binary '{"holder": "H"}'   # claimed-but-left items
+     --data-binary '{"claim_token": "T"}'   # claimed-but-left items
    ```
 
 5. **Report** one line per item: signal, current/threshold, disposition,
@@ -104,8 +105,9 @@ Dispatch prompt template — fill `<holder>`/`<limit>` from the sweep plan:
 > `~/.claude/skills/vault-review-reports/SKILL.md`. Claim up to `<limit>`
 > pending suggestions of kind `inefficiency_detected` and
 > `infrastructure_upgrade` with holder `<holder>` (POST /suggestions/claim
-> per kind). Verify each signal against live data, then resolve via
-> POST /suggestions/resolve-batch with `resolved_by: "<holder>"`:
+> per kind, keeping each response's `claim_token`). Verify each signal
+> against live data, then resolve via POST /suggestions/resolve-batch with
+> `resolved_by: "<holder>"` and that claim's `claim_token`:
 > reject by-design conditions with a reason; accept real conditions only
 > after filing the remediation as a Backlog item in
 > `projects/vault-storage/queue.md`. Never resolve

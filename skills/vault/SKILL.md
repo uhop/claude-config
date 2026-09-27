@@ -34,8 +34,8 @@ in the same row.
 | Rename preserving `record_id` | **`vault_move`** | `POST /vault/move` |
 | Search-before-write | **`vault_propose`** | `POST /vault/propose` |
 | Raw inbox, cleanup-lint, embed-pending, incremental-reindex, run-all | **`vault_raw_inbox` / `vault_cleanup_lint` / `vault_embed_pending` / `vault_incremental_reindex` / `vault_run_scans`** | `vault-curl /maintenance/…` |
-| Repo leases — list/events, claim/renew/release/transfer | **`vault_lease_*`** (adapter ≥ 0.4.0; § Agent coordination below) | `vault-curl /leases[/events]` + `POST /leases/claim\|renew\|release\|transfer` |
-| Handoffs — create/list/get/events, claim/resolve/resubmit/note/verify | **`vault_handoff_*`** (adapter ≥ 0.5.0; `vault_handoff_verify` and `touches` ≥ 0.7.0; § Agent coordination below) | `vault-curl /handoffs[/{id}\|/events]` + `POST /handoffs[/claim\|resolve\|resubmit\|note\|verify]` |
+| Repo leases — list/events, claim/renew/release/transfer | **`vault_lease_*`** (adapter ≥ 0.4.0; § Agent coordination below). A server from D67 (2026-09-27) on wants the claim's `claim_token` on renew/release/transfer; an adapter without that parameter cannot send it, so use the fallback with `claim_token` in the JSON body | `vault-curl /leases[/events]` + `POST /leases/claim\|renew\|release\|transfer` |
+| Handoffs — create/list/get/events, claim/resolve/resubmit/note/verify | **`vault_handoff_*`** (adapter ≥ 0.5.0; `vault_handoff_verify` and `touches` ≥ 0.7.0; § Agent coordination below). From D67, resolve wants the claim's `claim_token`; on an adapter without it, use the fallback | `vault-curl /handoffs[/{id}\|/events]` + `POST /handoffs[/claim\|resolve\|resubmit\|note\|verify]` |
 | Handoff artifact — the git patch being handed over | **`vault_handoff_put_artifact`** (adapter ≥ 0.6.0); **read it to a file**, not into context: `vault-curl /handoffs/{id}/artifact -s > work.patch` | `vault-curl /handoffs/{id}/artifact -X PUT --data-binary @work.patch` |
 | `/commit`, snapshots, `cleanup-tag-aliases`, `release-embedder`, `folder-listing`, individual `find-*` scans | **`vault-curl`** | — deliberately not exposed on MCP |
 
@@ -199,7 +199,8 @@ renews it on activity — every edit through the PreToolUse gate, and every
 tool call through the same script's `--touch` mode on PostToolUse
 (2026-09-05, so a Bash-only or MCP-only session stays live) — and re-claims
 after a TTL lapse when the repo is your own; `hooks/vault-lease-release.sh` (SessionEnd)
-releases every lease this holder has; TTL (4 h) covers a crash. Three
+releases every lease this holder has whose claim token the hooks kept (the
+cwd lease; since D67); TTL (4 h) covers a crash. Three
 guards against a dead session's lease (vault-storage D63, 2026-09-19): the
 server lets a cwd claim take a cwd lease unrenewed for an hour; the release
 hook leaves a marker when it cannot finish, and the next session start on
@@ -239,8 +240,9 @@ claimed", which is why the claim moved into a hook.
   `repo:<host>:<path>` — then `git -C <repo> status --porcelain`.
   - **Unclaimed and clean → side-claim, edit directly, release, tell the
     user.** `vault_lease_claim({resource, holder, priority: "side",
-    attestation: "clean at <short-sha>"})`, edit the working tree, run
-    that repo's gates, `vault_lease_release`, then report "mods done in
+    attestation: "clean at <short-sha>"})`, keep the `claim_token` it
+    returns, edit the working tree, run that repo's gates,
+    `vault_lease_release({resource, holder, claim_token})`, then report "mods done in
     `<repo>` — review, commit, push". No worktree, no branch — the daily
     no-other-agents case, ruled 2026-08-18. Clean = no modified, staged, or
     untracked-unignored files (ignored never count; stash entries: mention,
@@ -262,13 +264,22 @@ claimed", which is why the claim moved into a hook.
   - **Registry unreachable → assume held**: worktree + handover, as before.
     An outage costs throughput, never correctness.
 - **Holder id**: `<hostname>/<session-prefix>`, e.g. `nuke/59bd32b6` —
-  unique per session, readable in `/ui/agents.html`. The operator holds as
+  unique per session, readable in `/ui/agents.html`. **The holder id is a
+  label, not a fence** (server ≥ 2026-09-27, vault-storage D67): every agent
+  claim, a lease's or a handoff's, answers with a `claim_token`, once, and
+  renew, release, transfer, and resolve need it (409
+  `claim_token_mismatch` without it). Keep it in context for the burst; a
+  lost token leaves the claim to lapse at its TTL. The lease hooks keep the
+  cwd lease's token on disk themselves; a side lease the agent forgets is
+  not released at SessionEnd, since the hooks do not have its token. The
+  operator holds as
   `kind: "human"` (no TTL, never preempted) and claims via the UI;
   `vault_lease_transfer` with `to_kind: "human"` is the "please review and
   commit" handover.
 - **While holding a side lease**: it is yours for the burst — release it
-  when the burst is done rather than at session end (SessionEnd releases
-  it anyway as a backstop). After a long gap or any vault error, verify the
+  when the burst is done, with its `claim_token`. SessionEnd does not
+  release it (the hooks never saw its token): a forgotten side lease holds
+  until its TTL, though any cwd claim preempts it. After a long gap or any vault error, verify the
   lease still names you before the next mutating burst — losing a lease is
   demotion, not damage (D23): downgrade to worktree + handover. Leases are
   cleared on server restart by design — the gate re-claims your own repo on
@@ -337,7 +348,8 @@ leases: a single-agent session that owns its cwd repo never files one.
 - **Receiving them** (you hold the lease): `/vault resume`'s project block
   carries the inbox — claiming a repo means inheriting it. Claim before
   reviewing (`vault_handoff_claim({id, holder})`, same holder id as the
-  lease), then resolve exactly once: `done` (you applied it — you own any
+  lease, keeping the `claim_token` it returns), then resolve exactly once,
+  passing that token: `done` (you applied it — you own any
   merge conflicts), `rejected`, or `returned` for rework. **`returned`
   requires a `note`** — the critique is what makes the rework possible, and a
   return without one is a silent drop. Claims expire lazily (~30 min), so an
@@ -1174,12 +1186,13 @@ The resulting stage DAG:
 (2026-07-13+ server): each agent reserves its own batch with
 `POST /suggestions/claim` under a unique holder (e.g.
 `sweep-<date>-<kind>-<n>`) and resolves through
-`POST /suggestions/resolve-batch` with `resolved_by` = that holder —
-the reservation makes the batches disjoint by construction, and it
-also de-conflicts overlapping sweeps from separate sessions. Skipped
-items are released with `reopen`, passing the same holder, since the
-server refuses a release from anyone else (or they lapse at the claim
-TTL, default 30 min). On a pre-claim server the old rule stands: never two
+`POST /suggestions/resolve-batch` with the `claim_token` the claim
+returned — the reservation makes the batches disjoint by construction,
+and it also de-conflicts overlapping sweeps from separate sessions.
+Skipped items are released with `reopen`, passing the same token, since
+the server refuses a release from anyone else (or they lapse at the
+claim TTL, default 30 min). `vault-triage.mjs` keeps the token in its
+worksheet; the holder name settles nothing (vault-storage D67). On a pre-claim server the old rule stands: never two
 same-kind triage agents — they pull the same queue head and duplicate
 or contradict each other's decisions. Enrichment backfill shards by
 explicit worklist chunks instead (§ Procedure step 4) — coverage is

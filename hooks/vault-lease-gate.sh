@@ -114,6 +114,14 @@ auth=(-H "Authorization: Bearer $VAULT_API_TOKEN" -H 'Content-Type: application/
 holder=""
 kind=""
 
+# Renew and re-claim present the claim's token (vault-storage D67). Without
+# the library they send none, and the server refuses the renew: the lease
+# then lapses at its TTL, which is the fail-open direction.
+# shellcheck source=lib/vault-lease-token.sh source-path=SCRIPTDIR
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-lease-token.sh" 2>/dev/null ||
+  lease_token_of() { :; }
+declare -F lease_token_save >/dev/null || lease_token_save() { :; }
+
 # ── helpers ──────────────────────────────────────────────────────────────
 
 # Repo root containing a path. A Write may be creating a file that does not
@@ -179,8 +187,9 @@ lookup() {
 claim_cwd() {
   local resource=$1 cf body raw code resp parsed
   cf=$(cache_file_of "$resource")
-  body=$(jq -cn --arg r "$resource" --arg h "$me" \
-    '{resource: $r, holder: $h, kind: "agent", priority: "cwd"}') || return 1
+  body=$(jq -cn --arg r "$resource" --arg h "$me" --arg t "$(lease_token_of "$me" "$resource")" \
+    '{resource: $r, holder: $h, kind: "agent", priority: "cwd"}
+     + (if $t == "" then {} else {claim_token: $t} end)') || return 1
   raw=$(curl -s --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
     -w $'\n%{http_code}' "$VAULT_API_URL/leases/claim") || return 1
   code=${raw##*$'\n'}
@@ -189,6 +198,7 @@ claim_cwd() {
     200)
       holder=$me
       kind=agent
+      lease_token_save "$me" "$resource" "$(jq -r '.claim_token // ""' <<<"$resp" 2>/dev/null)"
       printf '%s\n%s\n%s\n' "$now" "$me" "agent" >"$cf" 2>/dev/null || true
       printf '%s\n' "$now" >"$cf.renew" 2>/dev/null || true
       ;;
@@ -211,7 +221,8 @@ renew_if_due() {
   [[ -f "$stamp" ]] && read -r last <"$stamp" 2>/dev/null
   [[ ${last:-0} =~ ^[0-9]+$ ]] || last=0
   ((now - last >= RENEW_EVERY)) || return 0
-  body=$(jq -cn --arg r "$resource" --arg h "$me" '{resource: $r, holder: $h}') || return 0
+  body=$(jq -cn --arg r "$resource" --arg h "$me" --arg t "$(lease_token_of "$me" "$resource")" \
+    '{resource: $r, holder: $h} + (if $t == "" then {} else {claim_token: $t} end)') || return 0
   curl -s -o /dev/null --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
     "$VAULT_API_URL/leases/renew" || true
   printf '%s\n' "$now" >"$stamp" 2>/dev/null || true

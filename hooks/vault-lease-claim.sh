@@ -77,8 +77,13 @@ if . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-lease-release.sh
   fi
 fi
 
-body=$(jq -cn --arg r "$resource" --arg h "$me" \
-  '{resource: $r, holder: $h, kind: "agent", priority: "cwd"}') || exit 0
+# A resumed session claims under the same holder id, so it renews with the
+# token its first start saved (D67).
+token=""
+declare -F lease_token_of >/dev/null && token=$(lease_token_of "$me" "$resource")
+body=$(jq -cn --arg r "$resource" --arg h "$me" --arg t "$token" \
+  '{resource: $r, holder: $h, kind: "agent", priority: "cwd"}
+   + (if $t == "" then {} else {claim_token: $t} end)') || exit 0
 
 # -w appends the status on its own line so a 409 body is still readable
 # (curl -f would discard it, and the 409 body is the whole point).
@@ -90,6 +95,9 @@ resp=${raw%$'\n'*}
 
 case "$code" in
   200)
+    if declare -F lease_token_save >/dev/null; then
+      lease_token_save "$me" "$resource" "$(jq -r '.claim_token // ""' <<<"$resp" 2>/dev/null)"
+    fi
     jq -r --arg r "$resource" --arg me "$me" '
       def ttl: ((.lease.expires_at // "" | if . == "" then null else
         ((. | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - now) / 3600 | floor end) // null);
@@ -109,7 +117,11 @@ case "$code" in
     ;;
   409)
     jq -r --arg r "$resource" --arg me "$me" '
-      .details.current // {} |
+      if .code == "claim_token_mismatch" then
+        "[vault] lease: \($r) is held under this session'"'"'s holder id \($me) by a claim whose token " +
+        "this host no longer has, so it cannot be renewed or released from here; it lapses at its TTL. " +
+        "Treat the repo as held by you meanwhile."
+      else .details.current // {} |
       if (.holder // "") == "" then empty
       elif .holder_kind == "human" then
         "[vault] lease: \($r) is held by \(.holder) (human, operator-held). Ask before editing this " +
@@ -120,7 +132,7 @@ case "$code" in
         "worktree + handoff to \"\($r)\" (SendMessage the holder if ListAgents shows it). Taking the " +
         "lease is the operator'"'"'s: the force release in /ui/agents.html. A cwd lease left unrenewed " +
         "for an hour passes to the next session that starts here."
-      end' <<<"$resp" 2>/dev/null || exit 0
+      end end' <<<"$resp" 2>/dev/null || exit 0
     ;;
 esac
 exit 0

@@ -96,9 +96,19 @@ else
   holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
   [[ "$holder" == "$ME1" ]] && ok || bad "server must show $ME1 as holder (got '$holder')"
 
+  # 1a. the claim token is kept on disk for renew and release (vault-storage D67)
+  tokenfile() { printf '%s/claude-vault-lease/tokens/%s/%s' "${XDG_STATE_HOME:-$HOME/.local/state}" "${1//\//_}" "$(printf '%s' "$RES" | cksum | tr -d ' ')"; }
+  [[ -s "$(tokenfile "$ME1")" ]] && ok || bad "claim: the claim token must be saved"
+
   # 2. re-claim is a renew
   run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
   [[ $rc -eq 0 && "$out" == *"renewed (cwd) as $ME1"* ]] && ok || bad "claim: idempotent re-claim must say renewed (out=$out)"
+
+  # 2a. without the token the same holder id cannot renew: told, not blocked
+  mv "$(tokenfile "$ME1")" "$(tokenfile "$ME1").bak"
+  run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
+  [[ $rc -eq 0 && "$out" == *"token"* && "$out" != *SUBORDINATE* ]] && ok || bad "claim: a lost token must be reported, not read as another holder (out=$out)"
+  mv "$(tokenfile "$ME1").bak" "$(tokenfile "$ME1")"
 
   # 3. gate allows the holder, and renews (stamp file appears)
   run "$GATE" "$(jq -nc --arg f "$W/a.txt" --arg s "$S1" --arg c "$W" '{tool_name:"Edit",tool_input:{file_path:$f},session_id:$s,cwd:$c}')"
@@ -119,6 +129,7 @@ else
   run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
   holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
   [[ -z "$holder" ]] && ok || bad "release: holder's release must clear the lease (holder still '$holder')"
+  [[ ! -e "$(tokenfile "$ME1")" ]] && ok || bad "release: the token must be dropped with the lease"
 
   # 6. gate re-claims an unheld OWN repo on touch (the TTL-lapse healing path)
   rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease/$(printf '%s' "$RES" | cksum | tr -d ' ')"*
