@@ -22,6 +22,14 @@
 //   6 report (inefficiency_detected + infrastructure_upgrade triage — last,
 //     so review_backlog_high verification sees the post-drain queue)
 //
+// Stale enrichment is frozen at `begin` and sharded: the notes whose staleness
+// was filed before the sweep started, at most STALE_PER_AGENT to an agent so
+// no model turn judges more than a handful. A note that goes stale mid-sweep
+// waits for the next sweep instead of forcing a second round.
+//
+// Every plan carries `elapsed_s`, and a dispatch its `estimate_s`: the longest
+// agent's start cost plus its items at the measured per-item rate.
+//
 // A kind whose whole pending set is what the last pass released back (skip /
 // defer / merge-candidate — the triage harness's per-holder report names
 // them) is floored at once and its items printed under `skipped`, instead of
@@ -66,6 +74,14 @@ const SKILL_FOR = {
   compaction_candidate: 'vault-compact',
   report: 'vault-review-reports'
 };
+
+const STALE_PER_AGENT = 4;
+const MAX_STALE_AGENTS = 6;
+
+// Seconds, from the 2026-09-27 21:32Z sweep on vault-sweep agents: 45 s to an
+// agent's first action, 52 s a stale note, 44 s for two tag suggestions.
+const AGENT_START_S = 45;
+const PER_ITEM_S = {enrich_stale: 52, triage: 5};
 
 const fail = (code, message) => {
   console.error(message);
@@ -205,7 +221,7 @@ const pendingItems = async kind => {
       `/suggestions?kind=${kind}&status=pending&limit=100&offset=${offset}`
     );
     if (!page.items.length) break;
-    for (const {id, payload} of page.items) items.push({id, payload});
+    for (const {id, payload, created} of page.items) items.push({id, payload, created});
     offset += page.items.length;
     if (offset >= page.total) break;
   }
@@ -240,7 +256,23 @@ const buildDispatch = async (state, kind, count, worklist) => {
       });
     } else entry.agents.push({mode: 'backfill', limit: 100});
   } else if (kind === 'enrich_stale') {
-    entry.agents.push({mode: 'stale', limit: 100});
+    const frozen = (await pendingItems('agent_enrichment_stale')).filter(
+      item => item.created <= state.started
+    );
+    const dir = path.dirname(path.resolve(state.file));
+    for (
+      let i = 0;
+      i < frozen.length && entry.agents.length < MAX_STALE_AGENTS;
+      i += STALE_PER_AGENT
+    ) {
+      const shard = frozen.slice(i, i + STALE_PER_AGENT);
+      const file = path.join(
+        dir,
+        `sweep-stale-r${state.round}p${state.passes[kind]}-${entry.agents.length}.txt`
+      );
+      writeFileSync(file, shard.map(item => item.payload.file_path).join('\n') + '\n');
+      entry.agents.push({mode: 'stale', records_file: file, records: shard.length});
+    }
   } else if (kind === 'compaction_candidate') {
     const pending = await api(
       'GET',
@@ -255,11 +287,25 @@ const buildDispatch = async (state, kind, count, worklist) => {
   return entry;
 };
 
+const agentSeconds = (kind, agent, count) => {
+  if (kind === 'enrich_stale') return AGENT_START_S + agent.records * PER_ITEM_S.enrich_stale;
+  if (agent.triage_kind) return AGENT_START_S + Math.min(count, agent.limit) * PER_ITEM_S.triage;
+  return null;
+};
+
+const estimateSeconds = dispatch => {
+  const seconds = dispatch.flatMap(entry =>
+    entry.agents.map(agent => agentSeconds(entry.kind, agent, entry.count))
+  );
+  return seconds.length && seconds.every(s => s !== null) ? Math.max(...seconds) : null;
+};
+
 const drainable = (state, counts) =>
   actionSet().filter(
     kind => counts[kind] > 0 && (!(kind in state.floors) || counts[kind] > state.floors[kind])
   );
 
+const elapsedSeconds = state => Math.round((Date.now() - Date.parse(state.started)) / 1000);
 const emit = value => console.log(JSON.stringify(value, null, 2));
 const saveState = state => writeFileSync(state.file, JSON.stringify(state, null, 2) + '\n');
 
@@ -278,11 +324,23 @@ const plan = async (state, counts, worklist) => {
       state.holders = {};
       for (const kind of active) {
         const entry = await buildDispatch(state, kind, counts[kind], worklist);
+        if (!entry.agents.length && !entry.candidates) {
+          state.floors[kind] = counts[kind];
+          continue;
+        }
         dispatch.push(entry);
         state.holders[kind] = entry.agents.map(agent => agent.holder).filter(Boolean);
       }
-      state.pending = active;
-      return {status: 'dispatch', round: state.round, stage: state.stage + 1, dispatch};
+      if (dispatch.length) {
+        state.pending = dispatch.map(entry => entry.kind);
+        return {
+          status: 'dispatch',
+          round: state.round,
+          stage: state.stage + 1,
+          estimate_s: estimateSeconds(dispatch),
+          dispatch
+        };
+      }
     }
     ++state.stage;
   }
@@ -357,7 +415,7 @@ if (command === 'begin') {
     endOfRound(state, counts) ??
     (await plan(state, (await measure()).counts, worklist));
   saveState(state);
-  emit(result);
+  emit({elapsed_s: elapsedSeconds(state), ...result});
 } else {
   const state = JSON.parse(readFileSync(opts.state, 'utf8'));
   opts.include = state.include;
@@ -396,5 +454,5 @@ if (command === 'begin') {
   }
   if (result.status === 'dispatch' && Object.keys(floored).length) result.skipped = floored;
   saveState(state);
-  emit(result);
+  emit({elapsed_s: elapsedSeconds(state), ...result});
 }

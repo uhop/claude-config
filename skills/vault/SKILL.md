@@ -1250,7 +1250,11 @@ W=$(mktemp -d)
    advisor, which measured 85–161 s per call on 2026-09-27):
    - `vault-enrich-all` entries: its § Sub-agent mode prompt; pass
      `--records=<records_file>` when the plan sharded the worklist,
-     else `--limit=<limit>`; `mode: "stale"` → `--stale`.
+     else `--limit=<limit>`; `mode: "stale"` → `--stale`. The stale
+     worklist is always sharded (at most four notes an agent) and frozen at
+     `begin`: a note that goes stale mid-sweep waits for the next sweep.
+   - Say the plan's `estimate_s` and the running `elapsed_s` in the message
+     that dispatches it.
    - Triage entries (`vault-review-tags` / `-edges` / `-duplicates`):
      the skill's § Sub-agent mode prompt with the plan's `holder` and
      `limit` — the generated holders make concurrent claims disjoint

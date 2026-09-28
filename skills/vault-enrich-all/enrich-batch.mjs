@@ -15,6 +15,8 @@
 // A --stale item whose body changed by at most F (default 0.4) of its chunk
 // bytes since its last enrichment carries `delta` (the added chunks) instead
 // of `body`; the rest carry the whole body (vault-storage enrichment-delta).
+// --records narrows either worklist to the paths or ids listed (the sweep's
+// shards, disjoint by construction).
 //
 // Enrichments file (JSON; bare map or {enrichments: {...}}), keyed by
 // file_path exactly as in the worksheet; null = skip:
@@ -226,19 +228,18 @@ const prepare = async () => {
       'server has no coverage.enrichment — pre-2026-07-09 vault-storage; use the SKILL.md fallback enumeration'
     );
 
+  const wanted = opts.records
+    ? new Set(
+        readFileSync(opts.records, 'utf8')
+          .split('\n')
+          .map(l => l.trim())
+          .filter(Boolean)
+      )
+    : null;
+  const listed = r => wanted.has(r.file_path) || wanted.has(r.record_id);
+
   let candidates;
-  if (opts.records) {
-    const wanted = new Set(
-      readFileSync(opts.records, 'utf8')
-        .split('\n')
-        .map(l => l.trim())
-        .filter(Boolean)
-    );
-    candidates = (coverage.unenriched_records ?? []).filter(
-      r => wanted.has(r.file_path) || wanted.has(r.record_id)
-    );
-    if (opts.stale) fail(2, '--records applies to the missing-block worklist, not --stale');
-  } else if (opts.stale) {
+  if (opts.stale) {
     candidates = [];
     let offset = 0;
     while (candidates.length < opts.limit) {
@@ -247,14 +248,18 @@ const prepare = async () => {
         `/suggestions?kind=agent_enrichment_stale&status=pending&limit=100&offset=${offset}`
       );
       if (!page.items.length) break;
-      for (const item of page.items)
-        candidates.push({
+      for (const item of page.items) {
+        const candidate = {
           record_id: item.payload.record_id,
           file_path: item.payload.file_path,
           suggestion_id: item.id
-        });
+        };
+        if (!wanted || listed(candidate)) candidates.push(candidate);
+      }
       offset += page.items.length;
     }
+  } else if (wanted) {
+    candidates = (coverage.unenriched_records ?? []).filter(listed);
   } else {
     candidates = coverage.unenriched_records ?? [];
     if (opts.type) candidates = candidates.filter(r => r.type === opts.type);
