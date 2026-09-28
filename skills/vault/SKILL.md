@@ -53,8 +53,8 @@ being changed. Reach
 for a whole-document write only when authoring a new note or genuinely
 rewriting one.
 
-**Keep the enrichment current in the same write** (server ≥ the D74 deploy,
-adapter after 0.10.0). `vault_append`, `vault_replace`,
+**Keep the enrichment current in the same write** (server from 2026-09-27,
+D74; adapter ≥ 0.11.0). `vault_append`, `vault_replace`,
 `vault_replace_section`, `vault_remove_item`, and `vault_insert_item` take an
 optional `agent` patch, and `vault_move_item` takes `from_agent` and
 `to_agent`: the fields given are merged over the stored `agent:` block and
@@ -65,8 +65,10 @@ still holds, which it does whenever you added more entries of the kind it
 describes; pass `agent: {summary: "…"}` when your text opens something the
 summary does not cover. Skip it on a note with no `agent:` block (409
 `no_enrichment` unless the patch carries a summary). An older server refuses
-the field with a 400 for an unknown body field; drop it there. On an adapter
-without the parameter, the same field goes in the `POST /vault/edit` or
+the field with a 400 for an unknown body field; drop it there. An adapter
+before 0.11.0 accepts `agent` and drops it without a word (it does not
+declare it, and only 0.11.0 refuses undeclared arguments), so the note stays
+stale: there, the same field goes in the `POST /vault/edit` or
 `/vault/move-item` body through `vault-curl`.
 
 The three data-loss guards that used to justify routing every write through
@@ -534,7 +536,7 @@ API endpoints (invoked via `vault-curl <path> [curl-options...]`):
   - **Never hand-author YAML through this mode** — that's the recurring quoting-trap failure class (colon-space, leading `@`/`*`/`-`/`?`, hex/bool/date shadows), and per the 2026-06-11 decision it is reserved for the UI editor and for verbatim round-trips: GET a server-emitted file, text-edit the *body only*, PUT it back. The YAML you re-send was machine-serialized, so it's safe. Any FM change → use the JSON path above.
   - Add `-o /dev/null -w "%{http_code}\n"` to confirm a 204 without flooding stdout (works for either Content-Type).
 - **Conditional writes (`If-Match`, use for read-modify-write on shared docs)**: `GET /vault/{path}` returns an `ETag` header (sha256 of the document's bytes, with `-gzip`, `-br`, or `-zstd` inside the quotes when the response was compressed; the server accepts either form back, vault-storage D70); send it back as `-H 'If-Match: <etag>'` on the PUT (either Content-Type) and the write lands only if the document hasn't changed in between — otherwise **412** `precondition_failed` with `details.current_etag`, meaning another writer got there first: re-GET, re-apply your edit to the fresh copy, retry with the new tag. Adopt this for any flow that GETs a shared doc (queue.md, learnings.md, archives), modifies it, and PUTs it back — it converts silent last-writer-wins clobbering into a visible, retryable conflict. Capture the ETag with `-D-` or `-o /dev/null -D- | grep -i etag`; successful PUTs (204) return the new `ETag` so chained conditional edits don't need a re-GET. `If-Match` never creates files (412 on a missing path); plain unconditional PUT remains valid for docs only one session touches.
-- **Edit (atomic server-side body op)**: `vault-curl /vault/edit -X POST -H 'Content-Type: application/json' --data-binary @op.json` with `{path, op: "append", text}` or `{path, op: "replace", from, to, all?}` — one op per call, server ≥ 2026-07-24. Replace is asserted (absent `from` → 409, ambiguous without `all` → 409 with the count — never a silent no-op); append joins after a single trailing newline; FM rides verbatim (`updated` re-stamped). Prefer `vault-put --append/--replace`, which calls this automatically with a round-trip fallback; reach for the raw endpoint only from contexts without vault-put.
+- **Edit (atomic server-side body op)**: `vault-curl /vault/edit -X POST -H 'Content-Type: application/json' --data-binary @op.json` with `{path, op: "append", text}` or `{path, op: "replace", from, to, all?}` — one op per call, server ≥ 2026-07-24. Replace is asserted (absent `from` → 409, ambiguous without `all` → 409 with the count — never a silent no-op); append joins after a single trailing newline; FM rides verbatim (`updated` re-stamped) except for an optional `agent` patch, which is merged over the stored `agent:` block and stamped current (D74, § Keep the enrichment current in the same write). Prefer `vault-put --append/--replace`, which calls this automatically with a round-trip fallback; reach for the raw endpoint only from contexts without vault-put.
 - **FM patch (atomic single-key frontmatter op)**: `vault-curl /sections/{record_id}/fm -X PATCH -H 'Content-Type: application/json' --data-binary @ops.json` with `{ops: [{op: "add"|"remove", path: "/related", value: "..."}]}` (not `/tags`: a 400 `protected_field`; tags go through `POST /sections/{id}/tags` with `{"tag": …}` and `DELETE /sections/{id}/tags/{tag}`, each returning the resulting `tags` array) — server-side membership edit on an FM array, no body round-trip and therefore no way to clobber the document. Returns `{changed, results: [{op, path, changed, array}]}` with the resulting array, so no re-read is needed to confirm. Prefer this over any full-document write whose only purpose is one FM key. `record_id` comes from `vault_list_pieces({file_prefix})`. Used by `/vault-propose-related` (`related-batch.mjs`) to apply accepted candidates.
 - **Supersede (replace a note, archiving the old)**: `vault-curl /vault/supersede -X POST -H 'Content-Type: application/json' --data-binary @payload.json` with `{old_path, new_path?, frontmatter, body}` — the successor in the standard JSON write shape; `new_path` defaults to `old_path` (supersede-in-place: the successor takes over the path, so inbound wikilinks resolve to the replacement). Use this — never DELETE+PUT or a wholesale overwrite — whenever a write *replaces* a note rather than evolving it: the old note moves to `<dir>/archive/<YYYY>/<name>` with its record id intact (edges/embeddings/suggestions survive) and gets `status: superseded`; the successor's body is auto-appended a `> Supersedes [[<archived-path>]].` footer that backs the typed `supersedes` edge (don't add your own). Validation-first — a rejected request (bad FM, occupied `new_path`/archive slot) mutates nothing. Routine edits to an existing note stay plain PUTs; supersession is for replacement semantics.
 - **List**: `vault-curl /vault/{path}/ -s` (trailing slash → `{"files": [...]}`) — *prefer `vault_list_folder`*.
@@ -1119,7 +1121,7 @@ same stage run as parallel sub-agents):
 | `suggestions.agent_enrichment_stale` | `/vault-enrich-all --auto --stale --limit=100` (refresh drifted) |
 | `suggestions.new_tag` | `/vault-review-tags --auto --limit=100` |
 | `suggestions.tag_suggestion` | `/vault-review-tags --auto --kind=tag_suggestion --limit=100` |
-| `suggestions.edge_type` | `/vault-review-edges --auto --limit=100` |
+| `suggestions.edge_type` — only reopened rows since vault-storage D76: a default-cites link is filed already rejected as `default-cites`, so this stage is normally empty | `/vault-review-edges --auto --limit=100` |
 | `suggestions.duplicate` | `/vault-review-duplicates --auto --limit=100` (merges via supersede — archival, never delete) |
 | `suggestions.compaction_candidate` | `/vault-compact <folder>` per candidate (originals archived) |
 | `suggestions.inefficiency_detected` + `infrastructure_upgrade` | `/vault-review-reports --auto` (verify against live data → reject-by-design / accept + queue item; migrate-tier left pending for the user) |
