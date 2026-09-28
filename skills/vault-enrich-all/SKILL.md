@@ -77,6 +77,9 @@ day of appends to a 1.3 MB decisions log was 1.2% of its chunks (measured
   moves the span it states; and drop a "newest" clause an older summary still
   carries (§ Generate enrichment fields, `summary`). The note's own title,
   type, and `existing_tags` say what it is.
+- Keep `current_agent.related_proposed`: a delta item carries no
+  `related_candidates`, since an append rarely moves a note's neighbours and
+  the neighbour query costs about 7 s a note.
 - Take `tags_suggested` and `edge_classifications` from the added text only.
   `body_wikilinks` still lists every link in the whole body, so the key check
   in `apply` is unchanged.

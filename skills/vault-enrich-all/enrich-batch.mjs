@@ -283,24 +283,27 @@ const prepare = async () => {
         return;
       }
       const links = wikilinks(record.body);
-      let similar = [];
-      try {
-        const {data} = await api('GET', `/sections/${candidate.record_id}/similar?k=15`);
-        const rows = Array.isArray(data) ? data : (data.items ?? []);
-        const known = new Set([
-          ...(fm.frontmatter.related ?? []).map(r => r.replace(/^\[\[|\]\]$/g, '')),
-          ...links.map(l => l.replace(/^\[\[|\]\]$/g, ''))
-        ]);
-        similar = rows
-          .filter(row => (row.distance ?? 1) <= 0.3)
-          .filter(row => !known.has((row.file_path ?? '').replace(/\.md$/, '')))
-          .map(row => ({file_path: row.file_path, title: row.title, distance: row.distance}));
-      } catch {}
       let delta = null;
       if (opts.stale && fm.frontmatter.agent?.summary) {
         try {
           const {data} = await api('GET', `/sections/${candidate.record_id}/enrichment-delta`);
           if (data.baseline && data.changed_fraction <= opts.fullThreshold) delta = data;
+        } catch {}
+      }
+      // A delta keeps current_agent.related_proposed; /similar costs ~7 s a call (vault-storage queue, 2026-09-27).
+      let similar = [];
+      if (!delta) {
+        try {
+          const {data} = await api('GET', `/sections/${candidate.record_id}/similar?k=15`);
+          const rows = Array.isArray(data) ? data : (data.items ?? []);
+          const known = new Set([
+            ...(fm.frontmatter.related ?? []).map(r => r.replace(/^\[\[|\]\]$/g, '')),
+            ...links.map(l => l.replace(/^\[\[|\]\]$/g, ''))
+          ]);
+          similar = rows
+            .filter(row => (row.distance ?? 1) <= 0.3)
+            .filter(row => !known.has((row.file_path ?? '').replace(/\.md$/, '')))
+            .map(row => ({file_path: row.file_path, title: row.title, distance: row.distance}));
         } catch {}
       }
       items.push({
