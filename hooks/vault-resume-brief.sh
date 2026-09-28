@@ -23,6 +23,11 @@ if root=$(git rev-parse --show-toplevel 2>/dev/null); then
   fi
 fi
 
+# Start loading the embedding model now, so the session's first semantic
+# search does not wait ~35 s for it (vault-storage D80); answers at once.
+curl -sf --connect-timeout 1 --max-time 1 -X POST -o /dev/null \
+  -H "Authorization: Bearer $VAULT_API_TOKEN" "$VAULT_API_URL/maintenance/warm-embedder" || true
+
 url="$VAULT_API_URL/system/resume-brief"
 [[ $project =~ ^[a-z0-9][a-z0-9-]*$ ]] && url="$url?project=$project"
 
