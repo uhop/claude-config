@@ -17,6 +17,7 @@ Walks every `~/.claude/projects/*/*.jsonl` session transcript, pairs each `tool_
 /transcript-profile --top N           # cap report rows (default 20)
 /transcript-profile --include-sidechain  # include sub-agent (Task) transcripts
 /transcript-profile --json            # JSON output instead of markdown
+/transcript-profile --root DIR        # transcripts root (default ~/.claude/projects)
 ```
 
 Combinable. `--days 7 --project vault-storage --top 10` is a common shape for "what did vault-storage work look like this week."
@@ -58,6 +59,10 @@ Sub-agent transcripts live beside the session file as `<session>/subagents/agent
 - Spotting drift in tool latency — if a previously-fast tool starts averaging 5× higher, something regressed.
 - Validating that a new tool (e.g., a fresh MCP integration) has acceptable per-call overhead.
 - Before building a read gate or delegating reads to a cheaper model: the byte share of the reads in question bounds the saving.
+
+## Tests
+
+`node --test ~/Open/claude-config/skills/transcript-profile/` runs `profile.test.mjs`: it builds a transcript tree in a temp dir and drives the script through `--root`, pinning the byte and latency arithmetic, the sub-agent walk, the `--days` / `--project` filters, and the markdown table.
 
 ## When it's NOT the right tool
 

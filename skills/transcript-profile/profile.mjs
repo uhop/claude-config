@@ -10,6 +10,7 @@
 //   profile.mjs --include-sidechain  # include sub-agent (Task) transcripts
 //   profile.mjs --top N            # cap report rows (default 20)
 //   profile.mjs --json             # emit JSON instead of markdown
+//   profile.mjs --root DIR         # transcripts root (default ~/.claude/projects)
 
 import {readdirSync, readFileSync, statSync} from 'node:fs';
 import {join} from 'node:path';
@@ -33,11 +34,18 @@ const INCLUDE_SIDECHAIN = flag('--include-sidechain');
 const TOP = opt('--top') ? Number(opt('--top')) : 20;
 const AS_JSON = flag('--json');
 
-const ROOT = join(homedir(), '.claude', 'projects');
+const ROOT = opt('--root', join(homedir(), '.claude', 'projects'));
 const cutoffMs = DAYS != null ? Date.now() - DAYS * 86400 * 1000 : 0;
 
 const transcriptFiles = [];
-for (const projectDir of readdirSync(ROOT)) {
+let projectDirs;
+try {
+  projectDirs = readdirSync(ROOT);
+} catch (e) {
+  console.error(`profile.mjs: cannot read ${ROOT}: ${e.message}`);
+  process.exit(2);
+}
+for (const projectDir of projectDirs) {
   if (PROJECT_FILTER && !projectDir.includes(PROJECT_FILTER)) continue;
   const projectPath = join(ROOT, projectDir);
   let entries;
