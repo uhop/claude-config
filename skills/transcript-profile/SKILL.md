@@ -1,12 +1,12 @@
 ---
 name: transcript-profile
-description: Profile agent tool-call patterns by parsing Claude Code session transcripts under `~/.claude/projects/`. Reports per-tool call counts, total wall-time, and p50/p95/avg latencies. Use when the user asks "what are we doing most often", "what's the slowest tool", "where should we optimize", or invokes /transcript-profile. Source data is the JSONL session logs Claude Code writes locally; no external service.
+description: Profile agent tool-call patterns by parsing Claude Code session transcripts under `~/.claude/projects/`. Reports per-tool call counts, total wall-time, p50/p95/avg latencies, and result bytes (what each tool puts into context). Use when the user asks "what are we doing most often", "what's the slowest tool", "which tool fills the context", "where should we optimize", or invokes /transcript-profile. Source data is the JSONL session logs Claude Code writes locally; no external service.
 user_invocable: true
 ---
 
 # Transcript profile — what the agent spends time on
 
-Walks every `~/.claude/projects/*/*.jsonl` session transcript, pairs each `tool_use` with its `tool_result` by id, and reports aggregate counts and latencies per tool. Answers the user's "where should we optimize?" question with measured data instead of guessing.
+Walks every `~/.claude/projects/*/*.jsonl` session transcript, pairs each `tool_use` with its `tool_result` by id, and reports aggregate counts, latencies, and result bytes per tool. Answers the user's "where should we optimize?" question with measured data instead of guessing.
 
 ## Invocation
 
@@ -37,14 +37,19 @@ Combinable. `--days 7 --project vault-storage --top 10` is a common shape for "w
    - Which tool has the worst p95 vs p50 ratio? (Outliers — often web fetches or long Bash commands.)
    - Are MCP tools (`mcp__*`) showing high per-call latency? Network/round-trip overhead is worth flagging.
    - Are there tools the user might not realize are being called heavily?
+   - Which tool puts the most bytes into context? The bytes table is the ceiling on any saving from a read gate or a cheaper-model delegation: a class of reads that is 9% of result bytes saves at most 9%, whatever a per-read benchmark claims. (Measured 2026-09-28 on nuke, 30 days: whole reads of files over 350 lines were 9.3% of result bytes, and the largest single consumer was one skill file read whole in 27 sessions.)
 
 3. **Don't read into the "pending" count** unless it's a large fraction. A small pending tail is normal — the most recent in-flight session shows up as unmatched, and very long-context sessions can lose tool_use/result pairs across a compaction boundary. The counts stay correct; the latency stats are computed from matched pairs only, so they're not skewed by pending.
+
+4. **Read the bytes as a lower bound.** They are result bytes as stored in the transcript, not tokens (divide by about four for a token estimate). A result the harness spilled to disk shows up as its short path, so a very large result is under-counted, never over.
 
 ## Data shape (for reference)
 
 Each transcript line is one of: a session-meta record (permission mode, snapshot), a user message (with `tool_result` blocks in `message.content`), or an assistant message (with `tool_use` blocks). Top-level `timestamp` is when the line was written; pairing `assistant.tool_use.id` with `user.message.content[].tool_use_id` recovers latency.
 
-`isSidechain: true` marks calls inside a sub-agent (a Task). Excluded by default — they double-count work that the parent's `Task` call already includes in its own latency. Add `--include-sidechain` to drill into sub-agent breakdowns.
+`tool_result.content` is a string or an array of blocks; the byte count sums the text blocks.
+
+Sub-agent transcripts live beside the session file as `<session>/subagents/agent-*.jsonl`; older sessions marked such rows `isSidechain: true` inside the session file instead, and both forms are honoured. Excluded by default — they double-count work that the parent's `Agent` call already includes in its own latency. Add `--include-sidechain` to drill into sub-agent breakdowns; the header then reports the sub-agent transcript count beside the session count. (Before 2026-09-28 the flag read only the `isSidechain` rows, so on the current layout it found nothing.)
 
 ## When the report is useful
 
@@ -52,6 +57,7 @@ Each transcript line is one of: a session-meta record (permission mode, snapshot
 - Comparing pre/post a change to see if it actually saved wall time.
 - Spotting drift in tool latency — if a previously-fast tool starts averaging 5× higher, something regressed.
 - Validating that a new tool (e.g., a fresh MCP integration) has acceptable per-call overhead.
+- Before building a read gate or delegating reads to a cheaper model: the byte share of the reads in question bounds the saving.
 
 ## When it's NOT the right tool
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Tool-call profiler: walks Claude Code session transcripts under
 // ~/.claude/projects/**/*.jsonl, pairs tool_use with tool_result by id,
-// and reports aggregate counts/latencies per tool name.
+// and reports aggregate counts, latencies, and result bytes per tool name.
 //
 // Usage:
 //   profile.mjs                    # all projects, all time
@@ -46,32 +46,62 @@ for (const projectDir of readdirSync(ROOT)) {
   } catch {
     continue;
   }
-  for (const entry of entries) {
-    if (!entry.endsWith('.jsonl')) continue;
-    const fp = join(projectPath, entry);
+  const add = (fp, sidechain) => {
     const stat = statSync(fp);
-    if (cutoffMs && stat.mtimeMs < cutoffMs) continue;
-    transcriptFiles.push({path: fp, project: projectDir, mtime: stat.mtimeMs});
+    if (cutoffMs && stat.mtimeMs < cutoffMs) return;
+    transcriptFiles.push({path: fp, project: projectDir, mtime: stat.mtimeMs, sidechain});
+  };
+  for (const entry of entries) {
+    const fp = join(projectPath, entry);
+    if (entry.endsWith('.jsonl')) {
+      add(fp, false);
+      continue;
+    }
+    // Sub-agent transcripts: <session>/subagents/agent-*.jsonl; older sessions
+    // marked such rows isSidechain inside the session file instead.
+    if (!INCLUDE_SIDECHAIN) continue;
+    let subEntries;
+    try {
+      subEntries = readdirSync(join(fp, 'subagents'));
+    } catch {
+      continue;
+    }
+    for (const sub of subEntries) {
+      if (sub.endsWith('.jsonl')) add(join(fp, 'subagents', sub), true);
+    }
   }
 }
 
 // Pair tool_use → tool_result by id. tool_use timestamps come from the
 // assistant message line; tool_result timestamps from the user message line.
-const stats = new Map(); // tool_name → {count, latencies[], unmatched}
+const stats = new Map(); // tool_name → {count, latencies[], sizes[], bytes, unmatched}
 const ensure = name => {
   let s = stats.get(name);
   if (!s) {
-    s = {count: 0, latencies: [], unmatched: 0};
+    s = {count: 0, latencies: [], sizes: [], bytes: 0, unmatched: 0};
     stats.set(name, s);
   }
   return s;
 };
 
 let sessionsAnalyzed = 0;
+let subagentsAnalyzed = 0;
 let totalUseEvents = 0;
 let totalResultEvents = 0;
+let totalResultBytes = 0;
 
-for (const {path: fp} of transcriptFiles) {
+// A result the harness spilled to disk is stored as its short path, so a very
+// large result is under-counted, never over.
+const resultBytes = block => {
+  const c = block.content;
+  if (typeof c === 'string') return Buffer.byteLength(c);
+  if (!Array.isArray(c)) return 0;
+  let n = 0;
+  for (const part of c) if (typeof part?.text === 'string') n += Buffer.byteLength(part.text);
+  return n;
+};
+
+for (const {path: fp, sidechain} of transcriptFiles) {
   const content = readFileSync(fp, 'utf8');
   // toolUseId → {name, t_start}
   const pending = new Map();
@@ -112,6 +142,10 @@ for (const {path: fp} of transcriptFiles) {
             if (entry.t_start != null && ts != null) {
               s.latencies.push(ts - entry.t_start);
             }
+            const bytes = resultBytes(block);
+            s.bytes += bytes;
+            s.sizes.push(bytes);
+            totalResultBytes += bytes;
             pending.delete(block.tool_use_id);
           }
         }
@@ -124,7 +158,10 @@ for (const {path: fp} of transcriptFiles) {
   for (const {name} of pending.values()) {
     ensure(name).unmatched++;
   }
-  if (sessionTouched) sessionsAnalyzed++;
+  if (sessionTouched) {
+    if (sidechain) subagentsAnalyzed++;
+    else sessionsAnalyzed++;
+  }
 }
 
 const pct = (sorted, p) => {
@@ -140,10 +177,18 @@ const fmt = ms => {
   return `${(ms / 60_000).toFixed(1)}m`;
 };
 
+const fmtBytes = n => {
+  if (n == null) return '—';
+  if (n < 1000) return `${n} B`;
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)} KB`;
+  return `${(n / 1_000_000).toFixed(1)} MB`;
+};
+
 const rows = [];
 for (const [name, s] of stats) {
   const sorted = [...s.latencies].sort((a, b) => a - b);
   const total = s.latencies.reduce((sum, x) => sum + x, 0);
+  const sizes = [...s.sizes].sort((a, b) => a - b);
   rows.push({
     name,
     count: s.count,
@@ -151,7 +196,11 @@ for (const [name, s] of stats) {
     total_ms: total,
     p50_ms: pct(sorted, 50),
     p95_ms: pct(sorted, 95),
-    avg_ms: s.latencies.length === 0 ? null : Math.round(total / s.latencies.length)
+    avg_ms: s.latencies.length === 0 ? null : Math.round(total / s.latencies.length),
+    bytes: s.bytes,
+    p50_bytes: pct(sizes, 50),
+    p95_bytes: pct(sizes, 95),
+    avg_bytes: s.count === 0 ? null : Math.round(s.bytes / s.count)
   });
 }
 
@@ -163,10 +212,12 @@ if (AS_JSON) {
     JSON.stringify(
       {
         sessions_analyzed: sessionsAnalyzed,
+        subagent_transcripts: subagentsAnalyzed,
         total_use_events: totalUseEvents,
         total_result_events: totalResultEvents,
         total_calls: grandCount,
         total_wall_time_ms: grandTotal,
+        total_result_bytes: totalResultBytes,
         rows
       },
       null,
@@ -176,6 +227,7 @@ if (AS_JSON) {
 } else {
   const sortedByTotal = [...rows].sort((a, b) => b.total_ms - a.total_ms);
   const sortedByCount = [...rows].sort((a, b) => b.count - a.count);
+  const sortedByBytes = [...rows].sort((a, b) => b.bytes - a.bytes);
 
   const filterDesc =
     (DAYS != null ? `last ${DAYS} days` : 'all time') +
@@ -185,8 +237,10 @@ if (AS_JSON) {
   console.log(`# Tool-call profile (${filterDesc})`);
   console.log();
   console.log(`Sessions analyzed: **${sessionsAnalyzed}**`);
+  if (INCLUDE_SIDECHAIN) console.log(`Sub-agent transcripts: **${subagentsAnalyzed}**`);
   console.log(`Total tool calls: **${grandCount}** (across ${rows.length} distinct tools)`);
   console.log(`Wall-clock total: **${fmt(grandTotal)}**`);
+  console.log(`Result bytes: **${fmtBytes(totalResultBytes)}** (what the tools put into context)`);
   console.log();
 
   const renderTable = list => {
@@ -206,4 +260,16 @@ if (AS_JSON) {
   console.log(`## By call count (top ${TOP})`);
   console.log();
   renderTable(sortedByCount);
+  console.log();
+  console.log(`## By result bytes (top ${TOP})`);
+  console.log();
+  console.log('| Tool | Calls | Bytes | Share | Avg | p50 | p95 |');
+  console.log('| ---- | ----- | ----- | ----- | --- | --- | --- |');
+  for (const r of sortedByBytes.slice(0, TOP)) {
+    const share =
+      totalResultBytes === 0 ? '—' : `${((100 * r.bytes) / totalResultBytes).toFixed(1)}%`;
+    console.log(
+      `| ${r.name} | ${r.count} | ${fmtBytes(r.bytes)} | ${share} | ${fmtBytes(r.avg_bytes)} | ${fmtBytes(r.p50_bytes)} | ${fmtBytes(r.p95_bytes)} |`
+    );
+  }
 }
