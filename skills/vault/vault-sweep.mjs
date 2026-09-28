@@ -13,7 +13,7 @@
 //   vault-sweep next  --state=FILE
 //
 // Stage DAG (data-flow constraints — see the /vault skill § Ordering):
-//   0 one-shots: cleanup-lint ∥ embed-pending ∥ expire-logs  (this script)
+//   0 one-shots: cleanup-lint ∥ embed-pending ∥ expire-logs ∥ gc-tags  (this script)
 //   1 enrich_backfill ∥ enrich_stale
 //   2 new_tag
 //   3 tag_suggestion ∥ edge_type
@@ -387,11 +387,13 @@ if (command === 'begin') {
   // judgment to dispatch. Its own signal arrives as `archive_candidate`,
   // which this sweep always skips — without a caller here the endpoint is
   // inert and the queue keeps a permanent pending floor.
-  [oneShots.cleanup_lint, oneShots.embed_pending, oneShots.expire_logs] = await Promise.all([
-    api('POST', '/maintenance/cleanup-lint'),
-    api('POST', '/maintenance/embed-pending'),
-    apiOptional('POST', '/maintenance/expire-logs')
-  ]);
+  [oneShots.cleanup_lint, oneShots.embed_pending, oneShots.expire_logs, oneShots.gc_tags] =
+    await Promise.all([
+      api('POST', '/maintenance/cleanup-lint'),
+      api('POST', '/maintenance/embed-pending'),
+      apiOptional('POST', '/maintenance/expire-logs'),
+      apiOptional('POST', '/maintenance/gc-tags')
+    ]);
   const state = {
     file: opts.state,
     started: new Date().toISOString(),
