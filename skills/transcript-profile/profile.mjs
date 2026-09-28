@@ -82,11 +82,11 @@ for (const projectDir of projectDirs) {
 
 // Pair tool_use → tool_result by id. tool_use timestamps come from the
 // assistant message line; tool_result timestamps from the user message line.
-const stats = new Map(); // tool_name → {count, latencies[], sizes[], bytes, unmatched}
+const stats = new Map(); // tool_name → {count, latencies[], owns[], batched, sizes[], bytes, unmatched}
 const ensure = name => {
   let s = stats.get(name);
   if (!s) {
-    s = {count: 0, latencies: [], sizes: [], bytes: 0, unmatched: 0};
+    s = {count: 0, latencies: [], owns: [], batched: 0, sizes: [], bytes: 0, unmatched: 0};
     stats.set(name, s);
   }
   return s;
@@ -111,8 +111,13 @@ const resultBytes = block => {
 
 for (const {path: fp, sidechain} of transcriptFiles) {
   const content = readFileSync(fp, 'utf8');
-  // toolUseId → {name, t_start}
+  // toolUseId → {name, t_start, msg}
   const pending = new Map();
+  // One assistant message can issue several tool calls, which run in turn: a
+  // call's own cost is the gap from the previous result in its message.
+  const lastResult = new Map(); // msg → timestamp of its latest tool_result
+  const callsInMsg = new Map(); // msg → tool_use count
+  const matched = []; // {name, msg} per matched result, for the batched count
   let sessionTouched = false;
 
   for (const line of content.split('\n')) {
@@ -132,7 +137,9 @@ for (const {path: fp, sidechain} of transcriptFiles) {
     if (row.type === 'assistant' && row.message?.content) {
       for (const block of row.message.content) {
         if (block.type === 'tool_use' && block.id && block.name) {
-          pending.set(block.id, {name: block.name, t_start: ts});
+          const msg = row.message.id ?? row.requestId ?? row.uuid ?? block.id;
+          pending.set(block.id, {name: block.name, t_start: ts, msg});
+          callsInMsg.set(msg, (callsInMsg.get(msg) ?? 0) + 1);
           totalUseEvents++;
           sessionTouched = true;
         }
@@ -149,7 +156,11 @@ for (const {path: fp, sidechain} of transcriptFiles) {
             s.count++;
             if (entry.t_start != null && ts != null) {
               s.latencies.push(ts - entry.t_start);
+              const prev = lastResult.get(entry.msg);
+              s.owns.push(ts - (prev == null ? entry.t_start : Math.max(prev, entry.t_start)));
+              lastResult.set(entry.msg, ts);
             }
+            matched.push({name: entry.name, msg: entry.msg});
             const bytes = resultBytes(block);
             s.bytes += bytes;
             s.sizes.push(bytes);
@@ -159,6 +170,10 @@ for (const {path: fp, sidechain} of transcriptFiles) {
         }
       }
     }
+  }
+
+  for (const {name, msg} of matched) {
+    if ((callsInMsg.get(msg) ?? 0) > 1) ensure(name).batched++;
   }
 
   // Anything still pending = call in flight at session end (interrupted /
@@ -197,6 +212,7 @@ for (const [name, s] of stats) {
   const sorted = [...s.latencies].sort((a, b) => a - b);
   const total = s.latencies.reduce((sum, x) => sum + x, 0);
   const sizes = [...s.sizes].sort((a, b) => a - b);
+  const owns = [...s.owns].sort((a, b) => a - b);
   rows.push({
     name,
     count: s.count,
@@ -205,6 +221,11 @@ for (const [name, s] of stats) {
     p50_ms: pct(sorted, 50),
     p95_ms: pct(sorted, 95),
     avg_ms: s.latencies.length === 0 ? null : Math.round(total / s.latencies.length),
+    own_p50_ms: pct(owns, 50),
+    own_p95_ms: pct(owns, 95),
+    own_avg_ms:
+      owns.length === 0 ? null : Math.round(owns.reduce((sum, x) => sum + x, 0) / owns.length),
+    batched: s.batched,
     bytes: s.bytes,
     p50_bytes: pct(sizes, 50),
     p95_bytes: pct(sizes, 95),
@@ -249,14 +270,18 @@ if (AS_JSON) {
   console.log(`Total tool calls: **${grandCount}** (across ${rows.length} distinct tools)`);
   console.log(`Wall-clock total: **${fmt(grandTotal)}**`);
   console.log(`Result bytes: **${fmtBytes(totalResultBytes)}** (what the tools put into context)`);
+  console.log(
+    "p50/p95/Avg run from the call's issue and carry a batch's wait; Own p50/p95 is the gap from the previous result in the same message; Batched is the share of calls issued with siblings."
+  );
   console.log();
 
   const renderTable = list => {
-    console.log('| Tool | Calls | Total | p50 | p95 | Avg |');
-    console.log('| ---- | ----- | ----- | --- | --- | --- |');
+    console.log('| Tool | Calls | Batched | Total | p50 | p95 | Avg | Own p50 | Own p95 |');
+    console.log('| ---- | ----- | ------- | ----- | --- | --- | --- | ------- | ------- |');
     for (const r of list.slice(0, TOP)) {
+      const batched = r.count === 0 ? '—' : `${Math.round((100 * r.batched) / r.count)}%`;
       console.log(
-        `| ${r.name} | ${r.count}${r.unmatched > 0 ? ` (+${r.unmatched} pending)` : ''} | ${fmt(r.total_ms)} | ${fmt(r.p50_ms)} | ${fmt(r.p95_ms)} | ${fmt(r.avg_ms)} |`
+        `| ${r.name} | ${r.count}${r.unmatched > 0 ? ` (+${r.unmatched} pending)` : ''} | ${batched} | ${fmt(r.total_ms)} | ${fmt(r.p50_ms)} | ${fmt(r.p95_ms)} | ${fmt(r.avg_ms)} | ${fmt(r.own_p50_ms)} | ${fmt(r.own_p95_ms)} |`
       );
     }
   };

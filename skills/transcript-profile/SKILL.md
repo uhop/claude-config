@@ -1,6 +1,6 @@
 ---
 name: transcript-profile
-description: Profile agent tool-call patterns by parsing Claude Code session transcripts under `~/.claude/projects/`. Reports per-tool call counts, total wall-time, p50/p95/avg latencies, and result bytes (what each tool puts into context). Use when the user asks "what are we doing most often", "what's the slowest tool", "which tool fills the context", "where should we optimize", or invokes /transcript-profile. Source data is the JSONL session logs Claude Code writes locally; no external service.
+description: Profile agent tool-call patterns by parsing Claude Code session transcripts under `~/.claude/projects/`. Reports per-tool call counts, total wall-time, p50/p95/avg latencies from issue, each call's own cost (the gap from the previous result in its message), and result bytes (what each tool puts into context). Use when the user asks "what are we doing most often", "what's the slowest tool", "which tool fills the context", "where should we optimize", or invokes /transcript-profile. Source data is the JSONL session logs Claude Code writes locally; no external service.
 user_invocable: true
 ---
 
@@ -38,6 +38,7 @@ Combinable. `--days 7 --project vault-storage --top 10` is a common shape for "w
    - Which tool has the worst p95 vs p50 ratio? (Outliers — often web fetches or long Bash commands.)
    - Are MCP tools (`mcp__*`) showing high per-call latency? Network/round-trip overhead is worth flagging.
    - Are there tools the user might not realize are being called heavily?
+   - Is the tool slow, or the batch? p50/p95/Avg run from the call's issue, so a call issued with siblings in one message carries the batch's wait and the siblings' execution; since Claude Code 2.1.275 a batch's mutating calls start only after the message finishes streaming (Edit's first-in-batch p50 went from 0.17 s to 3.2 s while a single Edit stayed at 0.18 s, measured 2026-09-28). Own p50/p95 is the gap from the previous result in the same message and answers "is this tool slow"; the Batched column says how much of the tool's traffic that distinction applies to.
    - Which tool puts the most bytes into context? The bytes table is the ceiling on any saving from a read gate or a cheaper-model delegation: a class of reads that is 9% of result bytes saves at most 9%, whatever a per-read benchmark claims. (Measured 2026-09-28 on nuke, 30 days: whole reads of files over 350 lines were 9.3% of result bytes, and the largest single consumer was one skill file read whole in 27 sessions.)
 
 3. **Don't read into the "pending" count** unless it's a large fraction. A small pending tail is normal — the most recent in-flight session shows up as unmatched, and very long-context sessions can lose tool_use/result pairs across a compaction boundary. The counts stay correct; the latency stats are computed from matched pairs only, so they're not skewed by pending.
@@ -49,6 +50,8 @@ Combinable. `--days 7 --project vault-storage --top 10` is a common shape for "w
 Each transcript line is one of: a session-meta record (permission mode, snapshot), a user message (with `tool_result` blocks in `message.content`), or an assistant message (with `tool_use` blocks). Top-level `timestamp` is when the line was written; pairing `assistant.tool_use.id` with `user.message.content[].tool_use_id` recovers latency.
 
 `tool_result.content` is a string or an array of blocks; the byte count sums the text blocks.
+
+The block rows of one assistant message share `message.id`; the own cost and the batched count group tool calls by it. A row without one counts as its own message, which never over-attributes batching.
 
 Sub-agent transcripts live beside the session file as `<session>/subagents/agent-*.jsonl`; older sessions marked such rows `isSidechain: true` inside the session file instead, and both forms are honoured. Excluded by default — they double-count work that the parent's `Agent` call already includes in its own latency. Add `--include-sidechain` to drill into sub-agent breakdowns; the header then reports the sub-agent transcript count beside the session count. (Before 2026-09-28 the flag read only the `isSidechain` rows, so on the current layout it found nothing.)
 
@@ -62,7 +65,7 @@ Sub-agent transcripts live beside the session file as `<session>/subagents/agent
 
 ## Tests
 
-`node --test ~/Open/claude-config/skills/transcript-profile/` runs `profile.test.mjs`: it builds a transcript tree in a temp dir and drives the script through `--root`, pinning the byte and latency arithmetic, the sub-agent walk, the `--days` / `--project` filters, and the markdown table.
+`node --test ~/Open/claude-config/skills/transcript-profile/` runs `profile.test.mjs`: it builds a transcript tree in a temp dir and drives the script through `--root`, pinning the byte and latency arithmetic, the own cost and batched count on a three-call message, the sub-agent walk, the `--days` / `--project` filters, and the markdown table.
 
 ## When it's NOT the right tool
 

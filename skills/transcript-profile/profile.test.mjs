@@ -21,11 +21,11 @@ const runJson = args => JSON.parse(run([...args, '--json']));
 const row = (report, name) => report.rows.find(r => r.name === name);
 
 const iso = ms => new Date(ms).toISOString();
-const use = (t, id, name, extra = {}) => ({
+const use = (t, id, name, extra = {}, msg) => ({
   type: 'assistant',
   timestamp: iso(t),
   ...extra,
-  message: {content: [{type: 'tool_use', id, name, input: {}}]}
+  message: {...(msg ? {id: msg} : {}), content: [{type: 'tool_use', id, name, input: {}}]}
 });
 const result = (t, id, content, extra = {}) => ({
   type: 'user',
@@ -69,6 +69,25 @@ before(() => {
     jsonl([use(T0 + 5000, 'r3', 'Read'), result(T0 + 5500, 'r3', 'c'.repeat(3000))])
   );
 
+  // gamma: one message issuing three Edits at once, answered 3.0, 3.2 and
+  // 3.4 s after issue, then a single Edit: latency carries the batch, own
+  // cost does not.
+  const gamma = join(root, '-home-x-gamma');
+  mkdirSync(gamma, {recursive: true});
+  writeFileSync(
+    join(gamma, 's2.jsonl'),
+    jsonl([
+      use(T0, 'e1', 'Edit', {}, 'msg_1'),
+      use(T0 + 10, 'e2', 'Edit', {}, 'msg_1'),
+      use(T0 + 20, 'e3', 'Edit', {}, 'msg_1'),
+      result(T0 + 3000, 'e1', 'ok'),
+      result(T0 + 3200, 'e2', 'ok'),
+      result(T0 + 3400, 'e3', 'ok'),
+      use(T0 + 5000, 'e4', 'Edit'),
+      result(T0 + 5150, 'e4', 'ok')
+    ])
+  );
+
   // beta: one session 40 days old, by row timestamps and by file mtime.
   const beta = join(root, '-home-x-beta');
   mkdirSync(beta, {recursive: true});
@@ -100,8 +119,25 @@ test('bytes, latency, and pending per tool', () => {
   assert.equal(bash.count, 1);
   assert.equal(bash.unmatched, 1);
   assert.equal(bash.bytes, 100);
+  assert.equal(read.batched, 0);
+  assert.equal(read.own_p50_ms, read.p50_ms);
 
   assert.equal(row(r, 'Grep'), undefined);
+});
+
+test('own cost is the gap from the previous result in the same message', () => {
+  const r = runJson(['--root', root, '--project', 'gamma']);
+  const edit = row(r, 'Edit');
+  assert.equal(edit.count, 4);
+  assert.equal(edit.batched, 3);
+  assert.equal(edit.p50_ms, 3190);
+  assert.equal(edit.own_p50_ms, 200);
+  assert.equal(edit.own_p95_ms, 3000);
+  const out = run(['--root', root, '--project', 'gamma', '--top', '3']);
+  assert.match(
+    out,
+    /^\| Edit \| 4 \| 75% \| 9\.7s \| 3\.2s \| 3\.4s \| 2\.4s \| 200ms \| 3\.0s \|$/m
+  );
 });
 
 test('--include-sidechain reads <session>/subagents/ and isSidechain rows', () => {
@@ -114,8 +150,8 @@ test('--include-sidechain reads <session>/subagents/ and isSidechain rows', () =
 });
 
 test('--days drops old transcripts; --project selects a project directory', () => {
-  assert.equal(runJson(['--root', root]).total_result_bytes, 1800);
-  assert.equal(runJson(['--root', root, '--days', '30']).total_result_bytes, 1300);
+  assert.equal(runJson(['--root', root]).total_result_bytes, 1808);
+  assert.equal(runJson(['--root', root, '--days', '30']).total_result_bytes, 1308);
   const beta = runJson(['--root', root, '--project', 'beta']);
   assert.equal(beta.total_result_bytes, 500);
   assert.equal(beta.sessions_analyzed, 1);
