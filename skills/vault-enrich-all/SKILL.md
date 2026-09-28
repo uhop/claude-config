@@ -71,9 +71,12 @@ Rolling notes (queues, decision logs, archives) usually arrive this way: a
 day of appends to a 1.3 MB decisions log was 1.2% of its chunks (measured
 2026-09-27). Judge a delta item as a revision of `current_agent`:
 
-- Rewrite the summary's "newest" clause from the added chunks, and keep what
-  the rest of the summary says about the note. The note's own title, type, and
-  `existing_tags` say what it is.
+- Keep the summary when the added chunks are more entries of the kind it
+  already describes, which is the usual case for a rolling note. Revise it
+  only when the added text opens a subject or a section it does not cover, or
+  moves the span it states; and drop a "newest" clause an older summary still
+  carries (§ Generate enrichment fields, `summary`). The note's own title,
+  type, and `existing_tags` say what it is.
 - Take `tags_suggested` and `edge_classifications` from the added text only.
   `body_wikilinks` still lists every link in the whole body, so the key check
   in `apply` is unchanged.
@@ -127,6 +130,12 @@ wholesale per write).
   ([[projects/vault-storage/design/embedding-baseline-summary-query-ab]])
   showed a summary that abstracted away the concrete failure signature
   crashed retrieval rank from 20 to 47; keep both layers in one sentence.
+  **A rolling note** (a queue, decision log, archive, learnings, stack, or
+  feedback file) gets a summary of what it holds and its span ("decision log
+  for X, D1–D74: storage, sync, enrichment"), never its newest entry. A
+  "Newest: …" clause goes stale at the next append and puts the note back on
+  the stale queue by construction; recency is what logs and `summary_stale`
+  carry (vault-storage D74, 2026-09-27).
 - **`key_concepts`**: 3-5 lowercase hyphen-separated noun-phrases the note
   hangs on — retrieval anchors, not necessarily taxonomy tags.
 - **`tags_suggested`**: only tags already in the worksheet's `taxonomy`

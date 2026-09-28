@@ -53,6 +53,22 @@ being changed. Reach
 for a whole-document write only when authoring a new note or genuinely
 rewriting one.
 
+**Keep the enrichment current in the same write** (server ≥ the D74 deploy,
+adapter after 0.10.0). `vault_append`, `vault_replace`,
+`vault_replace_section`, `vault_remove_item`, and `vault_insert_item` take an
+optional `agent` patch, and `vault_move_item` takes `from_agent` and
+`to_agent`: the fields given are merged over the stored `agent:` block and
+the block is stamped current for the new body, so the note never reaches the
+sweep's stale queue. On an append to a rolling note (queue, archive,
+decisions, learnings, stack, feedback), pass `agent: {}` when its summary
+still holds, which it does whenever you added more entries of the kind it
+describes; pass `agent: {summary: "…"}` when your text opens something the
+summary does not cover. Skip it on a note with no `agent:` block (409
+`no_enrichment` unless the patch carries a summary). An older server refuses
+the field with a 400 for an unknown body field; drop it there. On an adapter
+without the parameter, the same field goes in the `POST /vault/edit` or
+`/vault/move-item` body through `vault-curl`.
+
 The three data-loss guards that used to justify routing every write through
 `vault-put` are **server-side as of 2026-08-03** (`46f6bf7`): an empty body
 (400 `empty_body`), a literal-`"null"`/`"undefined"` body (400 `null_body`),
