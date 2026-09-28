@@ -13,7 +13,7 @@
     ],
     "defaultMode": "auto"
   },
-  "model": "opus",
+  "model": "claude-fable-5-1",
   "hooks": {
     "PreToolUse": [
       {
@@ -125,7 +125,6 @@
     "clangd-lsp@claude-plugins-official": true
   },
   "effortLevel": "xhigh",
-  "advisorModel": "fable",
   "tui": "fullscreen",
   "skipWorkflowUsageWarning": true,
   "theme": "auto",
