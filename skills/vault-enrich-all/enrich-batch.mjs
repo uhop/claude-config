@@ -44,9 +44,6 @@ const EDGE_TYPES = [
   'revises',
   'derived-from',
   'basis-for', // declaration alias: stored as derived-from with the edge flipped
-  'caused-by',
-  'fixed-by',
-  'rejected-because',
   'applies-to',
   'contradicts',
   'related-to'

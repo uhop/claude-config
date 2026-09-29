@@ -126,7 +126,7 @@ prompt: |
 
 - **Per-query semantic search** — that's `/vault-search` / `vault_similar`
   at runtime; this is an offline curation pass (weekly / on-demand).
-- **Typed-edge classification** (`supersedes`, `caused-by`, …) — that's
+- **Typed-edge classification** (`supersedes`, `derived-from`, …) — that's
   `/vault-review-edges`. This skill produces `related-to` only — the
   loosest, symmetric, auto-mirrored edge.
 

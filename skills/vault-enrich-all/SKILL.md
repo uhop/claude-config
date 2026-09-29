@@ -153,15 +153,17 @@ wholesale per write).
   prior for `/vault-review-edges`, not the runtime truth. Forward
   derivation ("promoted / generalized to [[target]]") is `basis-for` —
   a declaration alias stored as `derived-from` with the edge flipped.
-  **The value must be one of the eleven**: `cites`, `supersedes`,
-  `revises`, `derived-from`, `basis-for`, `caused-by`, `fixed-by`,
-  `rejected-because`, `applies-to`, `contradicts`, `related-to`
-  (`EDGE_TYPES` in `enrich-batch.mjs`; the table in
-  `~/.claude/skills/vault-review-edges/SKILL.md` says when to pick each).
-  **`extends` is not one of them** — it is the wording inside
-  `derived-from`'s definition, which is exactly why a hand-written block
-  reaches for it; "builds on" is `derived-from`, "refines without
-  replacing" is `revises`. The harness rejects an invalid type outright
+  **The value must be one of the eight**: `cites`, `supersedes`,
+  `revises`, `derived-from`, `basis-for`, `applies-to`, `contradicts`,
+  `related-to` (`EDGE_TYPES` in `enrich-batch.mjs`; the table in
+  `~/.claude/skills/vault-review-edges/SKILL.md` says when to pick each;
+  `caused-by`, `fixed-by`, and `rejected-because` were dropped by
+  vault-storage D94, 2026-09-28). **`extends` is not one of them**: "extends
+  [[X]]", adding to X without replacing it, is `revises`; "builds on" and
+  "based on" are `derived-from`. Classify only where the sentence around
+  the link states the relation: the stored `derived-from` and `applies-to`
+  edges accepted on priors alone were mostly not confirmed by a judge
+  (D93). The harness rejects an invalid type outright
   (exit 3, whole file), but a **born-enriched note written directly**
   through the JSON write path — what `/vault log` and `/vault ingest`
   step 5 ask for — bypasses that check, so the value has to be right at

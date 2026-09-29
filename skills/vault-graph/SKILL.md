@@ -93,8 +93,6 @@ Combinable. `--depth=2 --via=supersedes,revises` traces a chain of revisions two
 | `supersedes` | A obsoletes B (asymmetric) |
 | `revises` | A is a revision of B (asymmetric) |
 | `derived-from` | A builds on B |
-| `caused-by` / `fixed-by` | Bug-tracking flow |
-| `rejected-because` | A rejected, citing B as reason |
 | `applies-to` | Scope / context |
 | `contradicts` | Symmetric disagreement; auto-mirrored |
 

@@ -59,26 +59,28 @@ server pins FM `edges:` per accept and settles rows as `fm-override` — and
 prints a JSON report. Exit 0 ok · 1 partial failures · 3 rejected pre-write.
 Run solo or `|| true` in parallel Bash batches.
 
-## Judgment — the 10 types (+ 1 alias)
+## Judgment — the 7 types (+ 1 alias)
+
+Seven since vault-storage D94 (2026-09-28): `caused-by`, `fixed-by`, and `rejected-because` were dropped after five months produced 32 edges and no consumer; the server still accepts the names and stores them as `cites` with the name in the edge's note. Each type is defined by its established equivalent, which is what the description means.
 
 | Type | When to choose |
 |---|---|
 | `cites` | Default; the source merely refers to the target. **Decision value `reject` or `cites`.** |
-| `derived-from` | Source builds on / extends / is grounded in target. Strong intellectual debt. |
+| `derived-from` | Source builds on / is grounded in target: its material or idea came from there. PROV-O `wasDerivedFrom`, DCMI `source`, schema.org `isBasedOn`. |
 | `basis-for` | Forward derivation — the *target* was derived from the source: "promoted / generalized / captured / extracted / distilled to [[target]]", the origin note recording where its material went. Declaration alias (2026-08-10): stored as `derived-from` with the edge flipped, so pick it by the prose direction, not the storage direction. |
-| `supersedes` | Source replaces / obsoletes the target. |
-| `revises` | Source amends or refines target without replacing it. |
-| `caused-by` | Source describes a state that target produced. |
-| `fixed-by` | Source describes a problem that target resolves. |
-| `rejected-because` | Source records a rejection whose reason is target. |
-| `applies-to` | Source's content applies / is relevant to target's domain. |
-| `contradicts` | Source disagrees with target. (Symmetric — auto-mirrors.) |
+| `supersedes` | Source replaces / obsoletes the target, which is no longer current. DCMI `replaces`, IANA `predecessor-version`. |
+| `revises` | Source amends, refines, clarifies, or extends target without replacing it; both still apply. PROV-O `wasRevisionOf`, CiTO `updates` / `corrects`. "extends [[X]]" lands here, not in `derived-from`. |
+| `applies-to` | Source is about the target: its content applies to the target's subject or domain. schema.org `about`. |
+| `contradicts` | Source disagrees with target: claims that cannot both hold. CiTO `disagreesWith` / `disputes`. (Symmetric — auto-mirrors.) |
 | `related-to` | Loose conceptual link, stronger than `cites` but nothing specific fits. (Symmetric.) |
 
 Don't force a type just to clear the queue — default-cites that fit nothing
-else stay cites (reject). **When the worksheet shows a `prior`, treat it as
-authoritative** (it's `/vault-enrich-all`'s advisory, written with full-note
-context): don't override it without strong cues in the snippet.
+else stay cites (reject). **A `prior` on the worksheet is a prior, not a
+verdict** (vault-storage D93 and D94, 2026-09-28: a summary-only judge
+confirmed 4 of 40 stored `derived-from` and 4 of 40 `applies-to`, most of
+them accepted on the prior): accept a specific type only when the sentence
+around the link states the relation; a prior with no such sentence is a
+`reject`.
 
 ## Sub-agent mode (`--auto`)
 

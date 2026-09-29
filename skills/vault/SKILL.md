@@ -702,11 +702,12 @@ Rules:
   2026-09-28). The author knows the note's point best, so a write says what
   the note relates to and how, in the frontmatter's `edges:` map:
   `edges: {"topics/foo": "derived-from", "projects/x/decisions": "applies-to"}`,
-  a wikilink target as the body would write it to one of the ten types plus
-  the `basis-for` alias (the table in `/vault-review-edges` § Judgment:
-  `supersedes`, `revises`, `derived-from`, `basis-for`, `caused-by`,
-  `fixed-by`, `rejected-because`, `cites`, `applies-to`, `contradicts`,
-  `related-to`). The server stores each entry as an edge whether or not the
+  a wikilink target as the body would write it to one of the seven types plus
+  the `basis-for` alias (the table in `/vault-review-edges` § Judgment, each
+  defined by its established equivalent: `supersedes`, `revises`,
+  `derived-from`, `basis-for`, `cites`, `applies-to`, `contradicts`,
+  `related-to`; vault-storage D94 dropped `caused-by`, `fixed-by`, and
+  `rejected-because`, which the server still accepts as `cites`). The server stores each entry as an edge whether or not the
   body links the target, so the map is the declaration, not only an override
   of a body link's default `cites`; `related:` stays for "related, no
   stronger claim". A type outside the vocabulary is a 400 `invalid_enum_value`
