@@ -30,7 +30,7 @@ in the same row.
 | One frontmatter array member (`related:`, `agent.tags_suggested`) | **`vault_patch_fm`** | `PATCH /sections/{record_id}/fm` via `vault-curl` |
 | One `tags:` member — the server refuses `/tags` in an FM patch (400 `protected_field`, since tags are taxonomy-validated) | **`vault_tag_add` / `vault_tag_remove`** (adapter ≥ 0.9.0) | `vault-curl /sections/{record_id}/tags -X POST` with `{"tag": "<tag>"}`, and `vault-curl /sections/{record_id}/tags/<tag> -X DELETE` |
 | The nearest existing tags for proposed names or a draft's text, before minting (§ Note format) | **`vault_tag_nearest`** (adapter ≥ 0.12.0, the publish after 0.11.0; server ≥ 2026-09-28, vault-storage D82) | `vault-curl /tags/nearest -X POST -H 'Content-Type: application/json' --data-binary '{"tags": ["<name>", …]}'` |
-| Whole-document create or rewrite | **`vault_write_file`** (`expected_etag` when the read might be stale; `strict_tags: true` when the note carries `tags:`, § Note format) | `vault-put --fm/--body` |
+| Whole-document create or rewrite | **`vault_write_file`** (`expected_etag` when the read might be stale; `strict_tags: true` when the note carries `tags:`, `strict_edges: true` when it carries `edges:`, § Note format) | `vault-put --fm/--body` |
 | Replace a note, archiving the old one | **`vault_supersede`** | `POST /vault/supersede` via `vault-curl` |
 | Rename preserving `record_id` | **`vault_move`** | `POST /vault/move` |
 | Search-before-write | **`vault_propose`** | `POST /vault/propose` |
@@ -698,6 +698,24 @@ Rules:
   that is the slow path this rule exists to avoid. On an adapter without the
   tool, `vault-curl /tags/nearest -X POST` with `{"tags": [...]}` is the same
   lookup, and `strict_tags: true` goes in the JSON body of `PUT /vault/{path}`.
+- **Relations are typed edges, declared at write time** (vault-storage D92,
+  2026-09-28). The author knows the note's point best, so a write says what
+  the note relates to and how, in the frontmatter's `edges:` map:
+  `edges: {"topics/foo": "derived-from", "projects/x/decisions": "applies-to"}`,
+  a wikilink target as the body would write it to one of the ten types plus
+  the `basis-for` alias (the table in `/vault-review-edges` § Judgment:
+  `supersedes`, `revises`, `derived-from`, `basis-for`, `caused-by`,
+  `fixed-by`, `rejected-because`, `cites`, `applies-to`, `contradicts`,
+  `related-to`). The server stores each entry as an edge whether or not the
+  body links the target, so the map is the declaration, not only an override
+  of a body link's default `cites`; `related:` stays for "related, no
+  stronger claim". A type outside the vocabulary is a 400 `invalid_enum_value`
+  naming the value, the target, and the vocabulary. Write with `strict_edges: true` beside
+  `strict_tags: true`: a target that resolves to no note is then a 409
+  `unresolved_edges` carrying `details.unresolved`, and nothing is written;
+  without it the write lands and the answer carries `unresolved_edges`.
+  Check a target with `vault_read_meta` or `/resolve?wikilink=` when unsure
+  of its path.
 
 ## Commands
 
@@ -722,7 +740,8 @@ are skipped — the user is still iterating on them.
    PUT.
 4. Add wikilinks, backlinks, and tags on the derived notes. Tags per
    § Note format: check the names with `vault_tag_nearest`, write with
-   `strict_tags: true`, mint only when nothing fits.
+   `strict_tags: true`, mint only when nothing fits; declare the note's
+   relations in `edges:` and write with `strict_edges: true`.
 5. **Enrich at capture.** When creating a new topic note (or materially
    rewriting an existing one), write the `agent:` block in the same PUT
    — born-enriched is cheaper than a later backfill pass through
@@ -856,7 +875,8 @@ Save a session log.
    replaces the sentinel with the hash of the body it writes and stamps
    `derived_at` too (2026-07-09; on an older server compute `sha256(body)`
    locally). Tags per § Note format: `vault_tag_nearest` on the names,
-   then `strict_tags: true` on the write.
+   then `strict_tags: true` on the write; relations in `edges:` with
+   `strict_edges: true`.
    Field shape + quality guidance:
    `~/.claude/skills/vault-enrich-all/SKILL.md`. **Don't backfill *old* logs** —
    enrichment value is largest at capture: a log is already self-describing
