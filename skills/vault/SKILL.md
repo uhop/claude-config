@@ -729,6 +729,20 @@ Rules:
   without it the write lands and the answer carries `unresolved_edges`.
   Check a target with `vault_read_meta` or `/resolve?wikilink=` when unsure
   of its path.
+- **A ticket is named by a short reference, and anything else outside the
+  vault by its URL** (vault-storage D97, 2026-09-29). In a note under
+  `projects/<name>/`, `#233` is issue or pull request 233 of the project's
+  GitHub repository: the `github` entry of its `trackers:`, else the
+  repository its `state.md` names. `owner/repo#233` names another repository,
+  from any note. A key such as `ENG-123` is a Linear or Jira ticket when the
+  project's `trackers:` declares that key with a `url`. The note page links
+  each one, with the ticket's title as the link text when the stored GitHub
+  baseline has it, so write the bare reference and never a markdown link
+  around it. Reading a note, expand a reference the same way, from the
+  `trackers` block of the resume bundle. A design, an error, or a chat thread
+  goes in as a markdown link whose text says what it is; the per-tool notes
+  under `projects/vault-storage/integrations/` say which of the vendor's
+  tools reads it and what to record.
 
 ## Commands
 
