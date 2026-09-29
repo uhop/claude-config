@@ -13,7 +13,7 @@
     ],
     "defaultMode": "auto"
   },
-  "model": "claude-fable-5-1",
+  "model": "opus",
   "hooks": {
     "PreToolUse": [
       {
@@ -125,6 +125,11 @@
     "clangd-lsp@claude-plugins-official": true
   },
   "effortLevel": "xhigh",
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "xhigh"
+    }
+  },
   "tui": "fullscreen",
   "skipWorkflowUsageWarning": true,
   "theme": "auto",
@@ -158,5 +163,6 @@
       "**Trusted repo**: /home/eugene/Open/apodict (uhop/apodict, private) and its origin remote github.com:uhop/apodict.git — confidential material is fine here given private visibility, but secrets/personal/regulated data are never cleared into it by visibility alone",
       "**Org-specific CLIs**: None configured — vault-curl and npx seen frequently in this project's transcripts but are personal tooling, not org-specific"
     ]
-  }
+  },
+  "advisorModel": "fable"
 }

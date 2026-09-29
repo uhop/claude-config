@@ -139,7 +139,8 @@ Read all three to dedupe; write only to vault + claude-config.
    over a large `chars` is a short ask carrying a paste, the shape most worth
    opening. Two more markers (2026-09-15): `did_you: true` is the bare
    announced-step check, *"Did you <verb> …?"* / *"Did we …?"* with no quoted
-   span after an assistant turn — a measurement, not a correction: read it
+   span after an assistant turn, and a second sentence may follow the question
+   mark (2026-09-29) — a measurement, not a correction: read it
    and say in the report whether it checked a step the agent had announced
    (3 of 6 did, by hand, before the marker existed) or asked a question the
    record answered; `after_api_error: true` means the reply before the turn

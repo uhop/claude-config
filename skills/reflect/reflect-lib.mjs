@@ -113,13 +113,14 @@ export const SURPRISE_PATTERNS = [
 ];
 
 // The bare announced-step check: "Did you <verb> …?" / "Did we …?" with no
-// quoted span, as a first line. Not a correction family — a marker on the
+// quoted span, opening a first line; a second sentence may follow the
+// question mark (2026-09-29). Not a correction family — a marker on the
 // user-turn listing, so the reading pass sees it flagged and judges it. The
 // quoted form ("did you do \"Next leg…\"?") stays with `unlanded`. Measured
 // by hand across eight windows before this instrument existed: 3 of 6 were
 // announced-step checks, the rest genuine questions answered from the record
 // (projects/claude-config/queue, the 2026-08-25 item; instrument 2026-09-15).
-export const DID_YOU_PATTERN = /^(?:did|didn'?t|have|haven'?t)\s+(?:you|we)\b.*\?\s*$/i;
+export const DID_YOU_PATTERN = /^(?:did|didn'?t|have|haven'?t)\s+(?:you|we)\b[^?]*\?/i;
 
 // One user-authored turn → which families fire. Pass 1 of the scanner reads
 // these flags; the test reads them for the fixtures, so both see one function.

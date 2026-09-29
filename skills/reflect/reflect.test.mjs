@@ -287,10 +287,13 @@ test('short-turn gates read the first line: a short ask over a paste still fires
 test('did_you marks the bare announced-step check and leaves the quoted form to unlanded', () => {
   // 2026-09-11 hits (reports/2026-09-11-nuke)
   for (const t of [
-    'Did you take into account for JS that it may use `.d.ts` files?',
+    'Did you take into account for JS that it may use `.d.ts` files? Usually they are referred with a meta-comment, or by convention.',
     'Did you updated the writing voice-related records in the vault?',
     'Did we harvest TSX/JSX code?',
-    "Didn't we agree to keep the pin?"
+    "Didn't we agree to keep the pin?",
+    // 2026-09-29: a second sentence after the question (reports/2026-09-29-nuke)
+    'Did you count lines only in a parser or in related utility files too? Like the assembler 2nd pass file.',
+    'Did you wrap a progress bar as a web component? If so, I can use its attributes to check it by manually changing the current value.'
   ]) {
     assert.equal(fires(t, 'did_you'), true, t);
   }
