@@ -110,7 +110,12 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
     of those within 24 characters of a date. **Titles only.** The description
     is where house style narrates partial progress (`deprecation **SHIPPED**
     2026-06-07; only the removal remains`), and the calibration run found
-    both description hits false and all six title hits real.
+    both description hits false and all six title hits real. A plain marker
+    before the word it modifies is an adjective and is not a finding: "a
+    closed enum (2026-09-29)" stays open, while a connector (`on`, `in`,
+    `to`) may follow the marker, as in "published to npm 2026-04-20"
+    (vault-storage D98, 2026-09-29, measured on the fleet's open and
+    archived titles).
   - *Unbolded column-0 bullets* in a schema section: the parser counts every
     column-0 `-`/`*` bullet as an item, so an unbolded one is an item with no
     key and a column-0 sub-bullet is a stray item, not detail.
