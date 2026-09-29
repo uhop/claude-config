@@ -29,8 +29,8 @@ in the same row.
 | One queue item — remove it, insert it, or move it between documents with a trail after its title | **`vault_remove_item` / `vault_insert_item` / `vault_move_item`** (adapter ≥ 0.7.0; server ≥ 2026-09-06, D35) | `POST /vault/edit` with `{op: "remove-item" \| "insert-item", …}` + `POST /vault/move-item` |
 | One frontmatter array member (`related:`, `agent.tags_suggested`) | **`vault_patch_fm`** | `PATCH /sections/{record_id}/fm` via `vault-curl` |
 | One `tags:` member — the server refuses `/tags` in an FM patch (400 `protected_field`, since tags are taxonomy-validated) | **`vault_tag_add` / `vault_tag_remove`** (adapter ≥ 0.9.0) | `vault-curl /sections/{record_id}/tags -X POST` with `{"tag": "<tag>"}`, and `vault-curl /sections/{record_id}/tags/<tag> -X DELETE` |
-| The nearest existing tags for proposed names or a draft's text, before minting (§ Note format) | **`vault_tag_nearest`** (adapter ≥ 0.12.0, the publish after 0.11.0; server ≥ 2026-09-28, vault-storage D82) | `vault-curl /tags/nearest -X POST -H 'Content-Type: application/json' --data-binary '{"tags": ["<name>", …]}'` |
-| Whole-document create or rewrite | **`vault_write_file`** (`expected_etag` when the read might be stale; `strict_tags: true` when the note carries `tags:`, `strict_edges: true` when it carries `edges:`, § Note format) | `vault-put --fm/--body` |
+| The nearest existing tags for proposed names or a draft's text, before minting (§ Note format) | **`vault_tag_nearest`** (adapter ≥ 0.12.0; server ≥ 2026-09-28, vault-storage D82) | `vault-curl /tags/nearest -X POST -H 'Content-Type: application/json' --data-binary '{"tags": ["<name>", …]}'` |
+| Whole-document create or rewrite | **`vault_write_file`** (`expected_etag` when the read might be stale; `strict_tags: true` when the note carries `tags:`, `strict_edges: true` when it carries `edges:`, both adapter ≥ 0.12.0, § Note format) | `vault-put --fm/--body` |
 | Replace a note, archiving the old one | **`vault_supersede`** | `POST /vault/supersede` via `vault-curl` |
 | Rename preserving `record_id` | **`vault_move`** | `POST /vault/move` |
 | Search-before-write | **`vault_propose`** | `POST /vault/propose` |
@@ -84,6 +84,18 @@ an FM-only op that round-trips the body is never bricked.) Removal is
 `vault_delete_file`; replacement-in-favour-of-other-content is
 `vault_supersede`, never a delete.
 
+**A call that fails with `code: "network"` says what happened** (adapter ≥
+0.12.0; server from 2026-09-29, vault-storage D99). The usual cause is a
+deploy: the server is down for about two seconds while its container is
+recreated. The adapter repeats a refused connection every half second for
+eight seconds, so most restarts pass unseen. When the error still arrives,
+read `details.cause`: `ECONNREFUSED` sent nothing, so repeat the call once
+`vault_health` answers; a message that says the write may have applied went
+out before the connection dropped, so read the document before sending it
+again, since an `append`, or a `replace` whose `to` contains its `from`,
+applies twice. An older adapter reports every case as `network error: fetch
+failed`: treat a failed write there as possibly applied.
+
 **Never rewrite a whole document to change one frontmatter key.** That is the
 single most common reason an agent reaches for a full-document write, and it is
 the highest-risk way to do the lowest-risk edit. Use the atomic FM patch —
@@ -127,7 +139,7 @@ Registered as `mcp__vault__<name>`; fetch schemas with
 | Read a document (composes atomized folders from `<stem>.md`) | `vault_read_file` |
 | One section of a document, with the document's etag | `vault_read_section` (adapter ≥ 0.7.0) |
 | Frontmatter only, no body | `vault_read_meta` |
-| Where a project's work is tracked and which tracker is primary | `vault_project_trackers` (adapter ≥ 0.13.0; § Note format on declaring it) |
+| Where a project's work is tracked and which tracker is primary | `vault_project_trackers` (adapter ≥ 0.12.0; § Note format on declaring it) |
 | List a folder | `vault_list_folder` |
 | Search | `vault_search` (`mode=lexical` default, `semantic` opt-in) |
 | Integrity lint | `vault_lint` |
