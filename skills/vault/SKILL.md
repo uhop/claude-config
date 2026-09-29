@@ -936,6 +936,13 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      true means the summary was derived from an older body — fetch the
      body and never relay that summary as current. A `null` entry means the file doesn't exist — not every
      project has a `feedback.md`.
+     The block also carries `notices` (server ≥ 2026-09-29, vault-storage
+     D90): the `supersedes` and `contradicts` edges pointing into the
+     project's files, each `{file, type, by: {record_id, file_path, title},
+     note, created}`. **Surface each one before relaying that file**: another
+     note replaces or disputes it, so read `by` with `vault_read_file` before
+     trusting the queue or the decisions it points at; an empty list means
+     nothing points at them.
      The block also carries `handoffs: {open, returned, claimed}` (server
      ≥ 2026-08-10) — the coordination inbox, since claiming a repo means
      inheriting it. **Surface a non-empty `open` list**: another agent is
