@@ -127,6 +127,7 @@ Registered as `mcp__vault__<name>`; fetch schemas with
 | Read a document (composes atomized folders from `<stem>.md`) | `vault_read_file` |
 | One section of a document, with the document's etag | `vault_read_section` (adapter ≥ 0.7.0) |
 | Frontmatter only, no body | `vault_read_meta` |
+| Where a project's work is tracked and which tracker is primary | `vault_project_trackers` (adapter ≥ 0.13.0; § Note format on declaring it) |
 | List a folder | `vault_list_folder` |
 | Search | `vault_search` (`mode=lexical` default, `semantic` opt-in) |
 | Integrity lint | `vault_lint` |
@@ -698,6 +699,17 @@ Rules:
   that is the slow path this rule exists to avoid. On an adapter without the
   tool, `vault-curl /tags/nearest -X POST` with `{"tags": [...]}` is the same
   lookup, and `strict_tags: true` goes in the JSON body of `PUT /vault/{path}`.
+- **A project declares its trackers in its queue's frontmatter** (vault-storage
+  D95, 2026-09-28): `trackers:` is a list of `{kind, ref, role, create, write,
+  url}`, `kind` one of `vault`, `github`, `linear`, `jira`; `ref` the tracker's
+  own name for the project (`owner/repo`, a Linear team key, a Jira project
+  key); `role` `primary` or `mirror` (one primary; the vault when none is
+  declared); `create` `here` or `none`, whether new work may be created there
+  (a primary creates by default); `write` the fields the vault may write back
+  (empty means read-only); `url` where a person opens it (derived for GitHub).
+  Declare it with `vault_patch_fm` on the queue, never by rewriting the note;
+  `GET /projects/{name}/trackers` and the resume brief and bundle read it
+  back, validated, with malformed entries named in `problems`.
 - **Relations are typed edges, declared at write time** (vault-storage D92,
   2026-09-28). The author knows the note's point best, so a write says what
   the note relates to and how, in the frontmatter's `edges:` map:
@@ -957,6 +969,19 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      true means the summary was derived from an older body — fetch the
      body and never relay that summary as current. A `null` entry means the file doesn't exist — not every
      project has a `feedback.md`.
+     The block also carries `trackers` (server ≥ 2026-09-29, vault-storage
+     D95): where the project's work is tracked, from the `trackers:` list in
+     its `queue.md` frontmatter, as `{declared, trackers: [{kind, ref, role,
+     create, write, url}], primary, problems}`; no declaration means the
+     vault queue is primary. **When `primary.kind` is not `vault`, new work
+     is filed there** (through that tracker's own MCP server, or as a
+     paste-ready ticket handed to the user when you cannot write to it), and
+     a queue item that mirrors an outside ticket carries `source:` with the
+     tracker and its id; the vault keeps context, notes, edges, and
+     handoffs either way. A non-empty `problems` list means the declaration
+     is malformed: say so, fix it with `vault_patch_fm` on the queue, and
+     keep going on the answer as given. `vault_project_trackers({project})`
+     reads the same view outside the resume flow.
      The block also carries `notices` (server ≥ 2026-09-29, vault-storage
      D90): the `supersedes` and `contradicts` edges pointing into the
      project's files, each `{file, type, by: {record_id, file_path, title},

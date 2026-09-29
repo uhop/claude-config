@@ -48,7 +48,8 @@ jq -r '
         "\(.queue.ready)/\(.queue.backlog) backlog ready",
         (if .queue.blocked > 0 then "\(.queue.blocked) blocked" else null end),
         ((.queue.hygiene // []) | if length > 0 then "queue hygiene \(length): \(.[0])" else null end),
-        (if .feedback then "feedback.md updated \(.feedback.updated)" else null end)
+        (if .feedback then "feedback.md updated \(.feedback.updated)" else null end),
+        (if (.trackers.primary.kind // "vault") != "vault" then "tracked in \(.trackers.line)" else null end)
       ] | join_present)
   end),
   (.latest_log | if . == null then empty
