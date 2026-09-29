@@ -38,7 +38,7 @@
 
 import {readFileSync, writeFileSync} from 'node:fs';
 import process from 'node:process';
-import {nearestTags, neighborPrefixes, NEIGHBOR_WINDOW} from './tag-distance.mjs';
+import {nearestTags, neighborPrefixes, NEIGHBOR_KEEP, NEIGHBOR_WINDOW} from './tag-distance.mjs';
 import {reportPathFor, worksheetPathFor} from './triage-report.mjs';
 
 if (!import.meta.main)
@@ -338,7 +338,11 @@ const prepare = async () => {
         ...(record.file_path ? {path_moved: moved(item.payload.file_path, record)} : {})
       });
     }
-    const neighborJobs = [...groups.values()].map(group => async () => {
+    // Neighbours from the server's lookup (vault-storage D82): the candidate
+    // scored against the embedding of every tag's name and description, with
+    // exact, alias, and word matches merged in. A server before the route
+    // gets the prefix windows.
+    const prefixNeighbors = async group => {
       const found = new Map();
       const windows = [];
       const fetchWindow = async prefix => {
@@ -357,6 +361,26 @@ const prepare = async () => {
       if (truncated) await fetchWindow(group.tag);
       group.neighbors = nearestTags(group.tag, [...found.values()]);
       group.neighbor_windows = windows;
+    };
+    const lookupNeighbors = async group => {
+      let answer;
+      try {
+        answer = await api('POST', '/tags/nearest', {tags: [group.tag], k: NEIGHBOR_KEEP});
+      } catch (err) {
+        if (err instanceof ApiError && (err.status === 404 || err.status === 405)) return false;
+        throw err;
+      }
+      const [query] = answer.queries;
+      const rank = new Map(query.items.map((item, i) => [item.tag, i]));
+      group.neighbors = nearestTags(group.tag, query.items).sort(
+        (x, y) => rank.get(x.tag) - rank.get(y.tag)
+      );
+      group.exact = query.exact;
+      group.neighbor_source = {route: '/tags/nearest', k: NEIGHBOR_KEEP};
+      return true;
+    };
+    const neighborJobs = [...groups.values()].map(group => async () => {
+      if (!(await lookupNeighbors(group))) await prefixNeighbors(group);
       group.count = group.records.length;
     });
     await pool(neighborJobs);

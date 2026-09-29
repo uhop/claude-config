@@ -86,27 +86,30 @@ hyphens only. Aliases: lowercase only. Use the worksheet's `neighbors`
 list to spot the alias-vs-new call; check both meanings before aliasing —
 an alias that loses specificity (`indexer-design` → `indexing`) is wrong.
 
-`neighbors` is ranked by string nearness, not by usage: each entry carries
-`edits` (raw edit distance), `distance` (the same, normalized by the longer
-tag) and `token_distance` (Jaccard distance on the hyphen-token multisets:
-0 for a reordering such as `build-vs-adopt` against `adopt-vs-build`, 1 when
-no word is shared). The sort key is the smaller of `distance` and
-`token_distance`; 0 = identical. A value near 0 on either is the alias
-signal; `edits: 1` on a long tag is almost always a singular/plural or
-suffix pair, and a low `token_distance` under a high `distance` is a
-word-order or shared-word variant — check the canonical's own alias list
-before minting. The pool behind the ranking is the union of one prefix
-window per word of the candidate (its own 3-character prefix plus each
-3+-character token's), listed in `neighbor_windows` as
-`{prefix, total, fetched}`; `fetched < total` marks a truncated window, and
-the pool then already includes a second pass on the full candidate so the
-closest family is present anyway. Two earlier behaviours were backwards:
-ranking by usage sorted the canonical a candidate most likely duplicates
-last, because it is itself rarely used (`contract` saw `contracts` at rank
-10 of 10; fixed 2026-09-01); and a single window on the candidate's prefix
-could not reach `build-vs-buy` from `adopt-vs-build` at all — `/tags` lists
-canonicals only, so the word-order alias the taxonomy already carried was
-invisible to every prefix query (fixed 2026-09-06).
+`neighbors` comes from `POST /tags/nearest` (server ≥ 2026-09-28,
+vault-storage D82): the candidate scored against the embedding of every
+tag's name and description, merged with exact, alias, and word matches,
+best first, ten at most. Each entry carries the lookup's `score` (1 is an
+identical vector) and `matched` (how it got in: `exact`, `alias`, `name`,
+`embedding`), plus the string distances for the reader: `edits` (raw edit
+distance), `distance` (the same, normalized by the longer tag) and
+`token_distance` (Jaccard distance on the hyphen-token multisets: 0 for a
+reordering such as `build-vs-adopt` against `adopt-vs-build`, 1 when no
+word is shared). A `matched` naming `alias` or `name` beside a description
+that covers the candidate is the alias signal; `edits: 1` on a long tag is
+almost always a singular/plural or suffix pair; check the canonical's own
+alias list before minting. `exact` on the group is a canonical or an alias
+the candidate already resolves to (an alias added, or a canonical minted,
+since the filing), so the answer is then alias or the existing tag, never
+a mint. The embedding does what a name pool cannot: on the deployed vault
+`competitive-analysis` drew `competitive`, `market-research`, and
+`analysis`, where the prefix windows had only names to go on. On a server
+before the route the pool falls back to those prefix windows (one per word
+of the candidate, listed in `neighbor_windows` as `{prefix, total,
+fetched}`, ranked by the smaller of `distance` and `token_distance`); their
+two fixed defects, usage ranking (2026-09-01) and a single prefix window
+that could not reach a word-order alias (2026-09-06), are why the lookup
+replaced them.
 
 **Bias: prefer taxonomy-add when in doubt** for coherent concepts; reject
 only clear typos/markers. A wrong reject destructively strips tags from
