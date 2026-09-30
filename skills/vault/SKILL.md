@@ -7,8 +7,17 @@ user_invocable: true
 # Knowledge Base
 
 Persistent knowledge base (vault-storage), reachable two ways: **MCP tools**
-(`mcp__vault__*`, registered in `settings.json`) and the **REST API** via the
-`vault-curl` wrapper. The LLM writes and maintains all content.
+(`mcp__vault__*`) and the **REST API** via the `vault-curl` wrapper. The LLM
+writes and maintains all content.
+
+The MCP server is registered once per host, in `~/.claude.json`, because
+`settings.json` cannot carry a server definition (claude-config learnings,
+2026-08-02):
+`claude mcp add --scope user vault -- npx -y @uhop/vault-storage-mcp@latest`.
+It reads `VAULT_API_URL` and `VAULT_API_TOKEN` from the shell, and a session
+loads it only at start. When no `mcp__vault__*` tool is in the session, the
+host has no registration (`claude mcp list` says which): use `vault-curl` for
+the session and give the user that command; the next session has the tools.
 
 ## Connection
 
