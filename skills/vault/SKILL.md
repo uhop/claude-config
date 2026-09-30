@@ -41,6 +41,7 @@ in the same row.
 | The nearest existing tags for proposed names or a draft's text, before minting (§ Note format) | **`vault_tag_nearest`** (adapter ≥ 0.12.0; server ≥ 2026-09-28, vault-storage D82) | `vault-curl /tags/nearest -X POST -H 'Content-Type: application/json' --data-binary '{"tags": ["<name>", …]}'` |
 | Whole-document create or rewrite | **`vault_write_file`** (`expected_etag` when the read might be stale; `strict_tags: true` when the note carries `tags:`, `strict_edges: true` when it carries `edges:`, both adapter ≥ 0.12.0, § Note format) | `vault-put --fm/--body` |
 | Replace a note, archiving the old one | **`vault_supersede`** | `POST /vault/supersede` via `vault-curl` |
+| Restore a note to one of its versions; content not yet committed is committed first, so it stays a version | **`vault_restore`** (adapter after 0.12.0; server ≥ 2026-09-30, vault-storage D115) | `vault-curl /vault/restore -X POST -H 'Content-Type: application/json' --data-binary '{"path": "<path>", "sha": "<sha>"}'`, with `from_path` when a rename came between |
 | Rename preserving `record_id` | **`vault_move`** | `POST /vault/move` |
 | Search-before-write | **`vault_propose`** | `POST /vault/propose` |
 | Raw inbox, cleanup-lint, embed-pending, incremental-reindex, run-all | **`vault_raw_inbox` / `vault_cleanup_lint` / `vault_embed_pending` / `vault_incremental_reindex` / `vault_run_scans`** | `vault-curl /maintenance/…` |
@@ -148,6 +149,7 @@ Registered as `mcp__vault__<name>`; fetch schemas with
 | Read a document (composes atomized folders from `<stem>.md`) | `vault_read_file` |
 | One section of a document, with the document's etag | `vault_read_section` (adapter ≥ 0.7.0) |
 | Frontmatter only, no body | `vault_read_meta` |
+| A note's committed versions, and the note as it was at one | `vault_history`, then `vault_read_file` with `at` and the version's own `path` (adapter after 0.12.0; server ≥ 2026-09-30, vault-storage D115); before that adapter, `vault-curl /history -G --data-urlencode 'path=<path>'` and `vault-curl '/vault/<path>?at=<sha>'` |
 | Where a project's work is tracked and which tracker is primary | `vault_project_trackers` (adapter ≥ 0.12.0; § Note format on declaring it) |
 | List a folder | `vault_list_folder` |
 | Search | `vault_search` (`mode=lexical` default, `semantic` opt-in) |
