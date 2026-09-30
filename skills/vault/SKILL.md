@@ -1033,7 +1033,12 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      to `queue-archive.md` with a **Shipped** trail (`vault_move_item`), or
      remove it when the work moves off you. The brief's `queue.in_flight`
      (server ≥ 2026-09-30) and the SessionStart line carry the source beside
-     the title, so the next session opens the right ticket. A GitHub ticket
+     the title, so the next session opens the right ticket. Before starting
+     on a ticket, read what the vault holds about it: `vault_links({key:
+     "<the source>"})` (or `{url}` for any link) lists the notes and queue
+     items that mention it (vault-storage D112; on an adapter without the
+     tool, `vault-curl /links -G --data-urlencode 'key=<the source>' -s`). A
+     GitHub ticket
      the stored baseline shows closed or merged arrives marked, `, merged
      upstream` on that line (`upstream` in `queue.in_flight`, vault-storage
      D111): archive that item in the same resume, with a **Shipped** trail
