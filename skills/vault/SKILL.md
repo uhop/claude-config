@@ -1180,6 +1180,41 @@ is fast (a few ms) but unnecessary. The endpoint reports
 fellBack, durationMs}`; surface anything non-zero, otherwise stay
 quiet.
 
+### /vault trackers [project]
+
+Declare or change where a project's work is tracked: the `trackers:` list in
+the project's `queue.md` frontmatter (vault-storage D95). A setting that
+needs decisions and credentials is set from the agent, and the project page's
+Trackers card shows the declaration without a way to change it (Eugene,
+2026-09-29). GitHub first; Linear and Jira when he has subscriptions.
+
+1. **Read what stands:** `vault_project_trackers({project})`; report
+   `primary`, the list, and any `problems`.
+2. **Ask** with `AskUserQuestion`, one tracker at a time: `kind` (`github`,
+   `linear`, `jira`; the vault itself needs no entry), `ref` (`owner/repo` for
+   GitHub, read from `git remote get-url origin` before asking; a Linear team
+   key; a Jira project key), `role` (`primary`, or `mirror` when the vault
+   queue stays primary), `create` (`here` when new work may be created there;
+   a primary creates by default), and `write` (the fields the vault may write
+   back; empty is read-only).
+3. **Check the access before writing:** for GitHub, `gh auth status` on this
+   host and whether the repository is public, since the collector reads
+   public github.com repositories only; for Linear or Jira, the vendor's MCP
+   tools in this session's tool list. Missing access is reported beside the
+   declaration, never a reason to skip it.
+4. **Write** with `vault_patch_fm({record_id, ops: [{op: "add", path:
+   "/trackers", value: {kind, ref, role, create, write}}]})` on the queue's
+   record (`vault_list_pieces({file_prefix: "projects/<name>/queue.md"})`
+   gives the id); an object member is accepted (checked 2026-09-29), and
+   `remove` with the same value drops an entry. Never rewrite the note for it.
+5. **Read it back** with `vault_project_trackers` and report the validated
+   view; a non-empty `problems` list is a malformed entry, fixed in the same
+   turn. Point the user at the project page's Trackers card.
+
+What a note records about each tracker's objects, and which of the vendor's
+tools reads them, is in the per-tool notes under
+`projects/vault-storage/integrations/` (`github` first).
+
 ### /vault verify [project] [--all] [--unchecked]
 
 Check the project's vault notes against its repository — the map against
