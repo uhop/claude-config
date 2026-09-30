@@ -898,7 +898,11 @@ On findings, decide (the linter won't):
 
 Save a session log.
 
-1. Create `logs/YYYY-MM-DD-{description}.md`
+1. Create `logs/YYYY-MM-DD-{project}-{description}.md` with `project: <name>` in
+   its frontmatter: the resume bundle returns a project's own logs by that key
+   (server ≥ 2026-09-29, vault-storage D104), and reads it from the file name
+   when the key is absent and the name after the date starts with a project
+   folder's name.
 2. Record: what was done, decisions made, pending items, key files touched
 3. Add wikilinks to relevant topic/project notes (outbound-only rule: links
    *from* a log die with it; durable notes referencing this log must cite its
@@ -936,7 +940,9 @@ Rebuild context from the vault. Note: a SessionStart hook
 digest lines at session start via `GET /system/resume-brief` — lint state,
 pending-suggestion count, the project's Active titles + ready/blocked counts,
 its queue-hygiene findings (server ≥ 2026-09-06),
-a feedback.md pointer, and the latest log title — plus, since 2026-09-05, one
+a feedback.md pointer, and the latest log title, the project's own when it has
+one and marked `(fleet)` otherwise (server ≥ 2026-09-29, D104) — plus, since
+2026-09-05, one
 `[vault] github <repo>:` line read from the project's stored `state.md`
 § GitHub block (open items, advisories without a CVE, open alerts, CI, and how
 old the collection is), never from GitHub itself. The digest is a *trigger*,
@@ -975,10 +981,13 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      `clarify_pending > 0`, one line like
      `Clarify queue: N pending (/clarify to drain)`. Nulls mean the
      surface isn't scaffolded — omit silently.
-   - `logs` — the most recent session logs as their `agent.summary`
-     lines, each with `summary_stale`. Skim the summaries; fetch a full
-     body (`vault_read_file`) only when a summary is missing or stale, or
-     the session directly continues that log's work.
+   - `logs` — the fleet's most recent session logs as their `agent.summary`
+     lines, each with `summary_stale`; `project.logs` (server ≥ 2026-09-29,
+     D104) is the project's own latest logs in the same shape and number,
+     since the fleet's newest can all belong to other projects — read those
+     first. Skim the summaries; fetch a full body (`vault_read_file`) only
+     when a summary is missing or stale, or the session directly continues
+     that log's work.
    - `project` — `feedback.md` normally arrives with its full body:
      surface its rules near the top of the resume output (this is the
      read path for fleet-shared project feedback — the vault is

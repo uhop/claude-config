@@ -53,7 +53,7 @@ jq -r '
       ] | join_present)
   end),
   (.latest_log | if . == null then empty
-    else "[vault] last log \(.updated): \(.title // .file_path)" end)
+    else "[vault] last log \(.updated)\(if .scope == "fleet" then " (fleet)" else "" end): \(.title // .file_path)" end)
 ' <<<"$resp" 2>/dev/null || exit 0
 
 # GitHub line from the stored baseline, never from GitHub itself (2026-09-05):
