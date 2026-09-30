@@ -1024,6 +1024,19 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      note replaces or disputes it, so read `by` with `vault_read_file` before
      trusting the queue or the decisions it points at; an empty list means
      nothing points at them.
+     The block also carries `sessions: {recent, unlogged}` (server ≥
+     2026-09-29, vault-storage D105): the project's last sessions from
+     `projects/<name>/sessions.md`, one bullet per session end, appended by
+     the SessionEnd hook `hooks/vault-session-record.sh` with when the session
+     started and ended, the commits that landed in the checkout meanwhile,
+     the notes it touched, and the log it created or `none`. **A non-empty
+     `unlogged` list is a session that ended without a wrap: write its log
+     first**, from the bullet's commits and notes, the drift check, the queue
+     and decisions as they stand, and, on the host that ran it, the transcript
+     (`~/.claude/projects/<cwd with / as ->/<session id>.jsonl`), then replace
+     `log: none` in that bullet with the log's path (`vault_replace` on the
+     sessions note) so it is not written twice. The SessionStart digest names
+     the count.
      The block also carries `handoffs: {open, returned, claimed}` (server
      ≥ 2026-08-10) — the coordination inbox, since claiming a repo means
      inheriting it. **Surface a non-empty `open` list**: another agent is
