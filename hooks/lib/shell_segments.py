@@ -1,12 +1,13 @@
 """Shared reading of a Bash tool command for the PreToolUse gates.
 
-One parser for two gates (vault-lease-gate.sh, git-commit-gate.sh; D14: a
-shape added here is a shape both see). Heredoc bodies are data unless a shell
+One parser for three gates (vault-lease-gate.sh, git-commit-gate.sh,
+destructive-op-gate.sh; D14: a shape added here is a shape all see). Heredoc bodies are data unless a shell
 receives them; segments split on unquoted `;`, `|`, `||`, `&&` and newlines;
 tokens come from shlex with the wrapper prefixes skipped (assignments,
 `command`, `env`, `timeout`, ...); `git_verb` walks git's global options.
 Anything this cannot read, a caller must treat by its own default: the lease
-gate fails open, the commit gate keeps its regex verdict.
+gate fails open, the commit gate keeps its regex verdict, the destructive-op
+gate falls back to its segment regex and settings.json's prefix deny.
 """
 import re
 import shlex
@@ -111,22 +112,29 @@ def command_tokens(seg):
     return toks
 
 
-def git_verb(args):
-    """(subcommand, -C value or None) after git's global options."""
+GIT_VALUE_OPTS = {'-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env'}
+
+
+def git_split(args):
+    """(subcommand, -C value or None, subcommand's index) after git's global options."""
     cdir, k = None, 0
     while k < len(args) and args[k].startswith('-'):
         a = args[k]
-        if a == '-C' and k + 1 < len(args):
-            cdir = args[k + 1]
+        if a in GIT_VALUE_OPTS and k + 1 < len(args):
+            if a == '-C':
+                cdir = args[k + 1]
             k += 2
             continue
         if a.startswith('-C') and len(a) > 2:
             cdir = a[2:]
-        elif a == '-c' and k + 1 < len(args):
-            k += 2
-            continue
         k += 1
-    return (args[k] if k < len(args) else '', cdir)
+    return (args[k] if k < len(args) else '', cdir, k)
+
+
+def git_verb(args):
+    """(subcommand, -C value or None) after git's global options."""
+    verb, cdir, _ = git_split(args)
+    return (verb, cdir)
 
 
 def substitutions(text):

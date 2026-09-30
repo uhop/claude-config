@@ -57,6 +57,42 @@ check ALLOW 'cd ~/x && gh release create --help'
 check DENY  'gh gist edit e6ead70c README.md'                # the real edit stays blocked
 check DENY  'gh gist edit e6ead70c -f README.md README.md'
 check DENY  'gh issue create --title "-h"'                   # a quoted value is not the flag
+# ── git and npm global options before the verb: a prefix deny misses them (2026-09-30) ──
+check DENY  'git -C /tmp/x tag mcp-0.11.0 3e457da'          # the spelling that ran
+check DENY  'git -C /tmp/x push origin main'
+check DENY  'git -c core.x=y push'
+check DENY  'git --git-dir /tmp/x/.git push'
+check DENY  'git --git-dir=/tmp/x/.git --work-tree /tmp/x push'
+check DENY  'git --no-pager tag -l'
+check DENY  'git push'
+check DENY  'git tag v1'
+check DENY  'git -C /tmp/x clean -fd'
+check DENY  'git -c core.x=y clean -fd'
+check DENY  'git --no-pager clean -fd'
+check DENY  'git -C /tmp/x clean --force'
+check DENY  'cd /tmp/x && git -C . push'
+check DENY  'bash -c "git -C /tmp/x push"'
+check DENY  'echo $(git -C /tmp/x push)'
+check DENY  'npm publish'
+check DENY  'npm --prefix /tmp/x publish'
+check DENY  'npm -w pkg publish --access public'
+check DENY  'npm -C /tmp/x publish'
+check DENY  'npm --tag next publish'
+check DENY  'npm --registry https://r.example publish'
+check DENY  'npm -g --dry-run publish'
+check ALLOW 'git -C /tmp/x clean -n'
+check ALLOW 'git -C /tmp/x clean -fn'
+check ALLOW 'git -C /tmp/x log --grep push'
+check ALLOW 'git -C /tmp/x status'
+check ALLOW 'git commit -m "push the tag later"'
+check ALLOW 'git for-each-ref refs/tags'
+check ALLOW 'git log --tags'
+check ALLOW "git log --grep 'git push'"
+check ALLOW 'echo git push'
+check ALLOW 'npm run build'
+check ALLOW 'npm --prefix /tmp/x test'
+check ALLOW 'npm view pkg publish'
+check ALLOW 'npm --silent view pkg publish'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

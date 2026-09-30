@@ -19,7 +19,7 @@
 #          run/… , s3 rm/mv/rb/mb, s3 cp/sync that UPLOAD to s3). ALLOW
 #          reads (describe/list/get/scan/query, s3 ls, sts
 #          get-caller-identity) and s3 downloads.
-#   git  — DENY only the one op git itself can't undo: `git clean -f`
+#   git  — DENY the one op git itself can't undo: `git clean -f`
 #          (untracked files have no reflog). reset --hard, checkout/restore,
 #          git rm, stash drop, branch -D stay free (git-recoverable).
 #
@@ -27,9 +27,12 @@
 # newlines) are split into segments and each segment is analyzed — a
 # mutating verb anywhere in the chain is caught, not just the leading one.
 #
-# push / tag / npm publish live in settings.json's absolute deny; `git
-# commit` in git-commit-gate.sh. Default-ALLOW: anything not matched here
-# passes.
+# push / tag / npm publish live in settings.json's absolute deny, which
+# matches a literal prefix: `git -C <dir> push` passes it (2026-09-30). So
+# git push, git tag, git clean -f, and npm publish are also read here through
+# the shared parser (hooks/lib/shell_segments.py), which finds the verb after
+# global options. `git commit` is in git-commit-gate.sh. Default-ALLOW:
+# anything not matched here passes.
 #
 # Contract (Claude Code docs): stdin JSON {tool_name, tool_input:{command}};
 # exit 0 = pass to next stage, exit 2 = block (stderr shown to user).
@@ -162,5 +165,86 @@ while IFS= read -r seg; do
   [[ -z "${seg// /}" ]] && continue
   analyze_segment "$seg"
 done <<< "$seglist"
+
+word='(^|[^[:alnum:]_-])'
+if [[ "$cmd" =~ ${word}(git|npm)([^[:alnum:]_-]|$) && "$cmd" =~ ${word}(push|tag|clean|publish)([^[:alnum:]_-]|$) ]]; then
+  lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
+  found=
+  if [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
+    found=$(CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
+import os, sys
+sys.path.insert(0, sys.argv[1])
+from shell_segments import strip_heredocs, segments, command_tokens, git_split, substitutions, SHELLS
+
+NPM_VALUE_OPTS = {'-C', '-w'}
+
+def has_flag(args, name, letter):
+    return any(a == name or (a.startswith('-') and not a.startswith('--') and letter in a[1:]) for a in args)
+
+# npm reads `--<any config key> <value>`, so a word after a long option is either.
+def npm_verb(args):
+    k = 0
+    while k < len(args):
+        a = args[k]
+        if not a.startswith('-'):
+            return a
+        if a in NPM_VALUE_OPTS or (a.startswith('--') and '=' not in a):
+            if k + 1 < len(args) and args[k + 1] == 'publish':
+                return 'publish'
+            k += 2
+            continue
+        k += 1
+    return ''
+
+def reserved(cmd, depth=0):
+    if depth > 3:
+        return []
+    out = []
+    text, bodies = strip_heredocs(cmd)
+    for prefix, body, quoted in bodies:
+        toks = command_tokens(prefix)
+        if toks and os.path.basename(toks[0]) in SHELLS:
+            out += reserved(body, depth + 1)
+        if not quoted:
+            for s in substitutions(body):
+                out += reserved(s, depth + 1)
+    for s in substitutions(text):
+        out += reserved(s, depth + 1)
+    for seg in segments(text):
+        toks = command_tokens(seg)
+        if not toks:
+            continue
+        name, args = os.path.basename(toks[0]), toks[1:]
+        if name == 'git':
+            verb, _, k = git_split(args)
+            rest = args[k + 1:]
+            if verb in ('push', 'tag'):
+                out.append('git ' + verb)
+            elif verb == 'clean' and has_flag(rest, '--force', 'f') and not has_flag(rest, '--dry-run', 'n'):
+                out.append('git clean')
+        elif name == 'npm' and npm_verb(args) == 'publish':
+            out.append('npm publish')
+        elif name in SHELLS:
+            for a in args:
+                if not a.startswith('-'):
+                    out += reserved(a, depth + 1)
+    return out
+
+print('\n'.join(reserved(os.environ.get('CMD', ''))))
+PY
+    )
+  fi
+  case "${found%%$'\n'*}" in
+    'git push')
+      deny "git push" "Pushing is reserved: pushed history cannot be taken back." ;;
+    'git tag')
+      deny "git tag" "Tags are reserved; list them with \`git for-each-ref refs/tags\`." ;;
+    'git clean')
+      deny "git clean force-delete of untracked files" \
+           "Untracked files are not in git — no reflog, no history, no recovery." ;;
+    'npm publish')
+      deny "npm publish" "Publishing to the registry is reserved." ;;
+  esac
+fi
 
 exit 0
