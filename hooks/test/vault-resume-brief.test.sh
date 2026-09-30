@@ -29,12 +29,14 @@ out=$(cd / && env VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=x bash "$HOOK
 # a server ≥ 2026-09-30 carries queue.in_flight with each Active item's
 # source (vault-storage D108); an older one carries the titles only.
 prog=$(sed -n '/^jq -r/,/^'"'"' <<<"\$resp"/p' "$HOOK" | sed '1s/^jq -r .//; $d')
-brief='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A.","B."],"in_flight":[{"title":"A.","source":null},{"title":"B.","source":"github uhop/p#15"}],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"trackers":{"primary":{"kind":"github"},"line":"github uhop/p"},"sessions_unlogged":0}}'
+brief='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A.","B."],"in_flight":[{"title":"A.","source":null},{"title":"B.","source":"github uhop/p#15"}],"inbox":2,"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"trackers":{"primary":{"kind":"github"},"line":"github uhop/p"},"sessions_unlogged":0}}'
 out=$(jq -r "$prog" <<<"$brief" 2>&1)
 [[ "$out" == *"ACTIVE: A. | B. (github uhop/p#15);"* ]] && ok || bad "in_flight: the source follows the title (out=$out)"
+[[ "$out" == *"; 2 in the inbox to triage; "* ]] && ok || bad "inbox: the count prints when non-zero (out=$out)"
 old='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A."],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"trackers":{"primary":{"kind":"vault"}},"sessions_unlogged":0}}'
 out=$(jq -r "$prog" <<<"$old" 2>&1)
 [[ "$out" == *"ACTIVE: A.;"* ]] && ok || bad "titles only on an older server (out=$out)"
+[[ "$out" != *"inbox"* ]] && ok || bad "no inbox line without the count (out=$out)"
 
 # ── LIVE: this repository has a stored GitHub baseline ───────────────────
 if [[ -z "${VAULT_API_URL:-}" || -z "${VAULT_API_TOKEN:-}" ]] ||

@@ -19,7 +19,7 @@
 //   fleet-status.mjs show --fleet --table [--packages]        # standing counts per repository (or package), from the baselines
 //   fleet-status.mjs collect ... --no-packages | --packages-only [--npm-user LOGIN]
 //   fleet-status.mjs commit FILE [--dry-run]
-//   fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--source 'github OWNER/NAME#123'] [--dry-run]
+//   fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--source 'github OWNER/NAME#123'] [--section Active|Inbox] [--dry-run]
 //
 // Rulings (2026-08-28): collection runs only for github.com repositories — --cwd
 // on any other host, or with no remote, prints {skipped: true} and exits 0.
@@ -77,7 +77,7 @@ const usage = `Usage:
   fleet-status.mjs show --fleet [--since WHEN | --runs N]      # stored movement across the fleet (the brief)
   fleet-status.mjs show --fleet --table [--packages]           # standing counts per repository (or package), from the baselines
   fleet-status.mjs commit FILE [--dry-run]
-  fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--source 'github OWNER/NAME#123'] [--dry-run]
+  fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--source 'github OWNER/NAME#123'] [--section Active|Inbox] [--dry-run]
 
 WHEN is an ISO date or time, or days back such as 7d (default 7d for --fleet, 30d for one repository).
 Exit codes: 0 ok · 1 usage/HTTP error · 2 missing tool · 3 gh not authenticated (run: gh auth login)`;
@@ -98,6 +98,7 @@ const VALUE_FLAGS = new Set([
   '--title',
   '--body-file',
   '--source',
+  '--section',
   '--since',
   '--runs',
   '--jobs',
@@ -2055,6 +2056,12 @@ const fileItem = async () => {
   const source = opts.source?.trim().replace(/\s+/g, ' ');
   if (source !== undefined && !SOURCE_RE.test(source))
     fail(1, `--source is "<kind> <ref>", such as 'github uhop/deep6#123'; got: ${source}`);
+  // Where the item lands: Active (reflected review items, the default) or the
+  // Inbox, when the project's GitHub entry declares `intake: triage`
+  // (vault-storage D109; server ≥ 2026-09-30 parses the section).
+  const section = opts.section === undefined ? 'Active' : opts.section;
+  if (section !== 'Active' && section !== 'Inbox')
+    fail(1, `--section is Active or Inbox; got: ${section}`);
   const heading = /[.!?]$/.test(title) ? title : `${title}.`;
   // every column-0 bullet is its own queue item (topics/project-queue-convention)
   const continuation = body
@@ -2065,11 +2072,15 @@ const fileItem = async () => {
   const docPath = `projects/${project}/queue.md`;
   const doc = await vaultGet(docPath);
   if (!doc) {
-    const intro = `Outstanding work for ${project}. Items prefixed \`GitHub:\` under \`## Active\` are review-the-change items filed by the \`fleet-status\` skill; archive an item to \`queue-archive.md\` when it is processed.\n\n`;
+    const intro = `Outstanding work for ${project}. Items prefixed \`GitHub:\` under \`## ${section}\` are review-the-change items filed by the \`fleet-status\` skill; archive an item to \`queue-archive.md\` when it is processed.\n\n`;
+    const body =
+      section === 'Inbox'
+        ? `${intro}## Inbox\n\n${itemText}\n\n## Active\n\n## Backlog\n\n## Watching\n`
+        : `${intro}## Active\n\n${itemText}\n\n## Backlog\n\n## Watching\n`;
     await vaultPut(
       docPath,
       {title: `${project} — Queue`, type: 'project', status: 'active', tags: [project, 'queue']},
-      `${intro}## Active\n\n${itemText}\n\n## Backlog\n\n## Watching\n`
+      body
     );
     console.log(`${docPath}: created with the item`);
     return;
@@ -2085,10 +2096,11 @@ const fileItem = async () => {
     console.log(`${docPath}: item updated in place`);
     return;
   }
-  // insert-item: replaces an (empty) placeholder, creates a missing Active (server ≥ 2026-09-06)
+  // insert-item: replaces an (empty) placeholder, creates a missing section
+  // before the first H2 (server ≥ 2026-09-06), which is where an Inbox belongs
   const result = await vaultEdit(docPath, {
     op: 'insert-item',
-    section: '## Active',
+    section: `## ${section}`,
     item: itemText,
     position: 'start',
     create_section: true
@@ -2096,7 +2108,7 @@ const fileItem = async () => {
   console.log(
     result.replaced
       ? `${docPath}: item updated by its source (was "${result.replaced.title}")`
-      : `${docPath}: item inserted at the top of Active`
+      : `${docPath}: item inserted at the top of ${section}`
   );
 };
 

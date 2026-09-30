@@ -712,13 +712,22 @@ Rules:
   tool, `vault-curl /tags/nearest -X POST` with `{"tags": [...]}` is the same
   lookup, and `strict_tags: true` goes in the JSON body of `PUT /vault/{path}`.
 - **A project declares its trackers in its queue's frontmatter** (vault-storage
-  D95, 2026-09-28): `trackers:` is a list of `{kind, ref, role, create, write,
-  url}`, `kind` one of `vault`, `github`, `linear`, `jira`; `ref` the tracker's
-  own name for the project (`owner/repo`, a Linear team key, a Jira project
-  key); `role` `primary` or `mirror` (one primary; the vault when none is
-  declared); `create` `here` or `none`, whether new work may be created there
-  (a primary creates by default); `write` the fields the vault may write back
-  (empty means read-only); `url` where a person opens it (derived for GitHub).
+  D95, 2026-09-28): `trackers:` is a list of `{kind, ref, role, create, intake,
+  write, url}`, `kind` one of `vault`, `github`, `linear`, `jira`; `ref` the
+  tracker's own name for the project (`owner/repo`, a Linear team key, a Jira
+  project key); `role` `primary` or `secondary` (one primary; the vault when
+  none is declared; `mirror`, the name before 2026-09-30, is read as
+  `secondary` and named in `problems`); `create` `here` or `none`, whether new
+  work may be created there (a primary creates by default); `intake` how a
+  secondary tracker's items reach the vault's queue (vault-storage D109,
+  2026-09-30): `none`, `reflect` (as items with the thread's `source:` under
+  `## Active`, fleet-status's shape and the default when nothing is declared),
+  or `triage` (the same items under `## Inbox`, where you accept one into
+  Backlog or Active with `vault_move_item` on the queue itself, or archive it
+  with a **Rejected** trail; a primary outside the vault takes none, since the
+  vault records only the item in flight); `write` the fields the vault may
+  write back (empty means read-only); `url` where a person opens it (derived
+  for GitHub).
   Declare it with `vault_patch_fm` on the queue, never by rewriting the note;
   `GET /projects/{name}/trackers` and the resume brief and bundle read it
   back, validated, with malformed entries named in `problems`.
@@ -1024,7 +1033,15 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      to `queue-archive.md` with a **Shipped** trail (`vault_move_item`), or
      remove it when the work moves off you. The brief's `queue.in_flight`
      (server ≥ 2026-09-30) and the SessionStart line carry the source beside
-     the title, so the next session opens the right ticket. A non-empty `problems` list means the declaration
+     the title, so the next session opens the right ticket. **An inbox is
+     triage owed** (vault-storage D109, 2026-09-30): when the brief's
+     `queue.inbox` is non-zero, the queue's `## Inbox` holds threads a
+     secondary tracker's `intake: triage` took in; read each with its
+     `source:`, and either accept it (`vault_move_item` from `## Inbox` to
+     `## Backlog` or `## Active` on the same queue path, with a trail saying
+     why) or reject it (`vault_move_item` to `queue-archive.md` with a
+     **Rejected** trail). Triage is a judgment, so say what you decided;
+     leave an item you cannot judge and name it. A non-empty `problems` list means the declaration
      is malformed: say so, fix it with `vault_patch_fm` on the queue, and
      keep going on the answer as given. `vault_project_trackers({project})`
      reads the same view outside the resume flow.
@@ -1204,17 +1221,19 @@ Trackers card shows the declaration without a way to change it (Eugene,
 2. **Ask** with `AskUserQuestion`, one tracker at a time: `kind` (`github`,
    `linear`, `jira`; the vault itself needs no entry), `ref` (`owner/repo` for
    GitHub, read from `git remote get-url origin` before asking; a Linear team
-   key; a Jira project key), `role` (`primary`, or `mirror` when the vault
+   key; a Jira project key), `role` (`primary`, or `secondary` when the vault
    queue stays primary), `create` (`here` when new work may be created there;
-   a primary creates by default), and `write` (the fields the vault may write
-   back; empty is read-only).
+   a primary creates by default), `intake` for a secondary (`reflect`, its
+   threads as review items under Active; `triage`, the same under `## Inbox`
+   until accepted or rejected; `none`, no items), and `write` (the fields the
+   vault may write back; empty is read-only).
 3. **Check the access before writing:** for GitHub, `gh auth status` on this
    host and whether the repository is public, since the collector reads
    public github.com repositories only; for Linear or Jira, the vendor's MCP
    tools in this session's tool list. Missing access is reported beside the
    declaration, never a reason to skip it.
 4. **Write** with `vault_patch_fm({record_id, ops: [{op: "add", path:
-   "/trackers", value: {kind, ref, role, create, write}}]})` on the queue's
+   "/trackers", value: {kind, ref, role, create, intake, write}}]})` on the queue's
    record (`vault_list_pieces({file_prefix: "projects/<name>/queue.md"})`
    gives the id); an object member is accepted (checked 2026-09-29), and
    `remove` with the same value drops an entry. Never rewrite the note for it.

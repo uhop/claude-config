@@ -221,6 +221,14 @@ does the placement through the server's `insert-item` op (server ≥ 2026-09-06)
   --source 'github OWNER/NAME#123' --body-file "$WORK/item.md"
 ```
 
+- **The section follows the project's declaration** (vault-storage D109, 2026-09-30). Read
+  `vault_project_trackers({project})` once per project before filing: with no GitHub entry, or
+  one whose `intake` is `reflect`, file under Active as above; `intake: triage` files under the
+  Inbox (`--section Inbox`; the server creates the section first in the file), where the project's
+  next resume triages it; `intake: none` files nothing, and the events go to the digest and the
+  resume output only. A GitHub entry that is `primary` takes no items either: the vault records
+  the item in flight, not a mirror.
+
 - **Same thread, updated in place.** An item that is still under Active when the next sweep or
   resume finds more movement is replaced, never duplicated (ruled 2026-08-28). `--source` is
   the key (since 2026-09-30; vault-storage D107): it writes `  - source: github <repo>#<number>`

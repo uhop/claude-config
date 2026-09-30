@@ -50,6 +50,7 @@ jq -r '
             (.queue.in_flight // (.queue.active | map({title: ., source: null})))
             | map(.title + (if .source then " (\(.source))" else "" end)) | join(" | "))
         else null end),
+        (if (.queue.inbox // 0) > 0 then "\(.queue.inbox) in the inbox to triage" else null end),
         "\(.queue.ready)/\(.queue.backlog) backlog ready",
         (if .queue.blocked > 0 then "\(.queue.blocked) blocked" else null end),
         ((.queue.hygiene // []) | if length > 0 then "queue hygiene \(length): \(.[0])" else null end),
