@@ -19,7 +19,7 @@
 //   fleet-status.mjs show --fleet --table [--packages]        # standing counts per repository (or package), from the baselines
 //   fleet-status.mjs collect ... --no-packages | --packages-only [--npm-user LOGIN]
 //   fleet-status.mjs commit FILE [--dry-run]
-//   fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--dry-run]
+//   fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--source 'github OWNER/NAME#123'] [--dry-run]
 //
 // Rulings (2026-08-28): collection runs only for github.com repositories — --cwd
 // on any other host, or with no remote, prints {skipped: true} and exits 0.
@@ -77,7 +77,7 @@ const usage = `Usage:
   fleet-status.mjs show --fleet [--since WHEN | --runs N]      # stored movement across the fleet (the brief)
   fleet-status.mjs show --fleet --table [--packages]           # standing counts per repository (or package), from the baselines
   fleet-status.mjs commit FILE [--dry-run]
-  fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--dry-run]
+  fleet-status.mjs file --project NAME --title TITLE --body-file FILE [--source 'github OWNER/NAME#123'] [--dry-run]
 
 WHEN is an ISO date or time, or days back such as 7d (default 7d for --fleet, 30d for one repository).
 Exit codes: 0 ok · 1 usage/HTTP error · 2 missing tool · 3 gh not authenticated (run: gh auth login)`;
@@ -97,6 +97,7 @@ const VALUE_FLAGS = new Set([
   '--repo',
   '--title',
   '--body-file',
+  '--source',
   '--since',
   '--runs',
   '--jobs',
@@ -2035,9 +2036,12 @@ const commit = async () => {
 
 // Upsert one review item under `## Active` of a project's queue: same title →
 // the block is replaced in place (the 2026-08-28 ruling: update, never
-// duplicate); otherwise it is inserted at the top of Active; a missing queue
-// is created in the convention's shape.
+// duplicate); otherwise it is inserted at the top of Active, where a server
+// from 2026-09-29 (vault-storage D107) replaces the open item that carries
+// the same `source:` marker, so a renamed thread updates its item; a missing
+// queue is created in the convention's shape.
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const SOURCE_RE = /^[a-z][a-z0-9-]* \S+$/;
 
 const fileItem = async () => {
   requireVault();
@@ -2048,13 +2052,16 @@ const fileItem = async () => {
   if (!existsSync(bodyFile)) fail(1, `no such file: ${bodyFile}`);
   const body = readFileSync(bodyFile, 'utf8').trim();
   if (!body) fail(1, 'the item body is empty');
+  const source = opts.source?.trim().replace(/\s+/g, ' ');
+  if (source !== undefined && !SOURCE_RE.test(source))
+    fail(1, `--source is "<kind> <ref>", such as 'github uhop/deep6#123'; got: ${source}`);
   const heading = /[.!?]$/.test(title) ? title : `${title}.`;
   // every column-0 bullet is its own queue item (topics/project-queue-convention)
   const continuation = body
     .split('\n')
     .map((line, i) => (i === 0 || !line.trim() ? line : `  ${line}`))
     .join('\n');
-  const itemText = `- **${heading}** ${continuation}`;
+  const itemText = `- **${heading}** ${continuation}${source ? `\n  - source: ${source}` : ''}`;
   const docPath = `projects/${project}/queue.md`;
   const doc = await vaultGet(docPath);
   if (!doc) {
@@ -2079,14 +2086,18 @@ const fileItem = async () => {
     return;
   }
   // insert-item: replaces an (empty) placeholder, creates a missing Active (server ≥ 2026-09-06)
-  await vaultEdit(docPath, {
+  const result = await vaultEdit(docPath, {
     op: 'insert-item',
     section: '## Active',
     item: itemText,
     position: 'start',
     create_section: true
   });
-  console.log(`${docPath}: item inserted at the top of Active`);
+  console.log(
+    result.replaced
+      ? `${docPath}: item updated by its source (was "${result.replaced.title}")`
+      : `${docPath}: item inserted at the top of Active`
+  );
 };
 
 // ─── Show ────────────────────────────────────────────────────────────────────

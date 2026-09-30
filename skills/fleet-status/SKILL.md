@@ -217,19 +217,25 @@ does the placement through the server's `insert-item` op (server ≥ 2026-09-06)
 `(empty)` placeholder and creates a missing `## Active` before Backlog; you write the body:
 
 ```bash
-"$S" file --project NAME --title 'GitHub: OWNER/NAME#123 — Title of the issue' --body-file "$WORK/item.md"
+"$S" file --project NAME --title 'GitHub: OWNER/NAME#123 — Title of the issue' \
+  --source 'github OWNER/NAME#123' --body-file "$WORK/item.md"
 ```
 
-- **Same title, updated in place.** An item that is still under Active when the next sweep or
-  resume finds more movement is replaced, never duplicated (ruled 2026-08-28). The title is
-  therefore the key: `GitHub: <repo>#<number> — <title>` for an issue or PR,
-  `GitHub: <repo> discussion #<number> — <title>` for a discussion,
+- **Same thread, updated in place.** An item that is still under Active when the next sweep or
+  resume finds more movement is replaced, never duplicated (ruled 2026-08-28). `--source` is
+  the key (since 2026-09-30; vault-storage D107): it writes `  - source: github <repo>#<number>`
+  under the item, and the server replaces the open item that carries the same source, so a
+  thread whose title changed still updates its item. Pass it for every numbered thread:
+  `github <repo>#<number>` for an issue or PR, `github <repo> discussion#<number>` for a
+  discussion, `github <repo> <GHSA-id>` for an advisory. The title stays the fallback key,
+  for items filed before the marker existed: `GitHub: <repo>#<number> — <title>` for an issue
+  or PR, `GitHub: <repo> discussion #<number> — <title>` for a discussion,
   `GitHub: <repo> <GHSA-id> — <summary>` for an advisory. Events with no numbered thread key
-  on the counter instead: `GitHub: <repo> — Dependabot alerts open (<manifest dir>)`,
-  `GitHub: <repo> — code scanning alerts open`, and `GitHub: <repo> — CI <workflow> failing`;
-  the collected snapshot carries counts only, so the manifest directory comes from the alert
-  list you read for the pre-review (first used 2026-09-06 on vault-storage). Keep every title
-  stable across runs.
+  on the counter instead, by title alone: `GitHub: <repo> — Dependabot alerts open (<manifest
+  dir>)`, `GitHub: <repo> — code scanning alerts open`, and `GitHub: <repo> — CI <workflow>
+  failing`; the collected snapshot carries counts only, so the manifest directory comes from
+  the alert list you read for the pre-review (first used 2026-09-06 on vault-storage). Keep
+  every title stable across runs.
 - **Which events earn an item:** a new issue, PR, or discussion by a person; a comment by
   someone other than Eugene; reactions on an open item; any advisory event; a CI run that
   stopped succeeding; an alert count that rose. Counters (stars, forks, watchers, dependents)

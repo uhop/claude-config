@@ -24,6 +24,18 @@ out=$(cd / && env VAULT_API_URL= VAULT_API_TOKEN= bash "$HOOK" 2>/dev/null); rc=
 out=$(cd / && env VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=x bash "$HOOK" 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "unreachable server must exit 0 silently (rc=$rc out=$out)"
 
+# ── OFFLINE: the ACTIVE line, from the hook's own jq program ─────────────
+# The program is read out of the hook so the test pins what runs. A brief from
+# a server ≥ 2026-09-30 carries queue.in_flight with each Active item's
+# source (vault-storage D108); an older one carries the titles only.
+prog=$(sed -n '/^jq -r/,/^'"'"' <<<"\$resp"/p' "$HOOK" | sed '1s/^jq -r .//; $d')
+brief='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A.","B."],"in_flight":[{"title":"A.","source":null},{"title":"B.","source":"github uhop/p#15"}],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"trackers":{"primary":{"kind":"github"},"line":"github uhop/p"},"sessions_unlogged":0}}'
+out=$(jq -r "$prog" <<<"$brief" 2>&1)
+[[ "$out" == *"ACTIVE: A. | B. (github uhop/p#15);"* ]] && ok || bad "in_flight: the source follows the title (out=$out)"
+old='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A."],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"trackers":{"primary":{"kind":"vault"}},"sessions_unlogged":0}}'
+out=$(jq -r "$prog" <<<"$old" 2>&1)
+[[ "$out" == *"ACTIVE: A.;"* ]] && ok || bad "titles only on an older server (out=$out)"
+
 # ── LIVE: this repository has a stored GitHub baseline ───────────────────
 if [[ -z "${VAULT_API_URL:-}" || -z "${VAULT_API_TOKEN:-}" ]] ||
    ! curl -sf --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $VAULT_API_TOKEN" \

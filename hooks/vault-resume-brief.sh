@@ -44,7 +44,12 @@ jq -r '
     ] | join_present),
   (.project | if . == null then empty else
     "[vault] \(.name): " + ([
-        (if (.queue.active | length) > 0 then "ACTIVE: \(.queue.active | join(" | "))" else null end),
+        (if (.queue.active | length) > 0 then
+          "ACTIVE: " + (
+            # in_flight (server ≥ 2026-09-30) names the ticket an Active item mirrors
+            (.queue.in_flight // (.queue.active | map({title: ., source: null})))
+            | map(.title + (if .source then " (\(.source))" else "" end)) | join(" | "))
+        else null end),
         "\(.queue.ready)/\(.queue.backlog) backlog ready",
         (if .queue.blocked > 0 then "\(.queue.blocked) blocked" else null end),
         ((.queue.hygiene // []) | if length > 0 then "queue hygiene \(length): \(.[0])" else null end),

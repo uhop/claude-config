@@ -1013,7 +1013,18 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      paste-ready ticket handed to the user when you cannot write to it), and
      a queue item that mirrors an outside ticket carries `source:` with the
      tracker and its id; the vault keeps context, notes, edges, and
-     handoffs either way. A non-empty `problems` list means the declaration
+     handoffs either way. **The item in flight is one Active item with
+     `source:`** (ruled 2026-09-29; vault-storage D108): when you start on a
+     ticket, `vault_insert_item` under `## Active` with `  - source: github
+     owner/repo#15` (or `linear ENG-123`, `jira VS-7`) among its continuation
+     lines and your notes as the body — the server updates the open item that
+     already carries that source instead of filing a second (D107), so the
+     call is safe to repeat; the Backlog stays empty in that configuration,
+     since the tracker holds the list; when the ticket closes, move the item
+     to `queue-archive.md` with a **Shipped** trail (`vault_move_item`), or
+     remove it when the work moves off you. The brief's `queue.in_flight`
+     (server ≥ 2026-09-30) and the SessionStart line carry the source beside
+     the title, so the next session opens the right ticket. A non-empty `problems` list means the declaration
      is malformed: say so, fix it with `vault_patch_fm` on the queue, and
      keep going on the answer as given. `vault_project_trackers({project})`
      reads the same view outside the resume flow.
@@ -1213,7 +1224,9 @@ Trackers card shows the declaration without a way to change it (Eugene,
 
 What a note records about each tracker's objects, and which of the vendor's
 tools reads them, is in the per-tool notes under
-`projects/vault-storage/integrations/` (`github` first).
+`projects/vault-storage/integrations/` (`github` first). How a session
+records the ticket it works on when the primary is outside the vault, one
+Active item with `source:`, is in `/vault resume` step 2 under `trackers`.
 
 ### /vault verify [project] [--all] [--unchecked]
 
