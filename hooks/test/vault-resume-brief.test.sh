@@ -33,6 +33,11 @@ brief='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{
 out=$(jq -r "$prog" <<<"$brief" 2>&1)
 [[ "$out" == *"ACTIVE: A. | B. (github uhop/p#15);"* ]] && ok || bad "in_flight: the source follows the title (out=$out)"
 [[ "$out" == *"; 2 in the inbox to triage; "* ]] && ok || bad "inbox: the count prints when non-zero (out=$out)"
+# Each in-flight ticket's stored state rides as upstream (vault-storage D111):
+# only a closed or merged one is marked.
+done='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A.","B.","C."],"in_flight":[{"title":"A.","source":"github uhop/p#1","upstream":"merged"},{"title":"B.","source":"github uhop/p#2","upstream":"open"},{"title":"C.","source":"github uhop/p#3","upstream":null}],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"trackers":{"primary":{"kind":"vault"}},"sessions_unlogged":0}}'
+out=$(jq -r "$prog" <<<"$done" 2>&1)
+[[ "$out" == *"ACTIVE: A. (github uhop/p#1, merged upstream) | B. (github uhop/p#2) | C. (github uhop/p#3);"* ]] && ok || bad "upstream: only a closed or merged ticket is marked (out=$out)"
 old='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A."],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"trackers":{"primary":{"kind":"vault"}},"sessions_unlogged":0}}'
 out=$(jq -r "$prog" <<<"$old" 2>&1)
 [[ "$out" == *"ACTIVE: A.;"* ]] && ok || bad "titles only on an older server (out=$out)"

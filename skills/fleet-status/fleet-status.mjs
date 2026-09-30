@@ -2062,7 +2062,13 @@ const fileItem = async () => {
   const section = opts.section === undefined ? 'Active' : opts.section;
   if (section !== 'Active' && section !== 'Inbox')
     fail(1, `--section is Active or Inbox; got: ${section}`);
-  const heading = /[.!?]$/.test(title) ? title : `${title}.`;
+  // A `**` run from a thread title would close the bold early and a newline
+  // would end the item; the project page's Track button shapes titles alike.
+  const clean = title
+    .replace(/\*{2,}/g, '*')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const heading = /[.!?]$/.test(clean) ? clean : `${clean}.`;
   // every column-0 bullet is its own queue item (topics/project-queue-convention)
   const continuation = body
     .split('\n')

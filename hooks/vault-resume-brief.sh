@@ -46,9 +46,12 @@ jq -r '
     "[vault] \(.name): " + ([
         (if (.queue.active | length) > 0 then
           "ACTIVE: " + (
-            # in_flight (server ≥ 2026-09-30) names the ticket an Active item mirrors
+            # in_flight (server ≥ 2026-09-30) names the ticket an Active item mirrors;
+            # its upstream (vault-storage D111) marks a ticket the stored baseline shows done
             (.queue.in_flight // (.queue.active | map({title: ., source: null})))
-            | map(.title + (if .source then " (\(.source))" else "" end)) | join(" | "))
+            | map(.title + (if .source then " (\(.source)\(
+                if .upstream == "closed" or .upstream == "merged" then ", \(.upstream) upstream" else "" end))"
+              else "" end)) | join(" | "))
         else null end),
         (if (.queue.inbox // 0) > 0 then "\(.queue.inbox) in the inbox to triage" else null end),
         "\(.queue.ready)/\(.queue.backlog) backlog ready",

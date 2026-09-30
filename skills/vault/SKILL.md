@@ -1033,7 +1033,13 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      to `queue-archive.md` with a **Shipped** trail (`vault_move_item`), or
      remove it when the work moves off you. The brief's `queue.in_flight`
      (server ≥ 2026-09-30) and the SessionStart line carry the source beside
-     the title, so the next session opens the right ticket. **An inbox is
+     the title, so the next session opens the right ticket. A GitHub ticket
+     the stored baseline shows closed or merged arrives marked, `, merged
+     upstream` on that line (`upstream` in `queue.in_flight`, vault-storage
+     D111): archive that item in the same resume, with a **Shipped** trail
+     when the work was yours and a **Closed** trail otherwise. The project
+     page's Tracked card lists the same items and archives a closed one on a
+     click. **An inbox is
      triage owed** (vault-storage D109, 2026-09-30): when the brief's
      `queue.inbox` is non-zero, the queue's `## Inbox` holds threads a
      secondary tracker's `intake: triage` took in; read each with its

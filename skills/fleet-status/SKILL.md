@@ -258,7 +258,11 @@ does the placement through the server's `insert-item` op (server ≥ 2026-09-06)
   inside the one item: the queue convention counts every column-0 bullet as an item, and a body
   pasted verbatim was served as several (2026-09-06). Nested bullets keep their relative depth.
 - An item closes when Eugene archives it (`queue-archive.md`) or the thread closes upstream; a
-  closed thread's item is not refiled.
+  closed thread's item is not refiled. The project page (`/ui/fleet-project.html`) marks each
+  open thread with the item that mirrors it, archives an item whose thread the baseline shows
+  closed or merged on a click, and offers **Track** on a thread no item mirrors, filing the
+  title, the link, and the source only (vault-storage D111). A later `file` for that thread
+  replaces the one-line body with the pre-review, by the same source.
 
 ## Baseline storage
 
