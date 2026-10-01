@@ -151,6 +151,7 @@ Registered as `mcp__vault__<name>`; fetch schemas with
 | Frontmatter only, no body | `vault_read_meta` |
 | A note's committed versions, and the note as it was at one | `vault_history`, then `vault_read_file` with `at` and the version's own `path` (adapter after 0.12.0; server ≥ 2026-09-30, vault-storage D115); before that adapter, `vault-curl /history -G --data-urlencode 'path=<path>'` and `vault-curl '/vault/<path>?at=<sha>'` |
 | Where a project's work is tracked and which tracker is primary | `vault_project_trackers` (adapter ≥ 0.12.0; § Note format on declaring it) |
+| What changed in a project's notes and queue since a time or a commit | `vault_project_changes` (adapter after 0.12.0; server ≥ 2026-09-30, vault-storage D117); before that adapter, `vault-curl '/projects/<name>/changes?since=<ISO\|Nd\|sha>'` |
 | List a folder | `vault_list_folder` |
 | Search | `vault_search` (`mode=lexical` default, `semantic` opt-in) |
 | Integrity lint | `vault_lint` |
@@ -1087,6 +1088,19 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      `log: none` in that bullet with the log's path (`vault_replace` on the
      sessions note) so it is not written twice. The SessionStart digest names
      the count.
+     The block also carries `changes` (server ≥ 2026-09-30, vault-storage
+     D117): what changed since the end of the latest session that took a
+     turn, named in `since: {ended, holder}`; `notes` are the project's notes
+     written since, by when each was written, and `queue: {entered, edited}`
+     its queue items that entered a section (added, moved, or archived) or
+     changed in place. It shows what happened between sessions: edits in the
+     UI, a sweep, another project's agent. **Act on it**: an item that
+     entered the Backlog or the Inbox since is placed by the project's plan
+     or triaged in this resume, and a changed decisions or queue note is
+     read before its summary is relayed. A deleted note is not listed. `null`
+     means no session record qualifies; stay quiet then.
+     `vault_project_changes({project, since})` answers the same for any time
+     or commit.
      The block also carries `handoffs: {open, returned, claimed}` (server
      ≥ 2026-08-10) — the coordination inbox, since claiming a repo means
      inheriting it. **Surface a non-empty `open` list**: another agent is
