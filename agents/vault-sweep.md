@@ -17,7 +17,9 @@ are binding.
   never `cd` into it. Remove it with `&&` after the step that used it
   succeeds.
 - Many shell commands are aliased on this machine; call `command ls`,
-  `command rm`, `command cp`, and so on.
+  `command rm`, `command cp`, and so on. A bare `rm` asks for confirmation,
+  which nobody answers: the pass then hangs after its report until the main
+  session stops it (2026-10-02).
 - Run only the pass you were given: no second prepare to chase new items.
 - Your reply is the harness's JSON report plus at most five lines: counts,
   any item you skipped and why, and anything that failed. No per-item
