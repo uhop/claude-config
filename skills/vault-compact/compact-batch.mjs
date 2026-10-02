@@ -178,7 +178,7 @@ const plan = async () => {
     fail(3, `nothing to archive in ${opts.folder} (${pieces.length} pieces, selection empty)`);
 
   const selectedIds = new Set(selected.map(p => p.record_id));
-  const backlinks = [];
+  const candidates = [];
   await pool(
     selected.map(piece => async () => {
       const doc = await api('GET', `/vault/${piece.file_path}`);
@@ -186,18 +186,45 @@ const plan = async () => {
         typeof doc === 'string' && doc.startsWith('---\n') ? doc.indexOf('\n---\n', 4) + 5 : 0;
       piece.body = String(doc).slice(start);
       try {
-        const back = await api('GET', `/sections/${piece.record_id}/backlinks`);
-        for (const row of back.items ?? [])
-          if (row.from_record && !selectedIds.has(row.from_record.record_id))
-            backlinks.push({
-              archived: piece.file_path,
-              from: row.from_record.file_path,
-              title: row.from_record.title,
-              edge_type: row.edge?.type
-            });
+        for (let offset = 0; ;) {
+          const back = await api(
+            'GET',
+            `/sections/${piece.record_id}/backlinks?limit=100&offset=${offset}`
+          );
+          const items = back.items ?? [];
+          for (const row of items)
+            if (row.from_record && !selectedIds.has(row.from_record.record_id))
+              candidates.push({
+                archived: piece.file_path,
+                from: row.from_record.file_path,
+                title: row.from_record.title,
+                edge_type: row.edge?.type
+              });
+          offset += items.length;
+          if (items.length === 0 || offset >= (back.total ?? offset)) break;
+        }
       } catch {}
     })
   );
+  // A related-to or contradicts row can be the server's mirror of the piece's own link, which
+  // moves with the record: only a note whose text names the piece breaks (2026-10-02, 52 of 62).
+  const linkerText = new Map();
+  await pool(
+    [...new Set(candidates.map(b => b.from))].map(from => async () => {
+      try {
+        linkerText.set(from, String(await api('GET', `/vault/${from}`)));
+      } catch {
+        linkerText.set(from, null);
+      }
+    })
+  );
+  const namesPiece = (text, path) => {
+    if (text === null) return true;
+    const stem = path.replace(/\.md$/, '');
+    const base = RegExp.escape(stem.split('/').pop());
+    return new RegExp(`${RegExp.escape(stem)}(?![\\w-])|\\[\\[${base}(?:\\]\\]|[|#])`).test(text);
+  };
+  const backlinks = candidates.filter(b => namesPiece(linkerText.get(b.from), b.archived));
 
   // group by month; widen to quarter/year until sections hold ~5-10 pieces
   const monthOf = p => String(p.created).slice(0, 7);
@@ -287,6 +314,14 @@ const execute = async () => {
       if (!(err instanceof ApiError)) throw err;
       report.failures.push({...move, status: err.status, code: err.code, message: err.message});
     }
+  }
+  // Nothing else re-runs the scan, so the folder's compaction_candidate stayed pending (2026-10-02).
+  try {
+    const {qualifying, autoResolved} = await api('POST', '/maintenance/find-compaction-candidates');
+    report.rescan = {qualifying, auto_resolved: autoResolved};
+  } catch (err) {
+    if (!(err instanceof ApiError)) throw err;
+    report.rescan = {status: err.status, code: err.code, message: err.message};
   }
   console.log(JSON.stringify(report, null, 2));
   if (report.failures.length) process.exit(1);

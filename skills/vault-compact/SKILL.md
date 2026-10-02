@@ -19,7 +19,12 @@ The server files `compaction_candidate` suggestions for folders past the
 piece-count threshold (`POST /maintenance/find-compaction-candidates`
 refreshes; `/vault sweep`'s plan lists pending payloads). To decline one
 (the folder's count is intentionally high): `POST /suggestions/{id}/reject`.
-A completed compaction auto-resolves its suggestion on the next scan.
+A completed compaction resolves its suggestion at once: `execute` re-runs
+that scan after the moves, and its report's `rescan` says what the scan
+found. The scan counts only cold pieces (past the type's hot window), so a
+folder of 93 notes with 30 cold ones is below threshold after one 20-piece
+pass. Before 2026-10-02 nothing re-ran it, and the suggestion and the
+dashboard's recommendation stayed until someone did.
 
 ## Invocation
 
@@ -45,7 +50,9 @@ prior `_summary-*` files, `status: archived/superseded`, `type: state`),
 selects per the mode (default oldest-50%, hard cap 20 per pass — repeated
 passes beat one mega-summary; the plan flags truncation), fetches each
 selected piece's body, gathers **external** inbound backlinks (linkers not
-themselves being archived), suggests period groups (~5–10 pieces per
+themselves being archived, whose text names the piece: a `related-to` or
+`contradicts` row can be the server's mirror of the piece's own link, which
+moves with the record), suggests period groups (~5–10 pieces per
 section: month → quarter → year), and names the summary path. `execute`
 PUTs the summary note (FM built by the script; pass 1–2 current source
 notes via `--related`) and moves each original via `POST /vault/move` —
