@@ -9,7 +9,10 @@
 # back to deal with them; the re-entry carries `stop_hook_active: true`, on
 # which this hook exits 0, so a shell that must keep running (a server, a
 # watcher the user asked for) costs exactly one extra turn in its lifetime —
-# the id is recorded per session and never raised again.
+# the id is recorded per session and never raised again. A shell whose id the
+# turn's closing message already names costs none: that message is the
+# declaration, so the id is recorded without a block (reflect 2026-10-03, 14
+# firings in a week, every one a gate that had to finish).
 #
 # FAILS OPEN, silently: no jq, no node, no transcript, a sub-agent run
 # (agent_id present) all exit 0 with no output. The lister is
@@ -50,10 +53,25 @@ mkdir -p "$state_dir" 2>/dev/null || exit 0
 marker="$state_dir/$session_id.reported"
 touch "$marker" 2>/dev/null || exit 0
 
+closing=$(tail -n 400 "$transcript" | node -e '
+let last = "";
+for (const line of require("fs").readFileSync(0, "utf8").split("\n")) {
+  let r;
+  try { r = JSON.parse(line); } catch { continue; }
+  if (r.type !== "assistant" || !Array.isArray(r.message?.content)) continue;
+  const t = r.message.content.filter(p => p.type === "text").map(p => p.text).join("\n");
+  if (t.trim()) last = t;
+}
+process.stdout.write(last);' 2>/dev/null) || closing=""
+
 new=""
 while IFS=$'\t' read -r id desc || [[ -n "$id" ]]; do
   [[ -n "$id" ]] || continue
   command grep -qxF "$id" "$marker" && continue
+  if [[ -n "$closing" && "$closing" == *"$id"* ]]; then
+    printf '%s\n' "$id" >>"$marker"
+    continue
+  fi
   new+="$id"$'\t'"$desc"$'\n'
 done <<<"$live"
 [[ -n "$new" ]] || exit 0
