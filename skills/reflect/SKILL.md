@@ -229,6 +229,7 @@ Read all three to dedupe; write only to vault + claude-config.
    | Cross-project correction, or a coding or process practice stated in one project — fleet-wide by default unless he scoped it (CLAUDE.md § Ambiguity, 2026-09-22) | claude-config `~/Open/claude-config/CLAUDE.md` (append section) |
    | Repeated tool failure → fixable in a real codebase | that project's vault `queue.md` Backlog |
    | Repeated tool failure → fixable via skill / hook / settings | claude-config (`skills/`, `hooks/`, `settings.json` — delegate to `update-config` if a settings change; delegate to `fewer-permission-prompts` if it's permission noise) |
+   | A rule already on record, broken again | a gate when a decidable predicate, its operand at the point of action, and a place to run it (a hook, a CI step, a server refusal) all exist: a hook in claude-config `hooks/`, or a check filed on that project's `queue.md`. Otherwise the rule's own destination above, checking first that the actor holds its operand ([[topics/gates-not-promises]]) |
    | Stuck loop pattern (recurring across sessions) | `projects/agent-workflow/queue.md` Backlog with proposed mitigation |
    | Surprise / discovery worth preserving | vault `topics/<topic-name>.md` (new note) or extend an existing topic |
    | Confirmation of non-obvious approach | same destinations as corrections — captures "do this" rather than "don't do that" |
