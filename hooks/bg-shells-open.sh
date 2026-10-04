@@ -12,7 +12,10 @@
 # the id is recorded per session and never raised again. A shell whose id the
 # turn's closing message already names costs none: that message is the
 # declaration, so the id is recorded without a block (reflect 2026-10-03, 14
-# firings in a week, every one a gate that had to finish).
+# firings in a week, every one a gate that had to finish). That message is the
+# payload's `last_assistant_message`: the transcript is written asynchronously
+# and lags the turn (hooks reference), so its tail is only the fallback for a
+# Claude Code before 2.1.47 (reflect 2026-10-04, 5 false blocks after 8548b9b).
 #
 # FAILS OPEN, silently: no jq, no node, no transcript, a sub-agent run
 # (agent_id present) all exit 0 with no output. The lister is
@@ -20,7 +23,8 @@
 # ${XDG_CACHE_HOME:-~/.cache}/claude-bg-shells/<session_id>.reported.
 #
 # Hook contract: stdin JSON {session_id, transcript_path, cwd,
-# hook_event_name, stop_hook_active, agent_id?}; stdout JSON on block.
+# hook_event_name, stop_hook_active, last_assistant_message?, agent_id?};
+# stdout JSON on block.
 
 set -u
 
@@ -53,7 +57,8 @@ mkdir -p "$state_dir" 2>/dev/null || exit 0
 marker="$state_dir/$session_id.reported"
 touch "$marker" 2>/dev/null || exit 0
 
-closing=$(tail -n 400 "$transcript" | node -e '
+closing=$(jq -r '.last_assistant_message // ""' <<<"$payload" 2>/dev/null) || closing=""
+[[ -n "$closing" ]] || closing=$(tail -n 400 "$transcript" | node -e '
 let last = "";
 for (const line of require("fs").readFileSync(0, "utf8").split("\n")) {
   let r;
