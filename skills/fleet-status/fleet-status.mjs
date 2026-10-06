@@ -23,8 +23,10 @@
 //
 // Rulings (2026-08-28): collection runs only for github.com repositories — --cwd
 // on any other host, or with no remote, prints {skipped: true} and exits 0.
-// Private repositories are out; --fleet enumerates public, non-archived,
-// non-fork repositories of the authenticated account. Every GitHub call is a
+// --fleet enumerates public, non-archived, non-fork repositories of the
+// authenticated account. A private repository is collected only when a
+// project's `trackers:` names it (ruled 2026-10-06), and --fleet adds every
+// repository a declaration names, under the declaring project. Every GitHub call is a
 // read; the GraphQL query is fixed text and asserted mutation-free. A missing or
 // expired `gh` login is reported to the operator (exit 3), never a silent empty
 // result. Stars are count-only unless --star-logins; forks always carry logins.
@@ -434,6 +436,39 @@ const readBaseline = async project => {
   };
 };
 
+const sameRepo = (a, b) => a?.toLowerCase() === b?.toLowerCase();
+
+// The GitHub repositories a project's `trackers:` declares (vault-storage D95):
+// the only private ones collected. A server without the route answers 404.
+const PROJECT_NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
+const trackedReposOf = async project => {
+  if (!PROJECT_NAME_RE.test(project)) return [];
+  const r = await vaultFetch(`/projects/${project}/trackers`);
+  if (r.status === 404) return [];
+  if (!r.ok) throw new Error(`GET /projects/${project}/trackers: ${r.status} ${r.statusText}`);
+  const {trackers = []} = await r.json();
+  return trackers
+    .filter(t => t.kind === 'github')
+    .map(t => /^([^/\s]+)\/([^/\s]+)$/.exec(t.ref ?? ''))
+    .filter(Boolean)
+    .map(([repo, owner, name]) => ({owner, name, repo, project}));
+};
+
+const isTrackedBy = async (project, repo) =>
+  (await trackedReposOf(project)).some(t => sameRepo(t.repo, repo));
+
+// Every declaration in the vault, in project order: one read per project.
+const trackedRepos = async () => {
+  const r = await vaultFetch('/vault/projects/');
+  if (!r.ok) throw new Error(`GET /vault/projects/: ${r.status} ${r.statusText}`);
+  const projects = ((await r.json()).files ?? [])
+    .filter(f => f.endsWith('/'))
+    .map(f => f.slice(0, -1))
+    .filter(p => PROJECT_NAME_RE.test(p))
+    .sort();
+  return (await pool(projects, 8, trackedReposOf)).flat();
+};
+
 // ─── Repository resolution ───────────────────────────────────────────────────
 
 const parseGithubRemote = url => {
@@ -533,9 +568,21 @@ const latestComment = comments => {
 
 const COMMENT_SCAN_CAP = 60;
 
-const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogins, ghUser}) => {
+const collectRepo = async ({
+  owner,
+  name,
+  project,
+  tracked,
+  baseline: stored,
+  sinceDays,
+  starLogins,
+  ghUser
+}) => {
   const repo = `${owner}/${name}`,
     R = `repos/${owner}/${name}`;
+  // A baseline of another repository (the project moved) is no baseline: a
+  // diff across repositories reports every difference as an event.
+  const baseline = stored && !sameRepo(stored.repo, repo) ? null : stored;
   const errors = [];
   const guard = async (where, fn, fallback) => {
     try {
@@ -549,9 +596,9 @@ const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogin
   const since = baseline?.collected_at ?? new Date(Date.now() - sinceDays * 864e5).toISOString();
 
   const repoMeta = await ghApi(R);
-  // Private repositories are out by ruling; --fleet filters them at enumeration,
-  // the single-repository forms find out here.
-  if (repoMeta.private)
+  // A private repository is collected only when a project's trackers: names it;
+  // --fleet marks the named ones at enumeration.
+  if (repoMeta.private && !tracked && !(await isTrackedBy(project, repo)))
     return {repo, project, skipped: true, reason: 'private', events: [], summary: {events: 0}};
   const meta = {
     stars: repoMeta.stargazers_count,
@@ -562,12 +609,12 @@ const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogin
     default_branch: repoMeta.default_branch
   };
 
+  // GitHub answers 404 for a private repository's advisories (apodictum/pc,
+  // 2026-10-06), so the read is skipped there rather than logged every run.
   const advisories = {};
-  for (const a of await guard(
-    'advisories',
-    () => ghApi(`${R}/security-advisories`, {paginate: true}),
-    []
-  ))
+  for (const a of repoMeta.private
+    ? []
+    : await guard('advisories', () => ghApi(`${R}/security-advisories`, {paginate: true}), []))
     advisories[a.ghsa_id] = {
       cve_id: a.cve_id ?? null,
       state: a.state,
@@ -826,6 +873,7 @@ const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogin
     repo,
     project,
     first_run: !baseline,
+    ...(baseline !== stored ? {replaced_baseline: stored.repo} : {}),
     collected_at: collectedAt,
     events,
     summary: {
@@ -845,10 +893,15 @@ const collectRepo = async ({owner, name, project, baseline, sinceDays, starLogin
 };
 
 // --packages-only still honors the private-repository gate; --fleet already
-// filtered at enumeration, so it skips the read.
-const probeRepo = async ({owner, name, project}, publicKnown) => {
+// applied it at enumeration, so it skips the read.
+const probeRepo = async ({owner, name, project, tracked}, enumerated) => {
   const repo = `${owner}/${name}`;
-  if (!publicKnown && (await ghApi(`repos/${repo}`)).private)
+  if (
+    !enumerated &&
+    !tracked &&
+    (await ghApi(`repos/${repo}`)).private &&
+    !(await isTrackedBy(project, repo))
+  )
     return {repo, project, skipped: true, reason: 'private', events: [], summary: {events: 0}};
   return {repo, project, events: [], summary: {events: 0}, errors: []};
 };
@@ -1540,7 +1593,11 @@ const collectPackages = async ({mode, targets, ghUser, jobs, baselines}) => {
     const [owner, repoName] = repo.split('/');
     return lc(owner) === fleetOwner ? repoName : `${owner}-${repoName}`;
   };
-  const inScope = repo => mode === 'fleet' || targetByRepo.has(lc(repo));
+  // By project, so a package whose repository moved stays with its project
+  // (@uhop/vault-storage-mcp still names uhop/vault-storage, D139).
+  const targetProjects = new Set(targets.map(t => t.project));
+  const inScope = repo =>
+    mode === 'fleet' || (Boolean(repo) && targetProjects.has(projectOf(repo)));
 
   const {graph, error: graphError} = await readFleetGraph();
   if (graphError) errors.push({where: 'fleet-deps', status: null, message: graphError});
@@ -1696,12 +1753,38 @@ const collect = async () => {
   } else if (mode === 'repo') {
     const m = /^([^/\s]+)\/([^/\s]+)$/.exec(opts.repo ?? '');
     if (!m) fail(1, '--repo takes OWNER/NAME');
-    targets = [{owner: m[1], name: m[2], project: opts.project ?? m[2]}];
+    // Without --project, a repository a declaration names belongs to that project.
+    const declared =
+      opts.project === undefined
+        ? (await trackedRepos()).find(t => sameRepo(t.repo, m[0]))
+        : undefined;
+    targets = [
+      {
+        owner: m[1],
+        name: m[2],
+        project: opts.project ?? declared?.project ?? m[2],
+        tracked: Boolean(declared)
+      }
+    ];
   }
 
   requireGhAuth();
   const ghUser = (await ghApi('user')).login;
-  if (mode === 'fleet') targets = listFleet(opts.owner ?? ghUser);
+  if (mode === 'fleet') {
+    targets = listFleet(opts.owner ?? ghUser);
+    // state.md holds one GitHub baseline per project, so a declaration whose
+    // project already collects a repository is reported and left out.
+    for (const t of await trackedRepos()) {
+      const listed = targets.find(x => sameRepo(`${x.owner}/${x.name}`, t.repo));
+      const taken = targets.find(x => x.project === t.project);
+      if (listed) listed.tracked = true;
+      else if (taken)
+        console.error(
+          `${t.repo}: not collected — project ${t.project} already collects ${taken.owner}/${taken.name}`
+        );
+      else targets.push({owner: t.owner, name: t.name, project: t.project, tracked: true});
+    }
+  }
 
   const jobs = Number(opts.jobs ?? 6);
   if (!(Number.isInteger(jobs) && jobs >= 1 && jobs <= 16))
@@ -1746,7 +1829,7 @@ const collect = async () => {
         .map(([k, n]) => `${k}×${n}`)
         .join(', ');
       console.error(
-        `${entry.repo}: ${entry.error ? `ERROR ${entry.error.message}` : `${s.events} event${s.events === 1 ? '' : 's'}${entry.first_run ? ' (first run — baseline only)' : ''}${kinds ? ` [${kinds}]` : ''}`}${entry.errors?.length ? ` — ${entry.errors.length} partial error(s)` : ''}`
+        `${entry.repo}: ${entry.error ? `ERROR ${entry.error.message}` : `${s.events} event${s.events === 1 ? '' : 's'}${entry.first_run ? ` (first run — baseline only${entry.replaced_baseline ? `, replacing ${entry.replaced_baseline}'s` : ''})` : ''}${kinds ? ` [${kinds}]` : ''}`}${entry.errors?.length ? ` — ${entry.errors.length} partial error(s)` : ''}`
       );
     }
   };

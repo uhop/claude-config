@@ -1124,16 +1124,19 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
    — or `fleet-status.mjs show "$WORK/github.json"` for the text view, which
    is what goes under the `GitHub:` heading.
    - `skipped: true` — the remote isn't github.com, there is none, or the
-     repository is private (`reason` names which). That is the safety gate:
+     repository is private and the project's `trackers:` does not name it
+     (`reason` names which; a declared private repository is collected,
+     ruled 2026-10-06). That is the safety gate:
      no line in the resume output, no error. A skipped digest has no
      `repos` key, hence the guard (2026-09-13: the unguarded filter exited 5
      on 33 private-repository resumes in 60 days).
    - Exit `3` with `error: "gh_auth"` — `gh` has no valid login on this
      host. Tell the operator (`gh auth login`) and continue the resume
      without GitHub data; never pass over it silently.
-   - `first_run: true` — no baseline yet. Report the snapshot summary in one
-     line (open items, stars, forks, published advisories without a CVE)
-     and file nothing.
+   - `first_run: true` — no baseline yet, or one of another repository
+     (`replaced_baseline` names it: the project moved). Report the snapshot
+     summary in one line (open items, stars, forks, published advisories
+     without a CVE) and file nothing.
    - Otherwise surface every event under a `GitHub:` heading with full
      detail; file or update review items for the attention-worthy ones per
      the `fleet-status` skill § Review items (`fleet-status.mjs file …` —

@@ -1,6 +1,6 @@
 ---
 name: fleet-status
-description: Collect the GitHub-side state of fleet repositories — security advisories (a CVE landing on a known GHSA), issues, PRs, discussions and the movement on them (comments, reactions), forks with the forker's login, star and watcher counts, releases, Dependabot and code-scanning alert counts, the last CI conclusion — plus npm numbers for every package the account publishes (weekly downloads, top versions, deps.dev dependents, an all-time total) and each package's place in the `fleet-deps` graph; diff it against the per-project baseline in the vault, file review-the-change items on each project's queue, and advance the baseline. Use when the user invokes /fleet-status (the fleet sweep), /fleet-status OWNER/NAME (one repository), or /fleet-status show (the dashboard in chat: the stored state and movement of one repository or the fleet, no GitHub access), or as the GitHub step of /vault resume for the current repository. Backed by `fleet-status.mjs` (read-only `gh api`; github.com only; public repositories only).
+description: Collect the GitHub-side state of fleet repositories — security advisories (a CVE landing on a known GHSA), issues, PRs, discussions and the movement on them (comments, reactions), forks with the forker's login, star and watcher counts, releases, Dependabot and code-scanning alert counts, the last CI conclusion — plus npm numbers for every package the account publishes (weekly downloads, top versions, deps.dev dependents, an all-time total) and each package's place in the `fleet-deps` graph; diff it against the per-project baseline in the vault, file review-the-change items on each project's queue, and advance the baseline. Use when the user invokes /fleet-status (the fleet sweep), /fleet-status OWNER/NAME (one repository), or /fleet-status show (the dashboard in chat: the stored state and movement of one repository or the fleet, no GitHub access), or as the GitHub step of /vault resume for the current repository. Backed by `fleet-status.mjs` (read-only `gh api`; github.com only; public repositories, and the private ones a project's `trackers:` names).
 user_invocable: true
 ---
 
@@ -49,7 +49,9 @@ Per repository, all read-only through `gh api`:
 
 - **Packages** (approved 2026-09-14) — every package the npm account publishes, found with the
   registry's maintainer search and mapped to a project through its `repository` URL (a
-  non-fleet owner gets `<owner>-<repo>`, the `koajs-compress` precedent), plus every
+  non-fleet owner gets `<owner>-<repo>`, the `koajs-compress` precedent; `--cwd` and `--repo`
+  take the packages that map to their project, so a package still naming a repository the project
+  left stays with it, as `@uhop/vault-storage-mcp` does after D139), plus every
   `package.json` in dotfiles' `fleet-deps --json` graph. Per published package: the latest
   version and its publish date; the last 7 days' downloads with their dates and 52 weekly
   totals, rebuilt from npm every run; the publishes inside that window; the top five versions
@@ -61,10 +63,17 @@ Per repository, all read-only through `gh api`:
   transitive dependent in update order. The account comes from `--npm-user`, else from the
   publisher of a graph package whose manifest points back at its fleet repository.
 
-Not tracked, by ruling: commits and pushes (`git` and `check-drift.sh` cover them), private
-repositories, GitHub's "Used by" (no REST or GraphQL surface exists, and scraping the page was
-ruled out), and dependents' names (deps.dev returns counts only, and npmjs.com's list needs a
-spoofed browser user agent).
+Not tracked, by ruling: commits and pushes (`git` and `check-drift.sh` cover them), GitHub's
+"Used by" (no REST or GraphQL surface exists, and scraping the page was ruled out), and
+dependents' names (deps.dev returns counts only, and npmjs.com's list needs a spoofed browser
+user agent).
+
+**Private repositories** are collected only when a project declares one in the `trackers:` list of
+its `queue.md` (vault-storage D95), ruled 2026-10-06 when vault-storage moved to the private
+`apodictum/pc`; the 2026-08-28 ruling had left every private repository out. A declared private
+repository is collected like a public one, except that its advisories are not read (GitHub
+answers 404 for a private repository's). On `apodictum/pc` both alert counts read `unavailable`:
+Dependabot alerts and code scanning answer 403 there, since neither feature is enabled.
 
 ## Invocation
 
@@ -75,18 +84,26 @@ S=~/.claude/skills/fleet-status/fleet-status.mjs
 WORK=$(mktemp -d)
 "$S" collect --cwd --out "$WORK/github.json"                  # the repository you are in
 "$S" collect --repo OWNER/NAME --out "$WORK/github.json"      # one repository by name
-"$S" collect --fleet --out "$WORK/github.json"                # every public repository
+"$S" collect --fleet --out "$WORK/github.json"                # every public repository, plus the declared ones
 ```
 
 - `--cwd` resolves the repository from `origin`, and the vault project from `--project`, a
   `.claude/vault-project` file at the repository root, or the directory name — the same order
   `check-drift.sh` uses. **Safety gate:** a remote that isn't github.com, no remote, or a private
-  repository (read from the repository metadata; `--fleet` filters those at enumeration) writes
-  `{skipped: true, reason}` and exits `0`. Say nothing about it in a resume.
+  repository the project's `trackers:` does not name (read from the repository metadata; `--fleet`
+  applies it at enumeration) writes `{skipped: true, reason}` and exits `0`. Say nothing about it
+  in a resume.
+- `--repo OWNER/NAME` without `--project` takes the project whose `trackers:` names the
+  repository, else the repository name.
 - `--fleet` enumerates `gh repo list` for the authenticated account (`--owner` to override):
   public, not archived, not a fork; 51 repositories on 2026-08-28. The project name is the
   repository name; 15 of the 51 had no `projects/<name>/` folder that day, and the first
-  `commit` creates their `state.md`.
+  `commit` creates their `state.md`. Then it adds every repository a project's `trackers:` names,
+  under that project, whatever its owner or visibility (one vault read per project). `state.md`
+  holds one GitHub baseline, so a declaration whose project already collects another repository
+  is left out with a line on stderr.
+- A stored baseline of another repository (the project moved) counts as none: the run is a first
+  run, and its entry carries `replaced_baseline` with the old repository.
 - `--show` prints the full text view after collecting: one block per repository — stars, forks,
   watchers, open counts, CI; alert counts; every advisory with its CVE or `no CVE`; open issues,
   PRs, and discussions with author, comments, reactions, and the last commenter; the latest
@@ -166,7 +183,8 @@ stored views render.
    jq 'if .skipped then {skipped, reason, repo} else {totals, repos: [.repos[] | {repo, project, first_run, summary, errors, events}]} end' "$WORK/github.json"
    ```
 
-   `--cwd` and `--repo` write a skipped repository (not github.com, no remote, private) as a
+   `--cwd` and `--repo` write a skipped repository (not github.com, no remote, private and not
+   declared) as a
    top-level `{skipped, reason, …}` with no `repos` key, which the guard covers; `--fleet` always
    writes `repos`.
 
