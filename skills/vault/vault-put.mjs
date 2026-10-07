@@ -14,7 +14,7 @@
 // --replace invocations stay on the round-trip so they remain
 // all-or-nothing (the server op is one replace per call). A concurrent
 // write on the fallback surfaces as 412 (exit 2), and a composed folder
-// view (weak ETag / X-Vault-Composed — no on-disk file) is refused on
+// view (weak ETag / X-Program-Clerk-Composed — no on-disk file) is refused on
 // both paths instead of materializing a shadowing flat file. Replace
 // asserts exactly one occurrence unless --all (missing or ambiguous →
 // exit 3, nothing written). Null/empty documents are refused on every
@@ -168,7 +168,9 @@ const getDoc = async () => {
   if (!response.ok) fail(1, `GET ${path}: ${response.status} ${response.statusText}`);
   const text = await response.text(),
     etag = response.headers.get('etag');
-  if (response.headers.get('x-vault-composed') === 'true' || etag?.startsWith('W/')) {
+  const composed =
+    response.headers.get('x-program-clerk-composed') ?? response.headers.get('x-vault-composed');
+  if (composed === 'true' || etag?.startsWith('W/')) {
     fail(
       1,
       `GET ${path}: composed view of the atomized folder ${path.replace(/\.md$/, '')}/ — no single file exists, and a round-trip write would create a shadowing flat file. Edit the folder's pieces instead.`

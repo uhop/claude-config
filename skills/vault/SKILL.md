@@ -495,7 +495,8 @@ needed:
   indexer/enrichment pipeline handles `updated`/staleness downstream.
 - **Composed folder views can't be round-trip-edited.** A GET of `X.md`
   where only the atomized folder `X/` exists returns a *composed* document
-  (weak ETag `W/"…"` + `X-Vault-Composed: true`); vault-put refuses it up
+  (weak ETag `W/"…"` + `X-Program-Clerk-Composed: true`, also sent as
+  `X-Vault-Composed` until croc's switch, vault-storage D151); vault-put refuses it up
   front, and the server 412s conditional / 409s (`shadow_conflict`)
   unconditional PUTs against it — a flat file there would shadow the
   folder (the 2026-07-14 blog incident). Edit the folder's *pieces*
@@ -580,7 +581,7 @@ API endpoints (invoked via `vault-curl <path> [curl-options...]`):
 
 - **Read**: `vault-curl /vault/{path} -s` — *prefer `vault_read_file`*; use
   this when you need the response headers (`ETag` for a hand-rolled
-  conditional write, `X-Vault-Composed` to detect a composed folder view),
+  conditional write, `X-Program-Clerk-Composed` to detect a composed folder view),
   or when the bytes are headed for a file rather than your context —
   `-s > "$WORK/doc.md"` to `sed` a range out of a large document or to feed
   `vault-put --replace-file`. See the read-to-a-file exception above for the

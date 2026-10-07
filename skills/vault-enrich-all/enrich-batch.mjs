@@ -184,7 +184,9 @@ const api = async (method, path, body, headers = {}) => {
   return {
     data: json ?? text,
     etag: response.headers.get('etag'),
-    composed: response.headers.get('x-vault-composed') === 'true'
+    composed:
+      (response.headers.get('x-program-clerk-composed') ??
+        response.headers.get('x-vault-composed')) === 'true'
   };
 };
 
