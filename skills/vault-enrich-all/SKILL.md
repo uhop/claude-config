@@ -49,9 +49,22 @@ W=$(mktemp -d)
 # 2. judge — write the enrichment content per note (see § Generate enrichment fields)
 #    (start from .enrichments_template; null = skip)
 
-# 3. apply — validates everything first, then JSON-PUTs each block
+# 3. apply — validates everything first, then JSON-PUTs each block, then releases the claim
 "$E" apply --worksheet="$W/ws.json" --enrichments="$W/enr.json"
+# or, to give the claim back without writing:
+"$E" release --worksheet="$W/ws.json"
 ```
+
+**Work claims** (vault-storage D150). `prepare` claims its worklist (purpose
+`enrich`, under `--holder` or a generated name, for ten minutes plus two a
+note, from half an hour to four hours) and keeps only what it got: a note another
+pass holds is listed under `unclaimed`, with the holders under `held`, and
+left out of `items`. So a sweep and an ingest, or two sweeps, never enrich
+one note twice. The worksheet's `claim` carries the token; `apply` releases
+it after its writes (its report's `claim: "released"`, or `"lapsed"` when
+the time ran out first). A rejected enrichments file (exit 3) keeps the
+claim, so you can fix the file and apply again. A server without `/claims`
+runs unclaimed (`unclaimed_reason: "route_absent"`).
 
 Each worksheet item carries the note's `body` (or a `delta`, below), `title`, `type`,
 `existing_tags` / `existing_related`, the extracted `body_wikilinks` (the
@@ -202,7 +215,8 @@ description: Enrich N vault notes with agent: blocks
 prompt: |
   Read ~/.claude/skills/vault-enrich-all/SKILL.md. Using the enrich-batch
   harness exactly as its Workflow section shows: prepare (add --stale if
-  requested; --records=$FILE when given, else --limit=$LIMIT), write the
+  requested; --records=$FILE when given, else --limit=$LIMIT;
+  --holder=$HOLDER when given), write the
   enrichment content for every
   worksheet item per § Generate enrichment fields (its quality bar and
   biases are binding; null = skip only for notes you cannot judge), apply.
@@ -219,9 +233,11 @@ split the worksheet-independent worklist (`prepare`'s coverage or the
 `unenriched_records` list) into ~50-record chunks, write each chunk's
 `file_path` list to a file, and give each agent `prepare
 --records=<chunk-file>` — the explicit shard replaces self-enumeration, so
-two agents can never claim the same records. `--stale` stays a single agent
-(its worklist comes from the shared suggestions queue head). Concurrent
-writers are server-safe (atomic writes + `If-Match`, 2026-06-11).
+two agents of one sweep never take the same records. The sweep shards the
+`--stale` worklist the same way, at most four notes an agent, and gives
+every agent a `holder` for `--holder`, so its work claim names the sweep
+and the shard. Concurrent writers are server-safe (atomic writes +
+`If-Match`, 2026-06-11).
 
 ## When this is the right tool
 

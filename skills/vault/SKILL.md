@@ -46,6 +46,7 @@ in the same row.
 | Search-before-write | **`vault_propose`** | `POST /vault/propose` |
 | Raw inbox, cleanup-lint, embed-pending, incremental-reindex, run-all | **`vault_raw_inbox` / `vault_cleanup_lint` / `vault_embed_pending` / `vault_incremental_reindex` / `vault_run_scans`** | `vault-curl /maintenance/…` |
 | Repo leases — list/events, claim/renew/release/transfer | **`vault_lease_*`** (adapter ≥ 0.4.0; § Agent coordination below). A server from D67 (2026-09-27) on wants the claim's `claim_token` on renew/release/transfer; an adapter without that parameter cannot send it, so use the fallback with `claim_token` in the JSON body | `vault-curl /leases[/events]` + `POST /leases/claim\|renew\|release\|transfer` |
+| Work claims — reserve the notes a maintenance pass processes, renew, release, list (§ Work claims below) | **`vault_work_claim` / `vault_work_renew` / `vault_work_release` / `vault_work_list`** (adapter ≥ 0.15.0; server ≥ 2026-10-06, vault-storage D150). The same adapter adds `claim_token` to `vault_move`, `vault_supersede`, and `vault_delete_file`; an older one refuses it as an undeclared argument, so use the fallback for a move that carries a token | `vault-curl /claims -X POST -H 'Content-Type: application/json' --data-binary '{"holder": "…", "purpose": "ingest\|enrich\|merge\|compact", "items": ["<path>", …]}'`, `POST /claims/renew\|release` with `{holder, claim_token}`, `GET /claims`; `POST /vault/move` and `/vault/supersede` with `claim_token` in the body, `DELETE /vault/<path>?claim_token=…` |
 | Handoffs — create/list/get/events, claim/resolve/resubmit/note/verify | **`vault_handoff_*`** (adapter ≥ 0.5.0; `vault_handoff_verify` and `touches` ≥ 0.7.0; § Agent coordination below). From D67, resolve wants the claim's `claim_token`; on an adapter without it, use the fallback | `vault-curl /handoffs[/{id}\|/events]` + `POST /handoffs[/claim\|resolve\|resubmit\|note\|verify]` |
 | Handoff artifact — the git patch being handed over | **`vault_handoff_put_artifact`** (adapter ≥ 0.6.0); **read it to a file**, not into context: `vault-curl /handoffs/{id}/artifact -s > work.patch` | `vault-curl /handoffs/{id}/artifact -X PUT --data-binary @work.patch` |
 | `/commit`, snapshots, `cleanup-tag-aliases`, `release-embedder`, `folder-listing`, individual `find-*` scans | **`vault-curl`** | — deliberately not exposed on MCP |
@@ -97,6 +98,31 @@ line of defence — which is what makes an MCP write safe at all. (The
 an FM-only op that round-trips the body is never bricked.) Removal is
 `vault_delete_file`; replacement-in-favour-of-other-content is
 `vault_supersede`, never a delete.
+
+### Work claims — a maintenance pass reserves its notes
+
+A pass that processes notes (an ingest, an enrichment, a duplicate merge, a
+compaction) claims them first (vault-storage D150), so a pass running
+beside it leaves them alone. The claim is partial: `claimed` is what you
+got, `held` lists each item another pass holds, with its holder, purpose,
+and expiry; work on what you got and skip the rest. Keep the
+`claim_token`, pass it to your own moves, supersedes, and deletes of those
+notes, and release the claim when the pass ends; a crashed pass's claim
+lapses at its TTL (30 minutes by default). The raw inbox's `ready` list and
+lint's `unenriched_records` already leave claimed notes out, so read a
+worklist before you claim, never after. `enrich-batch.mjs` and
+`compact-batch.mjs` claim for you; `/vault ingest` and the duplicate merge
+claim by hand (their procedures say where).
+
+**A 409 `claimed_by_other` on a move, supersede, or delete** means another
+pass holds that note (`details` names it). Leave the note, or come back
+after the pass; edits and appends are never blocked, so ordinary writes
+need no claim. **Never force a work-claim release**, even when the claim
+looks stuck: a claim another holder left behind is the operator's to end on
+the agents page (`/ui/agents.html`). From adapter 0.15.0 neither
+`vault_work_release` nor `vault_lease_release` offers `force`; the REST
+route's `force` is a person's act, and every agent's token passes that check
+today, so the rule is all that stands in the way.
 
 **A call that fails with `code: "network"` says what happened** (adapter ≥
 0.12.0; server from 2026-09-29, vault-storage D99). The usual cause is a
@@ -273,10 +299,13 @@ basename and put the resource + holder id in the text so a non-holder can
 tell and ignore it. Record first, ring second. Taking the lease is the
 operator's act, never yours, and it happens in the UI only (ruled
 2026-09-19): he transfers, or force-releases in `/ui/agents.html`. When he
-says *"take the lease"*, point him there; **never call `vault_lease_release`
-with `force`**, and never route a refused release through `vault-curl`. The
-flag is exposed to every token holder, so this is a rule, not a permission,
-and the auto-mode classifier refuses the call anyway.
+says *"take the lease"*, point him there; **never force a lease release**,
+and never route a refused release through `vault-curl`. Adapter 0.15.0
+dropped `force` from `vault_lease_release`, and an older adapter still
+offers it: do not send it. The REST route's `force` is open to every token
+holder until croc's switch to signed-in keys (vault-storage D141), so this
+is a rule, not a permission, and the auto-mode classifier refuses the call
+anyway. The same holds for a work claim (§ Work claims).
 Before that ruling the section said single-agent sessions claim nothing;
 that left the registry unable to tell "nobody is there" from "nobody
 claimed", which is why the claim moved into a hook.
@@ -792,11 +821,23 @@ are skipped — the user is still iterating on them.
    `vault-curl /maintenance/raw-inbox -s | jq`) returns
    `{ready: [{path, title, updated}], drafts: [...]}`. Process only `ready`. If
    that array is empty, report "no ready notes; N drafts waiting" and
-   stop. (The user flips `ready: true` in FM when a note is ripe.)
-2. For each ready note, read the content with `vault_read_file`.
+   stop. (The user flips `ready: true` in FM when a note is ripe.) A note
+   another pass has claimed is listed under `held`, not `ready`.
+2. **Claim the ready notes** (§ Work claims): `vault_work_claim({holder:
+   "<host>/<session>", purpose: "ingest", items: [<ready paths>],
+   ttl_seconds})` (before adapter 0.15.0, the `vault-curl /claims`
+   fallback in § Surface split), sized to the run (the default 30 minutes covers a few
+   notes; renew with `vault_work_renew` when a run outlasts it). A note in
+   `held` is being compiled by another session: skip it. Keep the
+   `claim_token`. Then, for each claimed note, read the content with
+   `vault_read_file`.
 3. Extract concepts — create or update topic notes in `topics/`,
    project notes in `projects/<name>/`, or queue items in
-   `projects/<name>/queue.md` per the content's nature. When a
+   `projects/<name>/queue.md` per the content's nature. Before extending
+   or superseding an existing topic note, claim it too (a second
+   `vault_work_claim`, its own token), so a duplicate merge cannot archive
+   it under you; when `held` names it, write a new note instead, or leave
+   that point for the next run. When a
    compilation *replaces* an existing topic outright (the old note is
    being retired, not extended), use `vault_supersede` instead of
    overwriting in place — the predecessor is archived with its record id
@@ -838,12 +879,19 @@ are skipped — the user is still iterating on them.
      older server the sentinel is stored as a literal string; use
      `ready: false` there instead.
    - `vault_move` from `raw/<name>.md` to
-     `raw/archive/<YYYY-MM-DD>-<name>.md` so the inbox surfaces only
-     pending material.
+     `raw/archive/<YYYY-MM-DD>-<name>.md`, with the claim's
+     `claim_token`, so the inbox surfaces only pending material. (Before
+     adapter 0.15.0, `vault_move` refuses the token: use `vault-curl
+     /vault/move -X POST` with `{from, to, claim_token}`.) A `vault_supersede`
+     of a claimed topic note carries that note's token the same way.
    Process notes one-at-a-time end-to-end: derived note created →
    source updated → moved to archive. A failure mid-ingest leaves
    earlier notes archived and the rest still pending — safe to retry
    `/vault ingest` to resume.
+7. **Release every claim you took** with `vault_work_release({holder,
+   claim_token})`, on a failure too. A retry's claim sees your own unreleased
+   claim as `held`, since any live claim counts, yours included: release it
+   first when you still have the token, or let it lapse.
 
 ### /vault learn
 
@@ -1447,10 +1495,12 @@ the server refuses a release from anyone else (or they lapse at the
 claim TTL, default 30 min). `vault-triage.mjs` keeps the token in its
 worksheet; the holder name settles nothing (vault-storage D67). On a pre-claim server the old rule stands: never two
 same-kind triage agents — they pull the same queue head and duplicate
-or contradict each other's decisions. Enrichment backfill shards by
-explicit worklist chunks instead (§ Procedure step 4) — coverage is
-not a suggestion kind, so there is nothing to claim. Label every
-concurrent dispatch with its kind so a failed pass attributes cleanly.
+or contradict each other's decisions. Enrichment shards by explicit
+worklist chunks instead, and each agent's `enrich-batch prepare` takes a
+work claim on its chunk under the plan's `holder` (§ Work claims), so a
+second sweep or an ingest running beside this one leaves those notes
+alone. Label every concurrent dispatch with its kind so a failed pass
+attributes cleanly.
 
 #### Procedure
 
@@ -1487,7 +1537,8 @@ W=$(mktemp -d)
    advisor, which measured 85–161 s per call on 2026-09-27):
    - `vault-enrich-all` entries: its § Sub-agent mode prompt; pass
      `--records=<records_file>` when the plan sharded the worklist,
-     else `--limit=<limit>`; `mode: "stale"` → `--stale`. The stale
+     else `--limit=<limit>`; `mode: "stale"` → `--stale`; and always
+     `--holder=<holder>`, the name its work claim goes under. The stale
      worklist is always sharded (at most four notes an agent) and frozen at
      `begin`: a note that goes stale mid-sweep waits for the next sweep.
    - Say the plan's `estimate_s` and the running `elapsed_s` in the message
@@ -1497,7 +1548,9 @@ W=$(mktemp -d)
      `limit` — the generated holders make concurrent claims disjoint
      by construction.
    - `compaction_candidate`: run `/vault-compact <folder>` per entry
-     in the plan's `candidates` list.
+     in the plan's `candidates` list. A `plan` that exits 3 because
+     another pass holds a selected piece is a skip, not a failure: name
+     the folder and the holder in the summary.
 3. **`next`** after all dispatched agents return. The script
    re-measures live, records progress (a count that stopped dropping
    becomes that kind's **stuck floor**; a later count above the floor

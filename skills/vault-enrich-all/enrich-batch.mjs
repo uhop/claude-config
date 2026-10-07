@@ -9,8 +9,14 @@
 // content; `apply` validates it all before any write and PUTs each block
 // through the JSON path with If-Match + current-path resolution.
 //
-//   enrich-batch prepare [--limit=N] [--stale] [--full-threshold=F] [--type=T] [--records=FILE] [--out=FILE]
+//   enrich-batch prepare [--limit=N] [--stale] [--full-threshold=F] [--type=T] [--records=FILE] [--holder=H] [--out=FILE]
 //   enrich-batch apply --worksheet=FILE --enrichments=FILE [--dry-run]
+//   enrich-batch release --worksheet=FILE
+//
+// `prepare` takes a work claim (purpose enrich, vault-storage D150) on its
+// worklist and keeps only what it got, so a parallel sweep leaves those notes
+// alone; `apply` releases it after its writes, and `release` gives it back
+// without writing. A server without /claims is run unclaimed.
 //
 // A --stale item whose body changed by at most F (default 0.4) of its chunk
 // bytes since its last enrichment carries `delta` (the added chunks) instead
@@ -29,7 +35,9 @@
 // before any write. Exits non-zero — run solo or `|| true` in parallel
 // Bash batches.
 
+import {randomBytes} from 'node:crypto';
 import {readFileSync, writeFileSync} from 'node:fs';
+import {hostname} from 'node:os';
 import process from 'node:process';
 
 if (!import.meta.main)
@@ -59,11 +67,12 @@ const base = process.env.VAULT_API_URL?.replace(/\/+$/, ''),
 if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
 
 const usage = `Usage:
-  enrich-batch prepare [--limit=N] [--stale] [--full-threshold=F] [--type=T] [--records=FILE] [--out=FILE]
-  enrich-batch apply --worksheet=FILE --enrichments=FILE [--dry-run]`;
+  enrich-batch prepare [--limit=N] [--stale] [--full-threshold=F] [--type=T] [--records=FILE] [--holder=H] [--out=FILE]
+  enrich-batch apply --worksheet=FILE --enrichments=FILE [--dry-run]
+  enrich-batch release --worksheet=FILE`;
 
 const [command, ...rest] = process.argv.slice(2);
-if (!['prepare', 'apply'].includes(command))
+if (!['prepare', 'apply', 'release'].includes(command))
   fail(command === '--help' || command === '-h' ? 0 : 2, usage);
 
 const opts = {
@@ -72,6 +81,7 @@ const opts = {
   fullThreshold: 0.4,
   type: null,
   records: null,
+  holder: null,
   out: null,
   worksheet: null,
   enrichments: null,
@@ -96,6 +106,9 @@ for (const arg of rest) {
       break;
     case '--records':
       opts.records = value;
+      break;
+    case '--holder':
+      opts.holder = value;
       break;
     case '--out':
       opts.out = value;
@@ -214,6 +227,55 @@ const wikilinks = body => [
   ...new Set([...maskCode(body).matchAll(WIKILINK_RE)].map(m => `[[${m[1].trim()}]]`))
 ];
 
+// --- work claims (D150) -------------------------------------------------------
+
+const CLAIM_TTL = {base: 600, perItem: 120, min: 1800, max: 14400};
+
+// Partial by design: what another claim covers comes back `held` and is left
+// out. A 404 is a server older than /claims, so the batch runs unclaimed.
+const claimWork = async (holder, paths) => {
+  if (!paths.length) return {claim: null, claimed: new Set(), held: []};
+  const ttl = Math.min(
+    CLAIM_TTL.max,
+    Math.max(CLAIM_TTL.min, CLAIM_TTL.base + paths.length * CLAIM_TTL.perItem)
+  );
+  try {
+    const {data} = await api('POST', '/claims', {
+      holder,
+      purpose: 'enrich',
+      items: paths,
+      ttl_seconds: ttl
+    });
+    return {
+      claim: data.claim_token
+        ? {holder, claim_token: data.claim_token, expires_at: data.expires_at}
+        : null,
+      claimed: new Set(data.claimed),
+      held: data.held
+    };
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404)
+      return {claim: null, claimed: null, held: [], unclaimed: 'route_absent'};
+    throw err;
+  }
+};
+
+// A lapsed claim (404) is already free; anything else is reported, never thrown.
+const releaseWork = async claim => {
+  try {
+    await api('POST', '/claims/release', {
+      holder: claim.holder,
+      claim_token: claim.claim_token
+    });
+    return 'released';
+  } catch (err) {
+    if (!(err instanceof ApiError)) throw err;
+    return err.status === 404
+      ? 'lapsed'
+      : {status: err.status, code: err.code, message: err.message};
+  }
+};
+
 // --- prepare -----------------------------------------------------------------
 
 const prepare = async () => {
@@ -263,6 +325,18 @@ const prepare = async () => {
   }
   candidates = candidates.slice(0, opts.limit);
 
+  // Claim each note's current path: a payload's path predates a rename made on disk.
+  const records = new Map();
+  await pool(
+    candidates.map(candidate => async () => {
+      const {data} = await api('GET', `/sections/${candidate.record_id}`);
+      records.set(candidate.record_id, data);
+    })
+  );
+  const holder = opts.holder ?? `enrich-${hostname()}-${randomBytes(3).toString('hex')}`;
+  const work = await claimWork(holder, [...new Set([...records.values()].map(r => r.file_path))]);
+  const unclaimed = [];
+
   const taxonomy = [];
   {
     let offset = 0;
@@ -278,7 +352,11 @@ const prepare = async () => {
     items = [];
   await pool(
     candidates.map(candidate => async () => {
-      const {data: record} = await api('GET', `/sections/${candidate.record_id}`);
+      const record = records.get(candidate.record_id);
+      if (work.claimed && !work.claimed.has(record.file_path)) {
+        unclaimed.push(record.file_path);
+        return;
+      }
       const {data: fm} = await api('GET', `/sections/${candidate.record_id}/fm?exclude=body`);
       if (emptyBody(record.body ?? '')) {
         needsBody.push(record.file_path);
@@ -354,6 +432,10 @@ const prepare = async () => {
     ...(opts.stale
       ? {reads: {delta: deltas, full: items.length - deltas, full_threshold: opts.fullThreshold}}
       : {}),
+    claim: work.claim,
+    ...(work.unclaimed ? {unclaimed_reason: work.unclaimed} : {}),
+    held: work.held,
+    unclaimed: unclaimed.sort(),
     taxonomy,
     needs_a_body: needsBody,
     items,
@@ -363,7 +445,7 @@ const prepare = async () => {
   if (opts.out) {
     writeFileSync(opts.out, output + '\n');
     console.log(
-      `worksheet: ${opts.out} — ${items.length} item(s) (${worksheet.mode}${opts.stale ? `, ${deltas} read as a delta` : ''}), ${coverage.unenriched} unenriched total${needsBody.length ? `, ${needsBody.length} need a body` : ''}`
+      `worksheet: ${opts.out} — ${items.length} item(s) (${worksheet.mode}${opts.stale ? `, ${deltas} read as a delta` : ''}), ${coverage.unenriched} unenriched total${needsBody.length ? `, ${needsBody.length} need a body` : ''}${unclaimed.length ? `, ${unclaimed.length} not claimed` : ''}${worksheet.claim ? `; claimed as ${holder}` : ''}`
     );
   } else console.log(output);
 };
@@ -501,13 +583,21 @@ const apply = async () => {
   );
 
   report.written.sort();
+  if (worksheet.claim) report.claim = await releaseWork(worksheet.claim);
   console.log(JSON.stringify(report, null, 2));
   if (report.failures.length) process.exit(1);
 };
 
+const release = async () => {
+  if (!opts.worksheet) fail(2, 'release needs --worksheet');
+  const {claim} = JSON.parse(readFileSync(opts.worksheet, 'utf8'));
+  console.log(JSON.stringify({claim: claim ? await releaseWork(claim) : 'none'}, null, 2));
+};
+
 try {
   if (command === 'prepare') await prepare();
-  else await apply();
+  else if (command === 'apply') await apply();
+  else await release();
 } catch (err) {
   if (err instanceof ApiError) fail(1, `${err.status} ${err.code} — ${err.message}`);
   throw err;

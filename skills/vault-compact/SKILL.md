@@ -43,6 +43,8 @@ W=$(mktemp -d)
 "$C" plan <folder> [--keep=N | --before=DATE] --out="$W/plan.json"
 # write the summary prose (§ Summary quality) to $W/summary.md; then:
 "$C" execute --plan="$W/plan.json" --summary="$W/summary.md" [--related='[[a]],[[b]]'] [--dry-run]
+# or, to give the claim back without compacting:
+"$C" release --plan="$W/plan.json"
 ```
 
 `plan` inventories the folder (paginated, excludes `archive/` subpaths,
@@ -61,6 +63,17 @@ block survive; the old read+PUT+DELETE identity-loss pattern is dead. The
 report itemizes every move (`from → to`) — feed that itemization into the
 sweep/final summary verbatim, never bare counts. Exit 0 ok · 1 partial
 failures · 3 rejected pre-write; run solo or `|| true` in parallel batches.
+
+**Work claims** (vault-storage D150). `plan` claims the selected pieces
+(purpose `compact`, `--holder` or a generated name) for an hour, so a
+parallel ingest or duplicate merge cannot move one mid-compaction; the plan
+carries the claim, `execute` passes its token on every move and releases it,
+and its report says `claim: "released"`. The claim is all or nothing: when
+another pass holds any selected piece, `plan` exits 3 naming each one with
+its holder, purpose, and expiry, and keeps nothing. Leave the folder for
+the next run, or compact again once that pass ends. If you abandon a plan,
+`release` gives the claim back; otherwise it lapses after the hour. A
+server without `/claims` runs unclaimed.
 
 ## Summary quality (the judgment)
 

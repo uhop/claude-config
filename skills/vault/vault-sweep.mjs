@@ -27,6 +27,10 @@
 // no model turn judges more than a handful. A note that goes stale mid-sweep
 // waits for the next sweep instead of forcing a second round.
 //
+// Every enrichment agent gets a holder: its enrich-batch prepare claims its
+// notes under that name (vault-storage D150), so a parallel sweep or ingest
+// leaves them alone, and the agents page shows whose they are.
+//
 // Every plan carries `elapsed_s`, and a dispatch its `estimate_s`: the longest
 // agent's start cost plus its items at the measured per-item rate.
 //
@@ -252,9 +256,14 @@ const buildDispatch = async (state, kind, count, worklist) => {
       chunks.forEach((chunk, i) => {
         const file = path.join(dir, `sweep-chunk-r${state.round}p${state.passes[kind]}-${i}.txt`);
         writeFileSync(file, chunk.map(r => r.file_path).join('\n') + '\n');
-        entry.agents.push({mode: 'backfill', records_file: file, records: chunk.length});
+        entry.agents.push({
+          mode: 'backfill',
+          records_file: file,
+          records: chunk.length,
+          holder: holderFor(state, kind, i)
+        });
       });
-    } else entry.agents.push({mode: 'backfill', limit: 100});
+    } else entry.agents.push({mode: 'backfill', limit: 100, holder: holderFor(state, kind, 0)});
   } else if (kind === 'enrich_stale') {
     const frozen = (await pendingItems('agent_enrichment_stale')).filter(
       item => item.created <= state.started
@@ -271,7 +280,12 @@ const buildDispatch = async (state, kind, count, worklist) => {
         `sweep-stale-r${state.round}p${state.passes[kind]}-${entry.agents.length}.txt`
       );
       writeFileSync(file, shard.map(item => item.payload.file_path).join('\n') + '\n');
-      entry.agents.push({mode: 'stale', records_file: file, records: shard.length});
+      entry.agents.push({
+        mode: 'stale',
+        records_file: file,
+        records: shard.length,
+        holder: holderFor(state, kind, entry.agents.length)
+      });
     }
   } else if (kind === 'compaction_candidate') {
     const pending = await api(

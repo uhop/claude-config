@@ -8,13 +8,22 @@
 // the originals via POST /vault/move (record_id preserved — edges, tags,
 // embeddings survive; the read+PUT+DELETE identity-loss pattern is dead).
 //
-//   compact-batch plan <folder> [--keep=N | --before=YYYY-MM-DD] [--out=FILE]
+//   compact-batch plan <folder> [--keep=N | --before=YYYY-MM-DD] [--holder=H] [--out=FILE]
 //   compact-batch execute --plan=FILE --summary=BODY.md [--related=[[a]],[[b]]] [--dry-run]
+//   compact-batch release --plan=FILE
+//
+// `plan` takes a work claim (purpose compact, vault-storage D150) on the
+// selected pieces, all or nothing: a piece another pass holds stops the plan
+// (exit 3), so the summary's range never has a hole. `execute` passes the
+// claim's token on each move and releases it; `release` gives it back
+// unexecuted. A server without /claims is run unclaimed.
 //
 // Exit 0 ok · 1 HTTP/partial failures · 2 usage · 3 plan/summary rejected
 // before any write. Run solo or `|| true` in parallel Bash batches.
 
+import {randomBytes} from 'node:crypto';
 import {readFileSync, writeFileSync} from 'node:fs';
+import {hostname} from 'node:os';
 import process from 'node:process';
 
 if (!import.meta.main)
@@ -23,6 +32,7 @@ if (!import.meta.main)
   );
 
 const PASS_CAP = 20; // per-pass archive cap — repeated passes beat one mega-summary
+const CLAIM_TTL_S = 3600;
 
 const fail = (code, message) => {
   console.error(message);
@@ -34,17 +44,19 @@ const base = process.env.VAULT_API_URL?.replace(/\/+$/, ''),
 if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
 
 const usage = `Usage:
-  compact-batch plan <folder> [--keep=N | --before=YYYY-MM-DD] [--out=FILE]
-  compact-batch execute --plan=FILE --summary=BODY.md [--related=[[a]],[[b]]] [--dry-run]`;
+  compact-batch plan <folder> [--keep=N | --before=YYYY-MM-DD] [--holder=H] [--out=FILE]
+  compact-batch execute --plan=FILE --summary=BODY.md [--related=[[a]],[[b]]] [--dry-run]
+  compact-batch release --plan=FILE`;
 
 const [command, ...rest] = process.argv.slice(2);
-if (!['plan', 'execute'].includes(command))
+if (!['plan', 'execute', 'release'].includes(command))
   fail(command === '--help' || command === '-h' ? 0 : 2, usage);
 
 const opts = {
   folder: null,
   keep: null,
   before: null,
+  holder: null,
   out: null,
   plan: null,
   summary: null,
@@ -61,6 +73,9 @@ for (const arg of rest) {
       break;
     case '--before':
       opts.before = value;
+      break;
+    case '--holder':
+      opts.holder = value;
       break;
     case '--out':
       opts.out = value;
@@ -136,6 +151,51 @@ const pool = async (jobs, width = 6) => {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+// --- work claims (D150) ------------------------------------------------------
+
+const releaseWork = async claim => {
+  try {
+    await api('POST', '/claims/release', {holder: claim.holder, claim_token: claim.claim_token});
+    return 'released';
+  } catch (err) {
+    if (!(err instanceof ApiError)) throw err;
+    return err.status === 404
+      ? 'lapsed'
+      : {status: err.status, code: err.code, message: err.message};
+  }
+};
+
+// The whole selection or nothing; null when the server predates /claims.
+const claimSelection = async paths => {
+  const holder = opts.holder ?? `compact-${hostname()}-${randomBytes(3).toString('hex')}`;
+  let answer;
+  try {
+    answer = await api('POST', '/claims', {
+      holder,
+      purpose: 'compact',
+      items: paths,
+      ttl_seconds: CLAIM_TTL_S
+    });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    throw err;
+  }
+  const claim = answer.claim_token
+    ? {holder, claim_token: answer.claim_token, expires_at: answer.expires_at}
+    : null;
+  if (answer.held.length) {
+    if (claim) await releaseWork(claim);
+    const held = answer.held.map(
+      h => `${h.item} (${h.holder}, ${h.purpose}, until ${h.expires_at})`
+    );
+    fail(
+      3,
+      `another pass holds ${answer.held.length} selected piece(s) — nothing claimed:\n  ${held.join('\n  ')}`
+    );
+  }
+  return claim;
+};
+
 // --- plan --------------------------------------------------------------------
 
 const plan = async () => {
@@ -176,6 +236,8 @@ const plan = async () => {
   selected = selected.slice(0, PASS_CAP);
   if (!selected.length)
     fail(3, `nothing to archive in ${opts.folder} (${pieces.length} pieces, selection empty)`);
+
+  const claim = await claimSelection(selected.map(p => p.file_path));
 
   const selectedIds = new Set(selected.map(p => p.record_id));
   const candidates = [];
@@ -253,13 +315,14 @@ const plan = async () => {
     summary_path: `${opts.folder}/_summary-${range}.md`,
     suggested_groups: groups,
     inbound_backlinks: backlinks,
+    claim,
     selected
   };
   const output = JSON.stringify(worksheet, null, 2);
   if (opts.out) {
     writeFileSync(opts.out, output + '\n');
     console.log(
-      `plan: ${opts.out} — archive ${selected.length} of ${pieces.length} pieces (${range})${truncated ? ' [capped at 20 — re-run after this pass]' : ''}, ${backlinks.length} external inbound link(s)`
+      `plan: ${opts.out} — archive ${selected.length} of ${pieces.length} pieces (${range})${truncated ? ' [capped at 20 — re-run after this pass]' : ''}, ${backlinks.length} external inbound link(s)${claim ? `; claimed as ${claim.holder}` : ''}`
     );
   } else console.log(output);
 };
@@ -308,13 +371,17 @@ const execute = async () => {
   };
   for (const move of moves) {
     try {
-      await api('POST', '/vault/move', move);
+      await api('POST', '/vault/move', {
+        ...move,
+        ...(sheet.claim && {claim_token: sheet.claim.claim_token})
+      });
       report.archived.push(`${move.from} → ${move.to}`);
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;
       report.failures.push({...move, status: err.status, code: err.code, message: err.message});
     }
   }
+  if (sheet.claim) report.claim = await releaseWork(sheet.claim);
   // Nothing else re-runs the scan, so the folder's compaction_candidate stayed pending (2026-10-02).
   try {
     const {qualifying, autoResolved} = await api('POST', '/maintenance/find-compaction-candidates');
@@ -327,9 +394,16 @@ const execute = async () => {
   if (report.failures.length) process.exit(1);
 };
 
+const release = async () => {
+  if (!opts.plan) fail(2, 'release needs --plan');
+  const {claim} = JSON.parse(readFileSync(opts.plan, 'utf8'));
+  console.log(JSON.stringify({claim: claim ? await releaseWork(claim) : 'none'}, null, 2));
+};
+
 try {
   if (command === 'plan') await plan();
-  else await execute();
+  else if (command === 'execute') await execute();
+  else await release();
 } catch (err) {
   if (err instanceof ApiError) fail(1, `${err.status} ${err.code} — ${err.message}`);
   throw err;
