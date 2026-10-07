@@ -18,6 +18,7 @@ import {
   renderExchange,
   isHumanUserRow,
   asHumanRow,
+  parseSideNote,
   USER_TURN_LINE_MAX
 } from './reflect-lib.mjs';
 
@@ -433,4 +434,49 @@ test('a message typed mid-turn is a human turn; harness rows in the same shape a
       '── 2026-09-17T06:08:18Z USER (queued)\nDo it the old-fashioned way: write to console all important operations with timestamps.'
     )
   );
+});
+
+test('a relayed side-agent note splits into its title, its text, and his own words', () => {
+  // vault-storage 6518cf61, 2026-10-04T22:21:28Z (shortened); reports/2026-10-06-uhop P1
+  const withWords =
+    'Here is a note offered by a side agent:\n\n' +
+    "> Heads up · The deploy keys you chose give our server lasting write access to each client's repository.\n" +
+    '>\n' +
+    '> **Deploy keys never expire and get backed up**\n' +
+    "> - GitHub deploy keys don't expire.\n" +
+    '> - The GitHub App option uses tokens that expire in an hour.\n\n' +
+    'Should it be a secret?';
+  const side = parseSideNote(withWords);
+  assert.equal(side.title, 'Deploy keys never expire and get backed up');
+  assert.equal(
+    side.heads_up,
+    "The deploy keys you chose give our server lasting write access to each client's repository."
+  );
+  assert.ok(side.note.endsWith('expire in an hour.'));
+  assert.equal(side.addendum, 'Should it be a secret?');
+  // Eugene's words are classified as his turn; the note's "don't" is not.
+  assert.equal(classifyUserTurn(side.addendum).negation, false);
+
+  // vault-storage 6518cf61, 2026-10-04T21:20:30Z: a queued note with nothing after it
+  const bare =
+    'Here is a note offered by a side agent:\n\n' +
+    '> Heads up · The t4g.small you approved is a "burstable" machine.\n' +
+    '>\n' +
+    '> **The t4g.small rations its CPU with credits**\n' +
+    '> - Short bursts are covered by saved credits.';
+  assert.equal(parseSideNote(bare).title, 'The t4g.small rations its CPU with credits');
+  assert.equal(parseSideNote(bare).addendum, '');
+
+  // No bold title: the heads-up line names it.
+  assert.equal(
+    parseSideNote('Here is a note offered by a side agent:\n> Heads up · Two runs differ.\n').title,
+    'Two runs differ.'
+  );
+
+  for (const other of [
+    'pushed, next',
+    'BTW, here is a note offered by a side agent:\n> quoted',
+    'Here is a note offered by a side agent: inline, no quote block'
+  ])
+    assert.equal(parseSideNote(other), null, other);
 });

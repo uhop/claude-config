@@ -62,7 +62,7 @@ Read all three to dedupe; write only to vault + claude-config.
    ```json
    {
      "scan_window": {"since": "...", "start_iso": "...", "end_iso": "..."},
-     "totals": {"corrections": N, "confirmations": N, "stuck_loops": N, "repeated_failures": N, "surprises": N, "multi_release": N},
+     "totals": {"corrections": N, "confirmations": N, "stuck_loops": N, "repeated_failures": N, "surprises": N, "multi_release": N, "side_notes": N},
      "sessions_scanned": N,
      "automated": {"count": N, "included": false, "sessions": [{project, session_id, entrypoint, rows, first_turn}]},
      "transcripts_seen": N,
@@ -70,14 +70,15 @@ Read all three to dedupe; write only to vault + claude-config.
      "live_sessions": [{project, session_id, path, mtime_iso, age_seconds, first_row_iso}],
      "state_watermark_iso": "...",
      "session_git": [{project, session_id, start_iso, end_iso, first_turn, repo, commits, correction_driven_commits, shas}],
-     "user_turns": [{project, session_id, ts, ts_iso, first_line, chars, queued?, adjacent?, correction?, did_you?, after_api_error?}],
+     "user_turns": [{project, session_id, ts, ts_iso, first_line, chars, side_note?, addendum?, queued?, adjacent?, correction?, did_you?, after_api_error?}],
      "signals": {
        "corrections":       [{kind, project, session_id, ts, ts_iso, matched_text, excerpt, unlanded?, scope_extension?}, ...],
        "confirmations":     [{...}],
        "stuck_loops":       [{kind, project, session_id, ts, ts_iso, tool, repetitions, excerpt}],
        "repeated_failures": [{kind, occurrences, sessions, tool, project, session_id, ts, ts_iso, error_text, excerpt}],
        "surprises":         [{...}],
-       "multi_release":     [{kind, project, session_id, repo, count, span_min, releases: [{sha, subject, driver}], note}]
+       "multi_release":     [{kind, project, session_id, repo, count, span_min, releases: [{sha, subject, driver}], note}],
+       "side_notes":        [{kind, project, session_id, ts, ts_iso, title, heads_up, note, addendum?, queued?}]
      }
    }
    ```
@@ -152,6 +153,22 @@ Read all three to dedupe; write only to vault + claude-config.
    typed while watching the work, so they carry the densest steering; read
    them first.
 
+   **`side_notes` are the side agent's findings, relayed by Eugene.** The
+   built-in `cc-plugin-you-should-know` plugin (enabled 2026-10-03) watches a
+   session and writes a heads-up; a turn that opens _"Here is a note offered
+   by a side agent:"_ is one he passed to the main agent. The scanner lists it
+   here by its bold `title`, keeps it out of `corrections`, marks its
+   `user_turns` entry `side_note: true`, and classifies only his own words
+   after the note (`addendum`) as his turn. On 2026-10-06, 11 of 22 notes
+   caught a rule on record being broken, the unread residue four times, and
+   the previous report had filed four as false positives
+   ([[projects/agent-workflow/reports/2026-10-06-uhop]] P1). Read each one
+   against the transcript with `reflect-context.mjs`, since a note is a claim
+   and one that day overstated its case. In the report, give each a row:
+   the session, the note's title, the rule on record it shows broken (or
+   "none": a consequence or a review), and how the main agent answered. Read
+   `addendum` as Eugene's turn in the reading pass.
+
    **Jev is on demand here, never a step** (Eugene, 2026-09-22: *"Let's run
    without Jev for now, keep it on demand. But you can suggest when to use
    it."*). The arm in `skills/reflect/jev-marker/` measured it on 902 turns
@@ -202,7 +219,7 @@ Read all three to dedupe; write only to vault + claude-config.
    If the candidate's rule overlaps an existing entry, mark it `already_covered` — it goes in the report's "Already covered" section, not the proposals.
 
 4. **Classify by confidence.** For each non-covered candidate:
-   - **high** — recurrence, OR singular but with decisive language ("never", "always", "we don't do that"). Per [[projects/agent-workflow/decisions]] D2 + D3. Recurrence is met when **either** (a) the signal fired in ≥ 2 sessions in *this* scan, **or** (b) it fired once here and a matching signal appears in another host's recent report from step 3 — that cross-machine hit counts as the second occurrence. Without (b) a once-per-machine signal never crosses the bar on either host, since each run sees only local transcripts. Matching is semantic (same underlying rule / behaviour), not string-identical; when the match is uncertain, treat it as medium, not high. **(c) `unlanded: true` on the signal counts as recurrence by itself** — the scanner sets it when the user's own words say the correction has not landed ("you still…", "why do you still…", "I still see…"), which makes that turn the second occurrence whether or not the first one was captured. Verify the antecedent before promoting: read back far enough to confirm what was corrected earlier, since a "still" turn is unintelligible on its own. **(d) A cluster of `scope_extension: true` turns — ≥ 2 in one session on one defect class — is recurrence** for the fix-the-class family (each turn is the user re-asking for a sibling the agent left out); a single one is not, and the cluster still wants the transcript read to name the class.
+   - **high** — recurrence, OR singular but with decisive language ("never", "always", "we don't do that"). Per [[projects/agent-workflow/decisions]] D2 + D3. Recurrence is met when **either** (a) the signal fired in ≥ 2 sessions in *this* scan, **or** (b) it fired once here and a matching signal appears in another host's recent report from step 3 — that cross-machine hit counts as the second occurrence. Without (b) a once-per-machine signal never crosses the bar on either host, since each run sees only local transcripts. Matching is semantic (same underlying rule / behaviour), not string-identical; when the match is uncertain, treat it as medium, not high. **(c) `unlanded: true` on the signal counts as recurrence by itself** — the scanner sets it when the user's own words say the correction has not landed ("you still…", "why do you still…", "I still see…"), which makes that turn the second occurrence whether or not the first one was captured. Verify the antecedent before promoting: read back far enough to confirm what was corrected earlier, since a "still" turn is unintelligible on its own. **(d) A cluster of `scope_extension: true` turns — ≥ 2 in one session on one defect class — is recurrence** for the fix-the-class family (each turn is the user re-asking for a sibling the agent left out); a single one is not, and the cluster still wants the transcript read to name the class. **(e) A side note that shows a rule on record broken is an occurrence of that rule**, after the transcript confirms it; two such notes in different sessions, or one plus a correction elsewhere, meet (a).
    - **`multi_release` is always high.** Ruled 2026-08-17: more than one release
      of a project in a single session is a signal that something went wrong, and
      it needs no recurrence to qualify. Eugene: *"it is possible to have more

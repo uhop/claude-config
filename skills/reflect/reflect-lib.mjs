@@ -296,6 +296,27 @@ export const firstLine = (text, cap = USER_TURN_LINE_MAX) => {
   return line.length > cap ? line.slice(0, cap - 1) + '…' : line;
 };
 
+// A note from the side agent (the built-in `cc-plugin-you-should-know` plugin,
+// claude-config 70bb29c) that Eugene relayed: a prefix line, a quoted heads-up
+// with a bold title, then any words of his own. It reports on the main agent,
+// so it is not his correction; 10 of 22 scored as corrections on 2026-10-06
+// (reports/2026-10-06-uhop P1). Anchored at turn start, so a user quoting the
+// phrase keeps the turn. Returns null for any other turn.
+const SIDE_NOTE_PREFIX = /^\s*Here is a note offered by a side agent:[ \t]*\n/;
+export const parseSideNote = text => {
+  if (!SIDE_NOTE_PREFIX.test(text ?? '')) return null;
+  const lines = text.replace(SIDE_NOTE_PREFIX, '').split('\n');
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) ++i;
+  const quoted = [];
+  for (; i < lines.length && lines[i].startsWith('>'); ++i)
+    quoted.push(lines[i].replace(/^>\s?/, ''));
+  const note = quoted.join('\n').trim();
+  const headsUp = note.match(/^Heads up · (.+)$/m)?.[1].trim() ?? '';
+  const title = note.match(/^\*\*(.+?)\*\*\s*$/m)?.[1].trim() ?? firstLine(headsUp || note);
+  return {title, heads_up: headsUp, note, addendum: lines.slice(i).join('\n').trim()};
+};
+
 // --- Exchange rendering -------------------------------------------------
 
 // A moment in a transcript rendered for a human: the rows around a timestamp

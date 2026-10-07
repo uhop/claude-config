@@ -39,7 +39,8 @@ import {
   errorSignature,
   isSuppressed,
   isAutomatedEntrypoint,
-  firstLine
+  firstLine,
+  parseSideNote
 } from './reflect-lib.mjs';
 
 if (!import.meta.main)
@@ -323,7 +324,8 @@ const signals = {
   stuck_loops: [],
   repeated_failures: [],
   surprises: [],
-  multi_release: []
+  multi_release: [],
+  side_notes: []
 };
 
 // Per-session git correlation (Pass 4), reported alongside the signals so a
@@ -469,7 +471,26 @@ for (const t of transcripts) {
     const e = events[i];
     if (e.role !== 'user' || !e.userText || e.userText.length < 3) continue;
 
-    const text = e.userText;
+    let text = e.userText;
+    // A relayed side-agent note is a finding about the main agent, read by the
+    // agent (SKILL.md step 2); only Eugene's words after it are classified.
+    const side = parseSideNote(text);
+    if (side) {
+      signals.side_notes.push({
+        kind: 'side_note',
+        project: t.project,
+        session_id: t.session_id,
+        ts: e.ts,
+        ts_iso: iso(e.ts),
+        title: side.title,
+        heads_up: side.heads_up,
+        note: side.note.length > 1500 ? side.note.slice(0, 1499) + '…' : side.note,
+        ...(side.addendum && {addendum: side.addendum}),
+        ...(e.queued && {queued: true})
+      });
+      if (side.addendum.length < 3) continue;
+      text = side.addendum;
+    }
     // A queued message answers the work in progress, usually after a tool result.
     const prevAssistant = e.queued || (i > 0 && events[i - 1].role === 'assistant');
     const fired = classifyUserTurn(text);
@@ -655,15 +676,19 @@ for (const t of transcripts) {
       between.length > 0 && between.every(x => x.role === 'assistant' && !x.hasToolUse);
     const prev = i > 0 ? events[i - 1] : null;
     const afterAssistant = prev?.role === 'assistant';
-    const didYou = (e.queued || afterAssistant) && classifyUserTurn(e.userText).did_you;
+    const side = parseSideNote(e.userText);
+    const own = side ? side.addendum : e.userText;
+    const didYou = (e.queued || afterAssistant) && classifyUserTurn(own).did_you;
     const afterApiError = afterAssistant && /^API Error\b/.test(prev.userText ?? '');
     userTurns.push({
       project: t.project,
       session_id: t.session_id,
       ts: e.ts,
       ts_iso: iso(e.ts),
-      first_line: firstLine(e.userText),
+      first_line: firstLine(side ? side.title : e.userText),
       chars: e.userText.length,
+      ...(side && {side_note: true}),
+      ...(side?.addendum && {addendum: firstLine(side.addendum)}),
       ...(e.queued && {queued: true}),
       ...(adjacent && {adjacent: true}),
       ...(correctionTs.has(e.ts) && {correction: true}),
