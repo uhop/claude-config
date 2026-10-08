@@ -325,6 +325,7 @@ const signals = {
   repeated_failures: [],
   surprises: [],
   multi_release: [],
+  release_alerts: [],
   side_notes: []
 };
 
@@ -702,7 +703,14 @@ for (const t of transcripts) {
     .filter(e => e.role === 'user' && e.userText)
     .map(e => ({ts: e.ts, text: e.userText, isCorrection: correctionTs.has(e.ts)}));
 
-  let git = {repo: null, commits: [], correction_driven: 0, multi_release: null};
+  let git = {
+    repo: null,
+    commits: [],
+    correction_driven: 0,
+    releases: [],
+    npm: {},
+    multi_release: []
+  };
   try {
     git = correlateSession(t.project, sessionStartMs, sessionEndMs, turns);
   } catch {
@@ -722,10 +730,18 @@ for (const t of transcripts) {
     repo: git.repo,
     commits: git.commits.length,
     correction_driven_commits: git.correction_driven ?? 0,
-    shas: git.commits.map(c => c.sha)
+    shas: git.commits.map(c => c.sha),
+    releases: git.releases.map(r => ({
+      package: r.package,
+      version: r.version,
+      ts_iso: iso(r.ts),
+      sha: r.bump?.sha ?? r.sha ?? null,
+      tag: r.tag
+    })),
+    npm: git.npm
   });
 
-  if (git.multi_release) {
+  for (const group of git.multi_release)
     signals.multi_release.push({
       kind: 'multi_release',
       project: t.project,
@@ -733,13 +749,30 @@ for (const t of transcripts) {
       repo: git.repo,
       ts: sessionStartMs,
       ts_iso: iso(sessionStartMs),
-      ...git.multi_release,
+      ...group,
       note:
         'More than one release in a single session. Possible, but it should be the ' +
         'exception — usually a critical bug surfaced, or the first release was cut ' +
         'early. Known-legitimate case: publishing to debug a dependent repo, which ' +
         'is itself a process gap (link the package locally instead). See ' +
         'topics/semver-and-release-cadence § Release timing.'
+    });
+
+  // Eugene's alerts, not proposals: a release with no tag, and a version npm
+  // has that no commit here carries (published from changes never pushed).
+  for (const r of git.releases) {
+    if (!r.package || (r.tag && r.recorded)) continue;
+    signals.release_alerts.push({
+      kind: 'release_alert',
+      project: t.project,
+      session_id: t.session_id,
+      repo: git.repo,
+      package: r.package,
+      version: r.version,
+      ts: r.ts,
+      ts_iso: iso(r.ts),
+      ...(!r.tag && {tag_expected: r.tag_expected}),
+      ...(!r.recorded && {unrecorded: true})
     });
   }
 }

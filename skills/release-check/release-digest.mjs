@@ -11,8 +11,8 @@
 // --no-network skips `npm outdated` (registry round-trip); the tarball
 // dry-run is local and always runs. Every check reports
 // {status: "ok" | "action" | "skip" | "error", ...detail}. Exit 0 clean,
-// 1 when any check is "action"/"error" — run solo or `|| true` in
-// parallel Bash batches.
+// 1 when any check is "action"/"error" or unchecked (skipped by
+// --no-network) — run solo or `|| true` in parallel Bash batches.
 
 import {execFileSync} from 'node:child_process';
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
@@ -468,11 +468,17 @@ check('project_specific', {
 const actions = Object.entries(digest.checks).filter(
   ([, c]) => c.status === 'action' || c.status === 'error'
 );
+// A check the flag skipped is not a pass: an offline digest once carried a
+// release past the dependency sweep (apodict 0.8.0, 2026-10-06).
+const unchecked = Object.entries(digest.checks)
+  .filter(([, c]) => c.status === 'skip' && c.reason === '--no-network')
+  .map(([name]) => name);
 digest.summary = {
   total: Object.keys(digest.checks).length,
   action: actions.map(([name]) => name),
-  clean: actions.length === 0
+  unchecked,
+  clean: actions.length === 0 && unchecked.length === 0
 };
 
 console.log(JSON.stringify(digest, null, 2));
-if (actions.length) process.exit(1);
+if (actions.length || unchecked.length) process.exit(1);

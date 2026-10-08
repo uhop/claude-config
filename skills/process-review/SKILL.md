@@ -56,9 +56,14 @@ later.
 Findings group by **commit pair**, not file pair: four ports fixed in one commit
 and the fifth caught a month later is *one* lag, not four rows.
 
-### `release_cluster` — version bumps close together
+### `release_cluster` — releases of one package close together
 
-Commits whose subject matches a version-bump pattern, clustered within 3 days.
+Releases of one package clustered within 3 days. A release is found from npm's
+publish times first, then the commits that change a `package.json`'s
+`"version"`, and each carries its tag or `MISSING`; commit subjects are the
+fallback for a repository with no `package.json` (Eugene, 2026-10-08: the
+subject pattern had missed every "New MCP version: X." release). The sources
+live in `git-correlate.mjs` § `releasesInWindow`, shared with `/reflect`.
 Maps to [[topics/semver-and-release-cadence]] § Release timing: two releases of
 one project in a day should signal a critical bug, not an early cut. A cluster
 of three or four is the shape that rule exists to prevent.

@@ -62,14 +62,14 @@ Read all three to dedupe; write only to vault + claude-config.
    ```json
    {
      "scan_window": {"since": "...", "start_iso": "...", "end_iso": "..."},
-     "totals": {"corrections": N, "confirmations": N, "stuck_loops": N, "repeated_failures": N, "surprises": N, "multi_release": N, "side_notes": N},
+     "totals": {"corrections": N, "confirmations": N, "stuck_loops": N, "repeated_failures": N, "surprises": N, "multi_release": N, "release_alerts": N, "side_notes": N},
      "sessions_scanned": N,
      "automated": {"count": N, "included": false, "sessions": [{project, session_id, entrypoint, rows, first_turn}]},
      "transcripts_seen": N,
      "prior_report": "[[projects/agent-workflow/reports/<name>]] — this host's previous report, null on a first run or a pre-2026-08-09 cache",
      "live_sessions": [{project, session_id, path, mtime_iso, age_seconds, first_row_iso}],
      "state_watermark_iso": "...",
-     "session_git": [{project, session_id, start_iso, end_iso, first_turn, repo, commits, correction_driven_commits, shas}],
+     "session_git": [{project, session_id, start_iso, end_iso, first_turn, repo, commits, correction_driven_commits, shas, releases: [{package, version, ts_iso, sha, tag}], npm: {<package>: "ok" | "unpublished" | "not checked"}}],
      "user_turns": [{project, session_id, ts, ts_iso, first_line, chars, side_note?, addendum?, queued?, adjacent?, correction?, did_you?, after_api_error?}],
      "signals": {
        "corrections":       [{kind, project, session_id, ts, ts_iso, matched_text, excerpt, unlanded?, scope_extension?}, ...],
@@ -77,7 +77,8 @@ Read all three to dedupe; write only to vault + claude-config.
        "stuck_loops":       [{kind, project, session_id, ts, ts_iso, tool, repetitions, excerpt}],
        "repeated_failures": [{kind, occurrences, sessions, tool, project, session_id, ts, ts_iso, error_text, excerpt}],
        "surprises":         [{...}],
-       "multi_release":     [{kind, project, session_id, repo, count, span_min, releases: [{sha, subject, driver}], note}],
+       "multi_release":     [{kind, project, session_id, repo, package, count, span_min, releases: [{version, sha, subject, npm_iso, tag, driver}], note}],
+       "release_alerts":    [{kind, project, session_id, repo, package, version, ts, ts_iso, tag_expected?, unrecorded?}],
        "side_notes":        [{kind, project, session_id, ts, ts_iso, title, heads_up, note, addendum?, queued?}]
      }
    }
@@ -93,8 +94,26 @@ Read all three to dedupe; write only to vault + claude-config.
 
    Two things it buys: `correction_driven_commits` per session (a commit whose
    driving turn was classified a correction is rework, so a high ratio is a
-   direct measure of a session that needed steering), and the `multi_release`
-   signal below. Note the first is only as good as the correction classifier —
+   direct measure of a session that needed steering), and the session's
+   releases, behind the `multi_release` signal below.
+
+   **A release comes from npm first, never from a commit subject** (Eugene,
+   2026-10-08). For every `package.json` the repository tracks, a version npm
+   published inside the session's window is a release, and so is a commit that
+   changes a `package.json`'s `"version"`; a private package has only the
+   second. Each release then looks for its tag, naked `X.Y.Z` at the root and
+   `<pkg>-X.Y.Z` in a subfolder. Subjects are the fallback for a repository
+   with no `package.json`: the subject pattern had missed every "New MCP
+   version: X." release on record, two of them in one vault-storage session.
+   npm comes first because it survives what git does not: a publish from
+   changes never pushed, on another machine, leaves no commit here. Offline,
+   `session_git[].npm` says `not checked` and the bumps alone stand.
+   `multi_release` is one signal per package with two or more releases in the
+   session. **`release_alerts` go to Eugene as alerts, not proposals:** a
+   release with no tag (`tag_expected` names what was looked for), or
+   `unrecorded: true`, a version npm has that no commit on any ref carries.
+   List each in the report with the package, version, and what is missing;
+   reconciling it is his call. Note the first is only as good as the correction classifier —
    a session whose corrections arrive as *"fix the trailer too"* scored zero
    corrections and therefore zero correction-driven commits until 2026-08-18,
    when the `scope_extension` cue below was added; the classifier is still the
@@ -359,6 +378,8 @@ Read all three to dedupe; write only to vault + claude-config.
    ```
 
    c. **Route:** "Apply as proposed" → execute the write. For vault paths prefer the narrow op — `mcp__vault__vault_append` / `vault_replace` to extend a `feedback.md` or `queue.md`, `vault_write_file` only when authoring a whole new note (fallback: `vault-put --append/--replace`); for claude-config paths use `Edit` against the real file under `~/Open/claude-config/`, never the `~/.claude/` symlink. "Edit then apply" → present the proposed body, ask for tweaks, then write. "Hang it" → `clarify-queue.mjs file` (step 7) with the rendered exchange as the `Context:`, the proposal as candidate 1, and "no rule / one-off" as a candidate, so nothing is lost when he moves on; `/clarify` picks it up as a conversation. "Skip" → no-op.
+
+   d. **Then offer the mediums.** After the last high-confidence proposal, ask once, multi-select, which medium proposals to walk, each named with its one-line proposal and a medium carried from the previous report listed first, plus your pick. Each chosen one is walked like a high one (a–c); an unchosen one stays in the report as proposed. (Origin: apodict `ecf4a29e`, 2026-10-07 — a side note: "This run's two medium-priority proposals won't be shown in the apply walk"; Eugene: _"walk M1 and M2"_. The previous run's M2 had been carried twice unwalked.)
 
    Open ruling (2026-09-15, [[projects/agent-workflow/queue]]): whether a claude-config edit he reviews at commit time anyway should be applied and shown as a diff instead of asked. Until ruled, ask.
 

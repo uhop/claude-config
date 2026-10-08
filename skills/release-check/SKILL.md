@@ -92,7 +92,9 @@ cutting the first one early.
 
 One JSON report, 16 checks, each `ok | action | skip | error`; exit 1 when
 anything needs attention (run it solo or `|| true` in parallel Bash batches).
-`--no-network` skips the `npm outdated` registry call. It probes: last tag +
+`--no-network` skips the `npm outdated` registry call and lists it under
+`summary.unchecked`, so an offline digest is never clean: a skipped check is
+not a pass. It probes: last tag +
 commits since (step 0's input), `.d.ts` sidecar pairing + `@ts-self-types`
 directives, the retired-artifact removable set (mirrors, uppercase COPILOT,
 `.windsurf/`, promoted-skill `.claude/commands/` copies), AI-docs presence,
@@ -202,6 +204,10 @@ Report:
   bare "ready".
 - **Recommended tier** and the one-line reason, or "nothing user-observable —
   no release" when 0a came up empty.
+- **Unchecked checks**, each by name with why ("dependencies: not checked,
+  offline"); a verdict over an unchecked digest is not "ready". (Origin:
+  apodict 0.8.0, 2026-10-06 — an offline digest's verdict never mentioned
+  dependencies, and a side agent caught it before the prep.)
 - **Queue state** (0c): what is Active, what in the Backlog is actionable, and
   for each item left behind, why it does not block — never a bare "queue is
   clean".

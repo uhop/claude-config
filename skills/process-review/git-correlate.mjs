@@ -11,7 +11,7 @@
 
 import {execFileSync} from 'node:child_process';
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
-import {join} from 'node:path';
+import {basename, join} from 'node:path';
 import {asHumanRow} from '../reflect/reflect-lib.mjs';
 
 export const VERSION_BUMP =
@@ -109,35 +109,200 @@ export const attributeCommits = (commits, turns) => {
   });
 };
 
-// More than one release inside a single session. Eugene's rule: possible, but it
-// should be an exception — a second same-session release usually means either a
-// critical bug surfaced or the first was cut early. The known-legitimate case is
-// debugging a dependent repo against an unpublished change, which is itself a
-// process gap (link the package locally instead of publishing to test).
-export const releasesInSession = attributed => {
-  const releases = attributed.filter(c => isVersionBump(c.subject));
-  if (releases.length < 2) return null;
-  return {
-    count: releases.length,
-    span_min: Math.round((releases[releases.length - 1].ts - releases[0].ts) / 60000),
-    releases: releases.map(r => ({
-      sha: r.sha,
-      subject: r.subject,
-      driver: r.driver?.text ?? null
-    }))
+// Releases, by the sources Eugene trusts, in his order (2026-10-08): npm's
+// publish times, the package.json version bumps, then the tag, which is checked
+// and reported missing. Commit subjects only for a repository with no
+// package.json: they missed every "New MCP version: X." release on record.
+// npm comes first because it survives what git does not: a publish from
+// changes never pushed, made on another machine, leaves no commit here.
+
+const NOT_RELEASED = /(^|\/)(node_modules|fixtures|__fixtures__|tests?)\//;
+
+export const packagesOf = repo =>
+  git(repo, 'ls-files', '--', '*package.json')
+    .split('\n')
+    .filter(path => /(^|\/)package\.json$/.test(path) && !NOT_RELEASED.test(path))
+    .flatMap(path => {
+      let pkg;
+      try {
+        pkg = JSON.parse(readFileSync(join(repo, path), 'utf8'));
+      } catch {
+        return [];
+      }
+      if (typeof pkg?.name !== 'string') return [];
+      const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+      return [{path, dir, name: pkg.name, private: pkg.private === true}];
+    });
+
+const npmCache = new Map();
+
+// {status: 'ok' | 'unpublished' | 'not checked', times: {version: ms}}.
+export const npmPublishTimes = name => {
+  if (npmCache.has(name)) return npmCache.get(name);
+  let result;
+  try {
+    const out = execFileSync('npm', ['view', name, 'time', '--json'], {
+      encoding: 'utf8',
+      timeout: 20000,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    const times = {};
+    for (const [key, value] of Object.entries(JSON.parse(out)))
+      if (/^\d+\.\d+\.\d+/.test(key)) times[key] = Date.parse(value);
+    result = {status: 'ok', times};
+  } catch (e) {
+    const unpublished = /E404/.test(`${e.stdout ?? ''}${e.stderr ?? ''}`);
+    result = {status: unpublished ? 'unpublished' : 'not checked', times: {}};
+  }
+  npmCache.set(name, result);
+  return result;
+};
+
+// A diff that replaces one "version" with another; a file's first commit only
+// adds one, which is a birth, not a release.
+export const versionBumps = (repo, paths, sinceMs, untilMs) => {
+  if (!paths.length) return [];
+  const log = git(
+    repo,
+    'log',
+    `--since=@${Math.floor(sinceMs / 1000)}`,
+    `--until=@${Math.floor(untilMs / 1000)}`,
+    '--format=@@@%H|%at|%s',
+    '-U0',
+    '-p',
+    '-G"version"',
+    '--',
+    ...paths
+  );
+  const bumps = [];
+  let commit = null,
+    file = null,
+    from = null;
+  for (const line of log.split('\n')) {
+    if (line.startsWith('@@@')) {
+      const [sha, ts, ...subject] = line.slice(3).split('|');
+      commit = {sha: sha.slice(0, 8), ts: Number(ts) * 1000, subject: subject.join('|')};
+      file = null;
+      continue;
+    }
+    const header = line.match(/^diff --git a\/.+ b\/(.+)$/);
+    if (header) {
+      file = header[1];
+      from = null;
+      continue;
+    }
+    const change = line.match(/^([-+])\s*"version"\s*:\s*"([^"]+)"/);
+    if (!change || !commit || !file) continue;
+    if (change[1] === '-') from = change[2];
+    else if (from && from !== change[2])
+      bumps.push({path: file, version: change[2], from, ...commit});
+  }
+  return bumps;
+};
+
+// Fleet convention: a naked X.Y.Z for the root package, <pkg>-X.Y.Z for one in
+// a subfolder (mcp-0.15.0).
+const expectedTags = (pkg, version) =>
+  pkg.dir
+    ? [...new Set([basename(pkg.dir), pkg.name.replace(/^@[^/]+\//, '')])].map(
+        prefix => `${prefix}-${version}`
+      )
+    : [version];
+
+const recordedAnywhere = (repo, path, version) =>
+  git(repo, 'log', '--all', '-1', '--format=%h', `-S"version": "${version}"`, '--', path).trim() !==
+  '';
+
+// {releases, npm} for one window, or null when the repository has no
+// package.json and only commit subjects can say what was released.
+export const releasesInWindow = (repo, sinceMs, untilMs, {npmTimes = npmPublishTimes} = {}) => {
+  const pkgs = packagesOf(repo);
+  if (!pkgs.length) return null;
+  const byPath = new Map(pkgs.map(p => [p.path, p]));
+  const found = new Map();
+  const add = (pkg, version, fields) => {
+    const key = pkg.path + '\t' + version;
+    found.set(key, {
+      ...(found.get(key) ?? {package: pkg.name, path: pkg.path, version}),
+      ...fields
+    });
   };
+  const npm = {};
+  for (const pkg of pkgs) {
+    if (pkg.private) continue;
+    const published = npmTimes(pkg.name);
+    npm[pkg.name] = published.status;
+    for (const [version, ts] of Object.entries(published.times))
+      if (ts >= sinceMs && ts <= untilMs) add(pkg, version, {npm_ts: ts});
+  }
+  for (const b of versionBumps(repo, [...byPath.keys()], sinceMs, untilMs))
+    add(byPath.get(b.path), b.version, {
+      bump: {sha: b.sha, ts: b.ts, from: b.from, subject: b.subject}
+    });
+  const tags = new Set(
+    git(repo, 'for-each-ref', 'refs/tags', '--format=%(refname:short)').split('\n').filter(Boolean)
+  );
+  const releases = [...found.values()]
+    .map(r => {
+      const expected = expectedTags(byPath.get(r.path), r.version);
+      const tag = expected.find(t => tags.has(t)) ?? null;
+      return {
+        ...r,
+        ts: Math.min(r.npm_ts ?? Infinity, r.bump?.ts ?? Infinity),
+        recorded: r.bump ? true : recordedAnywhere(repo, r.path, r.version),
+        tag,
+        ...(!tag && {tag_expected: expected})
+      };
+    })
+    .sort((a, b) => a.ts - b.ts);
+  return {releases, npm};
+};
+
+// More than one release of a package inside a single session. Eugene's rule:
+// possible, but it should be an exception — a second same-session release
+// usually means either a critical bug surfaced or the first was cut early. The
+// known-legitimate case is debugging a dependent repo against an unpublished
+// change, which is itself a process gap (link the package locally instead).
+export const multiRelease = releases => {
+  const byPackage = new Map();
+  for (const r of releases) byPackage.set(r.path, [...(byPackage.get(r.path) ?? []), r]);
+  return [...byPackage.values()]
+    .filter(group => group.length > 1)
+    .map(group => ({
+      package: group[0].package,
+      count: group.length,
+      span_min: Math.round((group[group.length - 1].ts - group[0].ts) / 60000),
+      releases: group.map(r => ({
+        version: r.version,
+        sha: r.bump?.sha ?? r.sha ?? null,
+        subject: r.bump?.subject ?? r.subject ?? null,
+        npm_iso: r.npm_ts ? new Date(r.npm_ts).toISOString() : null,
+        tag: r.tag,
+        driver: r.driver?.text ?? null
+      }))
+    }));
 };
 
 // Convenience for callers that only have a project dir and a row window.
 export const correlateSession = (projectDir, startMs, endMs, turns = [], opts = {}) => {
   const repo = repoForProject(projectDir);
-  if (!repo) return {repo: null, commits: [], multi_release: null};
+  if (!repo) return {repo: null, commits: [], releases: [], npm: {}, multi_release: []};
   const attributed = attributeCommits(commitsInWindow(repo, startMs, endMs, opts), turns);
+  const untilMs = endMs + (opts.slackSec ?? 900) * 1000;
+  const found = releasesInWindow(repo, startMs, untilMs, opts) ?? {
+    releases: attributed
+      .filter(c => isVersionBump(c.subject))
+      .map(c => ({package: null, path: null, version: null, ...c, tag: null})),
+    npm: {}
+  };
+  const releases = attributeCommits(found.releases, turns);
   return {
     repo,
     commits: attributed,
     correction_driven: attributed.filter(c => c.driver?.is_correction).length,
-    multi_release: releasesInSession(attributed)
+    releases,
+    npm: found.npm,
+    multi_release: multiRelease(releases)
   };
 };
 

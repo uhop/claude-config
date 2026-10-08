@@ -22,7 +22,13 @@
 import {writeFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {resolve, basename} from 'node:path';
-import {projectDirForRepo, loadSessions, sessionForCommit} from './git-correlate.mjs';
+import {
+  projectDirForRepo,
+  loadSessions,
+  sessionForCommit,
+  isVersionBump,
+  releasesInWindow
+} from './git-correlate.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -54,9 +60,6 @@ const DAY = 86400;
 // unrelated contexts, so content matching there is meaningless noise.
 const GENERATED =
   /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|search-index\.json|Cargo\.lock|go\.sum|composer\.lock)$|(^|\/)(dist|build|out|coverage|vendor|node_modules|__snapshots__)\/|\.min\.(js|css)$|\.map$/;
-
-const VERSION_BUMP =
-  /^\s*(new version|version|release|bump(?:ing)? (?:the )?version|v?\d+\.\d+\.\d+)\b/i;
 
 // A line has to be distinctive enough that matching it means something.
 const MIN_LINE = 20;
@@ -282,23 +285,47 @@ const detectBursts = (commits, windowDays = 3, minTouches = 4, maxAvgChurn = 40)
   return out.sort((a, b) => b.touches - a.touches);
 };
 
-// Version bumps clustered in time — the release-cadence smell.
+// Releases of one package clustered in time — the release-cadence smell. The
+// releases come from git-correlate.mjs, the same sources as /reflect's.
 const detectReleaseClusters = (commits, windowDays = 3) => {
-  const bumps = commits.filter(c => VERSION_BUMP.test(c.subj));
+  const stamps = commits.map(c => c.ts);
+  const found = releasesInWindow(repo, Math.min(...stamps) * 1000, Math.max(...stamps) * 1000);
+  const releases = found
+    ? found.releases.map(r => ({
+        group: r.path,
+        ts: Math.floor(r.ts / 1000),
+        package: r.package,
+        version: r.version,
+        sha: r.bump?.sha ?? null,
+        subject: r.bump?.subject ?? null,
+        tag: r.tag
+      }))
+    : commits
+        .filter(c => isVersionBump(c.subj))
+        .map(c => ({group: null, ts: c.ts, sha: c.short, subject: c.subj}))
+        .sort((a, b) => a.ts - b.ts);
   const out = [];
-  for (let i = 0; i < bumps.length; ++i) {
-    let j = i;
-    while (j + 1 < bumps.length && bumps[j + 1].ts - bumps[i].ts <= windowDays * DAY) ++j;
-    const n = j - i + 1;
-    if (n < 2) continue;
-    out.push({
-      releases: n,
-      span_days: days(bumps[j].ts - bumps[i].ts),
-      commits: bumps.slice(i, j + 1).map(c => ({date: iso(c.ts), sha: c.short, subject: c.subj}))
-    });
-    i = j;
+  for (const group of Map.groupBy(releases, r => r.group).values()) {
+    for (let i = 0; i < group.length; ++i) {
+      let j = i;
+      while (j + 1 < group.length && group[j + 1].ts - group[i].ts <= windowDays * DAY) ++j;
+      if (j === i) continue;
+      out.push({
+        count: j - i + 1,
+        span_days: days(group[j].ts - group[i].ts),
+        releases: group.slice(i, j + 1).map(r => ({
+          date: iso(r.ts),
+          package: r.package,
+          version: r.version,
+          sha: r.sha,
+          subject: r.subject,
+          tag: r.tag
+        }))
+      });
+      i = j;
+    }
   }
-  return out.sort((a, b) => b.releases - a.releases);
+  return out.sort((a, b) => b.count - a.count);
 };
 
 // -------------------------------------------------------------------- main
@@ -399,12 +426,15 @@ if (report.findings.split_change.length) {
 }
 
 if (report.findings.release_cluster.length) {
-  w('\n=== RELEASE CLUSTER — version bumps close together ===');
+  w('\n=== RELEASE CLUSTER — releases of one package close together ===');
   for (const f of report.findings.release_cluster) {
-    w(`\n  ${f.releases} releases in ${f.span_days}d`);
-    for (const c of f.commits) {
-      w(`    ${c.date}  ${c.sha}  ${c.subject}`);
-      if (c.driver) w(`        driven by: ${c.driver}  (session ${c.session})`);
+    w(
+      `\n  ${f.count} releases${f.releases[0].package ? ` of ${f.releases[0].package}` : ''} in ${f.span_days}d`
+    );
+    for (const r of f.releases) {
+      const what = r.version ? `${r.version}  tag ${r.tag ?? 'MISSING'}` : r.subject;
+      w(`    ${r.date}  ${r.sha ?? '(npm only)'}  ${what}`);
+      if (r.driver) w(`        driven by: ${r.driver}  (session ${r.session})`);
     }
   }
 }
