@@ -141,6 +141,8 @@ My own session's repo is claimed for me at start (`hooks/vault-lease-claim.sh`, 
 
 **The lease holder reads its handoff inbox at every breather:** `vault_handoff_list({to: "repo:<…>", status: "open"})` during a long run's wait, at each work stop, and at the wrap, then apply what arrived ([[projects/agent-workflow/feedback]] § The lease holder reads its handoff inbox at every breather).
 
+**The owner that applies a handoff names its commit.** The subject goes in the owner's own stop report and in its reply to the requester; the requester's report cites that subject for the other repository and never writes its own. (Origin: 2026-10-08 — apodict's holder applied a claude-config gate batch and replied without a subject, the requesting vault-storage session invented one, and the commit landed under the holder's own pattern, _"Recorded a claude-config gate batch."_; Eugene ruled the owner names it.)
+
 ## Diagnosis
 
 When asked _why_ a system did something, get evidence before asserting a cause — read the logs, the git history, the actual stored value — and don't present a guess as a diagnosis. If you must reason before you can check, label it a hypothesis, not a finding, and say what would confirm it. A confident-but-wrong "here's why" costs more than a hedged "let me check": it sends the user chasing a phantom and burns trust in the next answer. (Origin: reflect 2026-06-19 — diagnosing a `modified_at` anomaly I asserted two speculative root causes, both wrong, and the user pushed back three times before git forensics on the actual data settled it; the real cause was a date-vs-timestamp comparison bug, findable only by looking.)
