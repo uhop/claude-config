@@ -64,9 +64,13 @@ and `APODICTUM_API_KEY` in its registration): then the process pins nothing,
 and what can be behind is the container. `apodictum_ops` says which mode is on
 (`engine.mode`), and in service mode compares `engine.served` with
 `engine.checkout`; a `SERVICE MISMATCH` block ahead of an answer means the
-image serves another engine than the tree you are editing — rebuild it (`cd
-~/servers/apodictum && docker compose up -d --build`) or use the CLI, which
-answers in-process unless the same variables are set in your shell.
+image serves another engine than the checkout. **The service is a snapshot of
+apodict's last push** (apodict feedback, 2026-10-08), so outside apodict its
+answer is the one to use, and inside it a checkout with work in progress
+differs by design. Never rebuild it from a working tree: apodict's lease holder
+runs `node ~/Open/apodict/service/snapshot.js` after a push, before the next
+arc's first edit. To ask the checkout's own engine, use the CLI, which answers
+in-process unless the same variables are set in your shell.
 
 **An MCP server death is never cross-session interference.** `bin/mcp.js` is
 a stdio server holding no port, no socket, no lockfile, and no filesystem
@@ -77,10 +81,10 @@ enumeration), a runaway `simplify` budget — not the neighbours. The
 2026-08-08 run lost a round-trip to exactly that wrong hypothesis.
 
 ```bash
-# MCP absent — the CLI path
-node ~/Open/apodict/bin/query.js --help          # ops + request shape
+# MCP absent — the CLI path, from the pinned copy of the last push
+node ~/.cache/apodict/pinned/current/bin/query.js --help          # ops + request shape
 echo '{"op": "equivalent", "a": ["and", "p", "q"], "b": ["and", "q", "p"]}' |
-  node ~/Open/apodict/bin/query.js
+  node ~/.cache/apodict/pinned/current/bin/query.js
 ```
 
 Via MCP the same query is `apodictum_query` with
@@ -127,8 +131,9 @@ the vault skill), enriched at capture (`agent:` block,
 1. **Summary** — 1–2 sentences: what was analyzed, what came of it.
 2. **Source** — repo, `file:line`, commit, language; the fragment(s)
    verbatim.
-3. **Provenance** — `node ~/Open/apodict/bin/query.js --version` plus
-   `git -C ~/Open/apodict rev-parse --short HEAD`, and the bank(s) used;
+3. **Provenance** — `node ~/.cache/apodict/pinned/current/bin/query.js --version`
+   plus `cat ~/.cache/apodict/pinned/current/.complete` (the pinned commit), and
+   the bank(s) used;
    verdicts change only with code or oracle/bank versions, so this makes the
    note replayable.
 4. **Queries** — the request JSON verbatim (it *is* the abstraction:
@@ -154,8 +159,14 @@ mandatory.
 
 ## Consumption modes
 
-- **Constructive** — gate your own edit. For a diff, start mechanically: from
-  the repository root, `node ~/Open/apodict/bin/gate.js --out "$WORK/batch.json"`
+- **Constructive** — gate your own edit. **Run the gate from the pinned copy,
+  never from `~/Open/apodict`** (2026-10-08): `~/.cache/apodict/pinned/current`
+  is apodict's last push, the commit the service serves, while the checkout may
+  carry an arc in progress. A host without it publishes it with
+  `node ~/Open/apodict/service/snapshot.js --harvester` (after `git -C
+  ~/Open/apodict pull --ff-only` if the clone has no `service/snapshot.js` yet).
+  For a diff, start mechanically: from
+  the repository root, `node ~/.cache/apodict/pinned/current/bin/gate.js --out "$WORK/batch.json"`
   writes every request the change owes — each condition of two or more atoms
   as `simplify` with `certify`, each guard of a ladder and branch of an
   if-chain as `guardStatus`, named files added and asked whole — and asks each value-position
@@ -167,10 +178,15 @@ mandatory.
   producer the syntax cannot see (a `find`, a `split`) is your fact to pin. A
   value only handed on is counted in one line, not listed. A C repository
   passes `bin/harvest.js`'s declaring flags (`--headers c`, the
-  assertion-macro flags). Answer with
-  `node ~/Open/apodict/bin/query.js --summary "$WORK/batch.json"` and keep the
-  records with `node ~/Open/apodict/bin/ledger.js record --store
-  ~/Open/apodict/dev-docs/campaign/records/<repo>.json "$WORK/batch.json"`.
+  assertion-macro flags). Answer through the service, with the host's
+  `APODICTUM_API_URL` and `APODICTUM_API_TOKEN` from `~/.env`:
+  `APODICTUM_API_KEY="$APODICTUM_API_TOKEN" node ~/.cache/apodict/pinned/current/bin/query.js
+  --summary --url "$APODICTUM_API_URL" "$WORK/batch.json"`, and keep the records
+  with `APODICTUM_API_KEY="$APODICTUM_API_TOKEN" node
+  ~/.cache/apodict/pinned/current/bin/ledger.js record --url "$APODICTUM_API_URL" --store
+  ~/Open/apodict/dev-docs/campaign/records/<repo>.json "$WORK/batch.json"`. The key
+  rides in the environment, never on the command line; with no `APODICTUM_API_URL`
+  the pinned copy answers in-process, the same commit.
   **That store is inside apodict's working tree**, so the global
   § Cross-repo work rules apply to it. From a session that doesn't hold the
   apodict lease, record into a scratch store (`--store "$WORK/<repo>.json"`)
