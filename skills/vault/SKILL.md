@@ -147,10 +147,10 @@ hook: a header `X-Program-Clerk-Allow-Secret: 1` you send on your own judgment
 stores a value you may have misread as a fake, and from then on every write
 of it passes. So stop, tell him which field, line, and kind were refused and
 why you believe it is a fake, and send the override only on his word for
-that write. No adapter sends the header yet (its `allow_secret` arrives with
-vault-storage arc 4f-2); on his word, use the `POST /vault/edit` or `PUT
-/vault/{path}` fallback through `vault-curl` with `-H
-'X-Program-Clerk-Allow-Secret: 1'`.
+that write. On his word, pass `allow_secret: true` to that one call (adapter ≥
+0.16.0, on every tool that sends a body). An older adapter refuses the argument
+as undeclared, so there use the `POST /vault/edit` or `PUT /vault/{path}`
+fallback through `vault-curl` with `-H 'X-Program-Clerk-Allow-Secret: 1'`.
 
 **Never rewrite a whole document to change one frontmatter key.** That is the
 single most common reason an agent reaches for a full-document write, and it is
