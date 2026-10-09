@@ -61,7 +61,8 @@ if [[ -f "$transcript" ]]; then
   # The vault notes the session touched: the MCP write tools' path arguments,
   # and the paths of vault-put and vault-curl writes in Bash calls. A line
   # starts with C when the call creates or replaces a whole note, W otherwise;
-  # the session's own log is the first logs/ path among the C lines.
+  # the session's own log is the first logs/ path among the C lines that no
+  # bullet already names, since a resume names the logs it backfills there.
   touched=$(
     jq -r '
       (.message.content // [])[]? | select(.type == "tool_use") |
@@ -78,8 +79,14 @@ if [[ -f "$transcript" ]]; then
       grep -E "^[CW]${tab}[a-z0-9][A-Za-z0-9._/-]*\.md$"
   )
   wrote=$(cut -f2 <<<"$touched" | grep . | sort -u | head -20 | paste -sd ',' - | sed 's/,/, /g')
-  first_log=$(grep "^C${tab}" <<<"$touched" | cut -f2 | grep -m1 -E '^logs/')
-  [[ -n "$first_log" ]] && log="$first_log"
+  logs=$(grep "^C${tab}" <<<"$touched" | cut -f2 | grep -E '^logs/')
+  if [[ -n "$logs" ]]; then
+    # --max-time 1: with the append and the create, inside the hook's 5 s.
+    named=$(curl -s --connect-timeout 1 --max-time 1 "$VAULT_API_URL/vault/projects/$project/sessions.md" \
+      -H "Authorization: Bearer $VAULT_API_TOKEN" 2>/dev/null | grep -oE 'log: logs/[A-Za-z0-9._/-]+\.md' | cut -c6-)
+    first_log=$(grep -vxF -f <(printf '%s\n' "$named") <<<"$logs" | head -1)
+    [[ -n "$first_log" ]] && log="$first_log"
+  fi
 fi
 [[ -n "$started" ]] || started="$ended"
 
