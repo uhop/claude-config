@@ -138,7 +138,10 @@ failed`: treat a failed write there as possibly applied.
 
 **A 400 `secret_detected` means the write carried something key-shaped**
 (server from 2026-10-08, vault-storage D171): `details.found` names each find
-as `{field, line, kind}`, never the value. Take a real secret out of the text
+as `{field, line, kind}`, never the value. `field` is a JSON pointer into the
+body, `body` for a raw one, `path` for the note path or other path the request
+names, or `?<name>` for a query value (server from 2026-10-09, vault-storage
+D178), since a path becomes a file name and a query value can be stored. Take a real secret out of the text
 and write again; it never belongs in the vault. A value the vault already
 holds is not refused (4f-3), so rewriting a note that carries an allowed fake,
 or removing a held secret with `replace`, needs nothing. **The override is
