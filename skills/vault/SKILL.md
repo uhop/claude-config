@@ -1030,8 +1030,9 @@ Rebuild context from the vault. Note: a SessionStart hook
 digest lines at session start via `GET /system/resume-brief` — lint state,
 pending-suggestion count, the project's Active titles + ready/blocked counts,
 its queue-hygiene findings (server ≥ 2026-09-06),
-a feedback.md pointer, and the latest log title, the project's own when it has
-one and marked `(fleet)` otherwise (server ≥ 2026-09-29, D104) — plus, since
+a feedback.md pointer, the latest log title, the project's own when it has
+one and marked `(fleet)` otherwise (server ≥ 2026-09-29, D104), and the vault
+server's loop stalls of the past week (server ≥ 2026-10-09, D177) — plus, since
 2026-09-05, one
 `[vault] github <repo>:` line read from the project's stored `state.md`
 § GitHub block (open items, advisories without a CVE, open alerts, CI, and how
@@ -1066,6 +1067,22 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      output. These are bug indicators — report, don't auto-fix.
    - `suggestions` — `{total, by_kind}` of pendings. If `total > 0`, one
      summary line; the dedicated review skills handle decisions.
+   - `stalls` (server ≥ 2026-10-09, vault-storage D177) — the vault server's
+     event-loop stalls of the past week, `{count, latestAt, latestMs, worstAt,
+     worstMs}`; null when none, and then stay quiet. Otherwise surface it in
+     one line and file what is not filed yet, in any project's resume, since
+     the server is shared: read the records with `vault_health` (`loop.stalls`,
+     the newest ten, kept across restarts); find the newest `Loop stalls
+     recorded through <at>.` title among vault-storage's open and archived
+     items (`vault_queue_by_project` and `vault_queue_project_archive` with
+     `project: "vault-storage"`), which marks where filing stopped; and put
+     the records after it into one Backlog item on
+     `projects/vault-storage/queue.md` titled `Loop stalls recorded through
+     <the latest record's at>.`, each record as one line: `at`, `lagMs`, CPU
+     against the lag (near it is computing, `gcMs` the collector's share; far
+     below it is waiting, on storage when `fsReads` or `majorFaults` moved),
+     and `before`. Filing is the whole step: the cause is looked for when
+     Eugene schedules the item.
    - `workflow` — `active` is the agent-workflow Active section: surface
      verbatim under a `Workflow:` heading when non-null. If
      `clarify_pending > 0`, one line like

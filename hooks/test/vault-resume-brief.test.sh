@@ -42,6 +42,16 @@ old='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"a
 out=$(jq -r "$prog" <<<"$old" 2>&1)
 [[ "$out" == *"ACTIVE: A.;"* ]] && ok || bad "titles only on an older server (out=$out)"
 [[ "$out" != *"inbox"* ]] && ok || bad "no inbox line without the count (out=$out)"
+[[ "$out" != *"loop stall"* ]] && ok || bad "no stall clause from a server without the field (out=$out)"
+
+# The vault server's loop stalls of the past week (vault-storage D177) ride on the
+# first line; null when none.
+stalls='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"stalls":{"count":2,"latestAt":"2026-10-09T02:25:41.431Z","latestMs":659,"worstAt":"2026-10-08T13:43:55.870Z","worstMs":11353},"latest_log":null,"project":null}'
+out=$(jq -r "$prog" <<<"$stalls" 2>&1)
+[[ "$(head -n1 <<<"$out")" == "[vault] lint ok; loop stalls this week: 2, latest 659 ms at 2026-10-09 02:25Z, worst 11353 ms (vault_health)" ]] && ok || bad "stalls: the count, the latest, and the worst on the first line (out=$out)"
+none='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"stalls":null,"latest_log":null,"project":null}'
+out=$(jq -r "$prog" <<<"$none" 2>&1)
+[[ "$out" == "[vault] lint ok" ]] && ok || bad "stalls null: nothing added (out=$out)"
 
 # ── LIVE: this repository has a stored GitHub baseline ───────────────────
 if [[ -z "${VAULT_API_URL:-}" || -z "${VAULT_API_TOKEN:-}" ]] ||
