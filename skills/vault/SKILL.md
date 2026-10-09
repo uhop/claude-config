@@ -154,6 +154,10 @@ that write. On his word, pass `allow_secret: true` to that one call (adapter ≥
 0.16.0, on every tool that sends a body). An older adapter refuses the argument
 as undeclared, so there use the `POST /vault/edit` or `PUT /vault/{path}`
 fallback through `vault-curl` with `-H 'X-Program-Clerk-Allow-Secret: 1'`.
+**A 400 `unscannable_content`** (server from 2026-10-09, vault-storage D179)
+is the same refusal for a handoff artifact the server cannot read, a bundle
+or a patch's binary hunk (kinds `bundle`, `binary-hunk`), and the same rule
+holds: send a text patch, or ask Eugene before `allow_secret`.
 
 **Never rewrite a whole document to change one frontmatter key.** That is the
 single most common reason an agent reaches for a full-document write, and it is
@@ -412,7 +416,11 @@ leases: a single-agent session that owns its cwd repo never files one.
   makes a handoff work across hosts, since agents cannot `git push` and the
   singleton server's spool is the shared storage. 10 MB cap — past that,
   reference a branch instead of shipping a blob; `ext: "bundle"` with
-  `encoding: "base64"` is the escape hatch for binary or multi-branch work.
+  `encoding: "base64"` is the escape hatch for binary or multi-branch work,
+  and the server refuses it, as it does a patch with a binary hunk, with 400
+  `unscannable_content` (server from 2026-10-09, vault-storage D179): it cannot
+  read either for secrets, so one goes through only with `allow_secret` on
+  Eugene's word, as below. Prefer a text patch.
   The upload sets `ref` to `{type: "spool"}` itself, and reads the patch's
   `base-commit:` trailer into `base_sha`. The artifact is captured at submit
   time, so it no longer depends on your worktree surviving. **Then record the
@@ -1078,14 +1086,17 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      the newest ten, kept across restarts); find the newest `Loop stalls
      recorded through <at>.` title among vault-storage's open and archived
      items (`vault_queue_by_project` and `vault_queue_project_archive` with
-     `project: "vault-storage"`), which marks where filing stopped; and put
-     the records after it into one Backlog item on
-     `projects/vault-storage/queue.md` titled `Loop stalls recorded through
-     <the latest record's at>.`, each record as one line: `at`, `lagMs`, CPU
-     against the lag (near it is computing, `gcMs` the collector's share; far
-     below it is waiting, on storage when `fsReads` or `majorFaults` moved),
-     and `before`. Filing is the whole step: the cause is looked for when
-     Eugene schedules the item.
+     `project: "vault-storage"`), which marks where filing stopped. **One
+     open stall item at a time** (Eugene, 2026-10-09): when that newest item
+     is still open on `projects/vault-storage/queue.md`, add the records after
+     it to that item with `vault_replace`, its title's time moved to the
+     latest record's `at` and the new records first in its text; when it is
+     archived, or there is none, put them into one new Backlog item there
+     titled `Loop stalls recorded through <the latest record's at>.`. Each
+     record is one line: `at`, `lagMs`, CPU against the lag (near it is
+     computing, `gcMs` the collector's share; far below it is waiting, on
+     storage when `fsReads` or `majorFaults` moved), and `before`. Filing is
+     the whole step: the cause is looked for when Eugene schedules the item.
    - `workflow` — `active` is the agent-workflow Active section: surface
      verbatim under a `Workflow:` heading when non-null. If
      `clarify_pending > 0`, one line like
