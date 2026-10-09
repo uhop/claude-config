@@ -139,14 +139,18 @@ failed`: treat a failed write there as possibly applied.
 **A 400 `secret_detected` means the write carried something key-shaped**
 (server from 2026-10-08, vault-storage D171): `details.found` names each find
 as `{field, line, kind}`, never the value. Take a real secret out of the text
-and write again; it never belongs in the vault. Only a deliberate fake (an
-example in documentation, a test fixture) or the removal of a leaked one (a
-`replace` whose `from` carries it) goes through, and only with the header
-`X-Program-Clerk-Allow-Secret: 1`. No adapter sends that header yet (its
-`allow_secret` arrives with vault-storage arc 4f-2), so use the `POST
-/vault/edit` or `PUT /vault/{path}` fallback through `vault-curl` with `-H
-'X-Program-Clerk-Allow-Secret: 1'`, and say in the turn why the override was
-right.
+and write again; it never belongs in the vault. A value the vault already
+holds is not refused (4f-3), so rewriting a note that carries an allowed fake,
+or removing a held secret with `replace`, needs nothing. **The override is
+Eugene's call, never yours**, as `git commit --no-verify` is for the dotfiles
+hook: a header `X-Program-Clerk-Allow-Secret: 1` you send on your own judgment
+stores a value you may have misread as a fake, and from then on every write
+of it passes. So stop, tell him which field, line, and kind were refused and
+why you believe it is a fake, and send the override only on his word for
+that write. No adapter sends the header yet (its `allow_secret` arrives with
+vault-storage arc 4f-2); on his word, use the `POST /vault/edit` or `PUT
+/vault/{path}` fallback through `vault-curl` with `-H
+'X-Program-Clerk-Allow-Secret: 1'`.
 
 **Never rewrite a whole document to change one frontmatter key.** That is the
 single most common reason an agent reaches for a full-document write, and it is
