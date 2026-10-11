@@ -53,6 +53,15 @@ none='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"
 out=$(jq -r "$prog" <<<"$none" 2>&1)
 [[ "$out" == "[vault] lint ok" ]] && ok || bad "stalls null: nothing added (out=$out)"
 
+# The vault's branch against its remote (vault-storage D193): said only when it needs a person.
+store() { printf '{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"stalls":null,"store":%s,"latest_log":null,"project":null}' "$1"; }
+out=$(jq -r "$prog" <<<"$(store '{"remote":"origin/main","ahead":2,"behind":1,"diverged":true,"lastError":null}')" 2>&1)
+[[ "$out" == "[vault] lint ok; store: origin/main has 1 commit(s) the vault lacks, pushing stopped (2 waiting)" ]] && ok || bad "store: a divergence on the first line (out=$out)"
+out=$(jq -r "$prog" <<<"$(store '{"remote":"origin/main","ahead":1,"behind":0,"diverged":false,"lastError":"git fetch failed: no route"}')" 2>&1)
+[[ "$out" == "[vault] lint ok; store: git fetch failed: no route" ]] && ok || bad "store: a failure on the first line (out=$out)"
+out=$(jq -r "$prog" <<<"$(store '{"remote":"origin/main","ahead":0,"behind":0,"diverged":false,"lastError":null}')" 2>&1)
+[[ "$out" == "[vault] lint ok" ]] && ok || bad "store: a clean branch adds nothing (out=$out)"
+
 # ── LIVE: this repository has a stored GitHub baseline ───────────────────
 if [[ -z "${VAULT_API_URL:-}" || -z "${VAULT_API_TOKEN:-}" ]] ||
    ! curl -sf --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $VAULT_API_TOKEN" \

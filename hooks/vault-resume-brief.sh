@@ -44,7 +44,12 @@ jq -r '
       # loop stalls of the past week on the vault server (vault-storage D177); absent before 2026-10-09
       (.stalls | if . then
         "loop stalls this week: \(.count), latest \(.latestMs) ms at \(.latestAt[0:16] | sub("T"; " "))Z, worst \(.worstMs) ms (vault_health)"
-      else null end)
+      else null end),
+      # the vault branch against its remote (vault-storage D193), said only when a person must act
+      (.store | if . == null then null
+        elif .diverged then "store: \(.remote) has \(.behind) commit(s) the vault lacks, pushing stopped (\(.ahead) waiting)"
+        elif .lastError then "store: \(.lastError)"
+        else null end)
     ] | join_present),
   (.project | if . == null then empty else
     "[vault] \(.name): " + ([
