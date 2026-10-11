@@ -326,7 +326,7 @@ says *"take the lease"*, point him there; **never force a lease release**,
 and never route a refused release through `vault-curl`. Adapter 0.15.0
 dropped `force` from `vault_lease_release`, and an older adapter still
 offers it: do not send it. The REST route's `force` is open to every token
-holder until croc's switch to signed-in keys (vault-storage D141), so this
+holder until the switch to signed-in keys (vault-storage D141), so this
 is a rule, not a permission, and the auto-mode classifier refuses the call
 anyway. The same holds for a work claim (§ Work claims).
 Before that ruling the section said single-agent sessions claim nothing;
@@ -363,7 +363,7 @@ claimed", which is why the claim moved into a hook.
     is someone's (2026-09-06).
   - **Registry unreachable → assume held**: worktree + handover, as before.
     An outage costs throughput, never correctness.
-- **Holder id**: `<hostname>/<session-prefix>`, e.g. `nuke/59bd32b6` —
+- **Holder id**: `<hostname>/<session-prefix>`, e.g. `host1/59bd32b6` —
   unique per session, readable in `/ui/agents.html`. **The holder id is a
   label, not a fence** (server ≥ 2026-09-27, vault-storage D67): every agent
   claim, a lease's or a handoff's, answers with a `claim_token`, once, and
@@ -523,7 +523,7 @@ needed:
 - **Composed folder views can't be round-trip-edited.** A GET of `X.md`
   where only the atomized folder `X/` exists returns a *composed* document
   (weak ETag `W/"…"` + `X-Program-Clerk-Composed: true`, also sent as
-  `X-Vault-Composed` until croc's switch, vault-storage D151); vault-put refuses it up
+  `X-Vault-Composed` until the switch to signed-in keys, vault-storage D151); vault-put refuses it up
   front, and the server 412s conditional / 409s (`shadow_conflict`)
   unconditional PUTs against it — a flat file there would shadow the
   folder (the 2026-07-14 blog incident). Edit the folder's *pieces*

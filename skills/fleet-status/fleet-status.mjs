@@ -36,7 +36,7 @@
 // a tail line. `commit` records every run that carries events (any mode; a fleet
 // run always) as a json block in the fleet digest, so `show --fleet` and
 // `show --repo` answer "what moved since WHEN" from the vault alone, and
-// collection can run as a section of the manual daily playbook (croc, since
+// collection can run as a section of the manual daily playbook (one host, since
 // 2026-09-05; never on a schedule, by ruling) without consuming the events a
 // later look needs. Items and comments carry an `excerpt` (first line of the
 // body) for it.

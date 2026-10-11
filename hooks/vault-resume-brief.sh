@@ -72,7 +72,7 @@ jq -r '
 
 # GitHub line from the stored baseline, never from GitHub itself (2026-09-05):
 # `projects/<name>/state.md` § GitHub holds the last fleet-status snapshot,
-# written by the manual daily on croc or by a `/vault resume`. One line — open
+# written by the manual daily or by a `/vault resume`. One line — open
 # items, published advisories without a CVE, open alerts, the last CI
 # conclusion, and how old the collection is — so a stale baseline reads as
 # stale rather than as quiet. No block, no line; any failure, no line.

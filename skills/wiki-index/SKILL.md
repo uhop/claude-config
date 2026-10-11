@@ -20,7 +20,7 @@ The script:
 1. Finds the wiki: the given directory, else the current repository when its origin ends in `.wiki.git`, else that repository's `wiki/` submodule.
 2. Stops when the wiki has no `search-index.json`. A wiki without one hasn't adopted wiki search; that is `/wiki-organize`'s job, not a rebuild.
 3. Infers `OWNER/REPO` from the wiki's origin and passes it as `--repo`, since the builder's own inference misses some submodule origins.
-4. Runs `npx -y wiki-search-index@latest` with retries off. Offline, npm serves the builder it cached last (measured 2026-09-25 with no network); with nothing cached, the run fails in under a second instead of retrying for about 70 seconds. Always `@latest`: a bare `npx wiki-search-index` runs whatever version npm cached, which on nuke was 0.1.1, with different heading output from the 0.2.0 indexes in the fleet.
+4. Runs `npx -y wiki-search-index@latest` with retries off. Offline, npm serves the builder it cached last (measured 2026-09-25 with no network); with nothing cached, the run fails in under a second instead of retrying for about 70 seconds. Always `@latest`: a bare `npx wiki-search-index` runs whatever version npm cached, which on one fleet host was 0.1.1, with different heading output from the 0.2.0 indexes in the fleet.
 5. Reports whether the index changed.
 
 ## After it runs

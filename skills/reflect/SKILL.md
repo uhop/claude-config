@@ -168,7 +168,7 @@ Read all three to dedupe; write only to vault + claude-config.
    not a cluster. `queued: true` (2026-09-17) marks a message typed while the
    agent was working: Claude Code stores it as an `attachment` row of type
    `queued_command`, not a `user` row, and every scan before this marker
-   dropped it, 224 messages on nuke from 2026-08-18. These are the turns
+   dropped it, 224 messages on one fleet host from 2026-08-18. These are the turns
    typed while watching the work, so they carry the densest steering; read
    them first.
 
@@ -389,7 +389,7 @@ Read all three to dedupe; write only to vault + claude-config.
    ~/.claude/skills/reflect/reflect-state.mjs --sessions=N --signals="<one line>" --report="[[projects/agent-workflow/reports/<name>]]" --watermark="<state_watermark_iso from scan.json>"
    ```
 
-   **Always pass `--watermark` from `scan.json`, never let it default to wall-clock.** The scanner filters rows by timestamp against the window start, so a watermark set past a session it skipped as live puts that session's already-written rows *before* the next window and drops them — the live-session warning gets emitted and then immediately invalidated by the state write. `state_watermark_iso` is already clamped to the earliest row of any skipped session, so passing it is the whole fix. (Filed 2026-07-28 from the nuke run: advancing on wall-clock would have discarded 680 rows of a substantive session; four prior runs on this host had skipped live sessions and advanced past them regardless.) **Take it from the scan the report was written from**, not from a later validation re-run in the same session: a session that was live at the first scan can close before the second, and the second scan will then include it — but the report never reviewed it, so its rows must stay inside the next window. (2026-08-18: node-re2 `b1624cc4` was live at scan 1, closed by the P2 validation re-scan; the correct watermark was scan 1's clamp.)
+   **Always pass `--watermark` from `scan.json`, never let it default to wall-clock.** The scanner filters rows by timestamp against the window start, so a watermark set past a session it skipped as live puts that session's already-written rows *before* the next window and drops them — the live-session warning gets emitted and then immediately invalidated by the state write. `state_watermark_iso` is already clamped to the earliest row of any skipped session, so passing it is the whole fix. (Filed 2026-07-28 from one host's run: advancing on wall-clock would have discarded 680 rows of a substantive session; four prior runs on this host had skipped live sessions and advanced past them regardless.) **Take it from the scan the report was written from**, not from a later validation re-run in the same session: a session that was live at the first scan can close before the second, and the second scan will then include it — but the report never reviewed it, so its rows must stay inside the next window. (2026-08-18: node-re2 `b1624cc4` was live at scan 1, closed by the P2 validation re-scan; the correct watermark was scan 1's clamp.)
 
    One in-process run writes both stores: the local cache
    `~/.cache/reflect/last-run.json` (the functional authority

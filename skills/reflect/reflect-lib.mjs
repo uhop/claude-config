@@ -85,7 +85,7 @@ export const UNLANDED_CORRECTION_PATTERNS = [
 // the whole "fix the class" finding, and why the same shape scored zero again
 // on 2026-08-18. Gated on turn length (SCOPE_EXTENSION_MAX_CHARS) so content
 // turns that merely end in "too" stay out. Measured 2026-08-18 over 30 days on
-// nuke: 1,780 user turns, the tail-"too" cue fires on 36 (~28 real; the misses
+// one host: 1,780 user turns, the tail-"too" cue fires on 36 (~28 real; the misses
 // are planning talk — "Node started to work on it too"), the three companions
 // on 4 more, all real. Recall-over-precision, same footing as OBSERVATIONAL.
 // A cluster of these in one session is direct evidence for CLAUDE.md § Fix the
