@@ -309,8 +309,9 @@ events only, no snapshots. `show --fleet` and `show --repo` merge the blocks in 
 one brief; sections written before 2026-08-29 have no block and are skipped. A baseline answers
 "what is the state", the digest answers "what moved since when" — which is what lets collection
 run as a section of the manual daily playbook without consuming what a later look needs. That
-section lives in the dotfiles `playbash-daily` template, gated to one host (2026-09-05); Eugene runs
-the daily by hand, and collections are never scheduled, by ruling ([[projects/agent-workflow/feedback]]
+section lives in one host's `~/.config/playbash/local/daily.sh`, which `playbash-daily` sources
+through `playbash_local` (since 2026-10-10; a hostname test in the template before that, from
+2026-09-05), so no public file names the host; Eugene runs the daily by hand, and collections are never scheduled, by ruling ([[projects/agent-workflow/feedback]]
 § Collections run by hand or on an event).
 
 ## Output shape
