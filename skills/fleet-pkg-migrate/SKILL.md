@@ -1,6 +1,6 @@
 ---
 name: fleet-pkg-migrate
-description: "Migrate a package from one source to another (apt/dnf → brew, brew → apt, etc.) across the multi-host fleet (croc, mba, mini, mini2, nuke, uhop, think). Use when the user asks to move / swap / migrate a package between package managers, drop a native package in favor of a brew one (or vice versa), or standardize the fleet on a single source. Procedure: (1) edit chezmoi pkg lists + commit + push, (2) write an idempotent one-off shell script with rdepends/blocker check, (3) `playbash put` it to every fleet host, (4) hand off — the user runs it on each host themselves so doas/sudo passwords stay off the AI-tool path. Never `playbash exec` for steps that need sudo — no TTY in the Bash tool means orphaned doas processes."
+description: "Migrate a package from one source to another (apt/dnf → brew, brew → apt, etc.) across the multi-host fleet. Use when the user asks to move / swap / migrate a package between package managers, drop a native package in favor of a brew one (or vice versa), or standardize the fleet on a single source. Procedure: (1) edit chezmoi pkg lists + commit + push, (2) write an idempotent one-off shell script with rdepends/blocker check, (3) `playbash put` it to every fleet host, (4) hand off — the user runs it on each host themselves so doas/sudo passwords stay off the AI-tool path. Never `playbash exec` for steps that need sudo — no TTY in the Bash tool means orphaned doas processes."
 ---
 
 # Fleet package-manager migration
@@ -62,35 +62,28 @@ Write the script to `/tmp/<tool>-migrate.sh` locally. `chmod +x`, `bash -n` synt
 ### 3. Distribute via `playbash put`
 
 ```bash
-playbash put linux,mac --self /tmp/<tool>-migrate.sh /tmp/<tool>-migrate.sh
+playbash put all,@self /tmp/<tool>-migrate.sh /tmp/<tool>-migrate.sh
 ```
 
-`--self` includes the local host (`think`). `playbash put` is safe to run from the Bash tool (no remote-shell prompts). Hosts that are offline (commonly `mba`) will show "unknown host" — note them, re-run `playbash put` for those when they're back.
+`@self` adds the host you run it from, which `all` leaves out (playbash 3.7.0 replaced the `--self` flag with it). `playbash put` is safe to run from the Bash tool (no remote-shell prompts). Hosts that are offline show "unknown host" or a timeout — note them, re-run `playbash put` for those when they're back.
 
 ### 4. Hand off to the user
 
 Tell the user:
 
-> Run on each Linux host (this includes the local `think`): `bash /tmp/<tool>-migrate.sh`
+> Run on each Linux host, the one you run from included: `bash /tmp/<tool>-migrate.sh`
 >
 > The script will prompt for the doas/sudo password during the apt/dnf remove and again during the chezmoi-triggered apt install. That password stays on the host.
 >
 > Idempotent — safe to re-run if anything is interrupted.
 
-On the Mac host (`mini2`), the script just falls through to `chezmoi update` (no native package to remove). Mention it for completeness.
+On a Mac host, the script just falls through to `chezmoi update` (no native package to remove). Mention it for completeness.
 
-Wait for the user to report back. When they do, optionally verify by reading the migration log they hand back, or by `playbash exec linux -- <readonly-check>` for a no-sudo confirmation like `command -v <tool>` / `<tool> -version`.
+Wait for the user to report back. When they do, optionally verify by reading the migration log they hand back, or by `playbash exec all,@self -- <readonly-check>` for a no-sudo confirmation like `command -v <tool>` / `<tool> -version`.
 
 ## Fleet reference
 
-Hosts (from `playbash hosts`):
-
-| Group | Hosts |
-| --- | --- |
-| linux | croc, mini, nuke, uhop, think (self), mba |
-| mac   | mini2 |
-
-`mba` is the 4 GB MacBook Air and is often offline — expect "unknown host" and re-run later. `think` is the user's primary laptop where you'll usually be invoking from.
+`playbash hosts` lists the fleet and its groups from the inventory each machine keeps outside any repository; this public file names no hosts. Laptops are often offline: expect "unknown host" or a timeout, and re-run later.
 
 Package-manager assumption: most Linux hosts in the fleet are Debian/Ubuntu (apt). RHEL hosts come and go for testing — the script handles both branches so heterogeneity isn't a planning concern.
 

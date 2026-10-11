@@ -107,5 +107,5 @@ try {
   fail(1, `bash -n failed on ${out}:\n${err.stderr}`);
 }
 console.log(
-  `${out} — generated, chmod +x, bash -n clean. Review it, then: playbash put linux,mac --self ${out} ${out}`
+  `${out} — generated, chmod +x, bash -n clean. Review it, then: playbash put all,@self ${out} ${out}`
 );
