@@ -46,8 +46,16 @@ curl -sf --connect-timeout 1 --max-time 1 -X POST -o /dev/null \
 url="$PROGRAM_CLERK_URL/system/resume-brief"
 [[ $project =~ ^[a-z0-9][a-z0-9-]*$ ]] && url="$url?project=$project"
 
-resp=$(curl -sf --connect-timeout 1 --max-time 2 \
+resp=$(curl -s --connect-timeout 1 --max-time 2 -w '\n%{http_code}' \
   -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$url") || exit 0
+code=${resp##*$'\n'}
+resp=${resp%$'\n'*}
+# A refused key is the one failure the session must hear of: the day it expires, the hooks go quiet (D210).
+if [[ $code == 401 ]]; then
+  echo "[vault] the vault refused PROGRAM_CLERK_KEY (401): expired or recalled; make a new key on /ui/keys.html (a fresh sign-in)"
+  exit 0
+fi
+[[ $code == 200 ]] || exit 0
 
 jq -r '
   def join_present: [.[] | select(. != null)] | join("; ");
@@ -66,6 +74,17 @@ jq -r '
         elif .lastError then "store: \(.lastError)"
         else null end)
     ] | join_present),
+  # the calling key within seven days of its expiry (vault-storage D210); absent before 2026-10-12
+  (.key // null | if . == null then empty else
+    ((.expiresAt | sub("\\.[0-9]+"; "") | fromdateiso8601) - now) as $left |
+    ($left / 86400 | floor) as $days |
+    if $left > 7 * 86400 then empty else
+      "[vault] key \(.name) expires \(
+        if $left < 86400 then "within a day"
+        else "in \($days) day\(if $days == 1 then "" else "s" end)" end
+      ) (\(.expiresAt[0:10])); make a new one on /ui/keys.html (a fresh sign-in)"
+    end
+  end),
   (.project | if . == null then empty else
     "[vault] \(.name): " + ([
         (if (.queue.active | length) > 0 then

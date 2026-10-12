@@ -1056,15 +1056,18 @@ pending-suggestion count, the project's Active titles + ready/blocked counts,
 its queue-hygiene findings (server ≥ 2026-09-06),
 a feedback.md pointer, the latest log title, the project's own when it has
 one and marked `(fleet)` otherwise (server ≥ 2026-09-29, D104), and the vault
-server's loop stalls of the past week (server ≥ 2026-10-09, D177) — plus, since
-2026-09-05, one
+server's loop stalls of the past week (server ≥ 2026-10-09, D177), and the
+calling key's name and date when it expires within seven days (server ≥
+2026-10-12, vault-storage D210) — plus, since 2026-09-05, one
 `[vault] github <repo>:` line read from the project's stored `state.md`
 § GitHub block (open items, advisories without a CVE, open alerts, CI, and how
 old the collection is), never from GitHub itself. The digest is a *trigger*,
 never a substitute: it carries no bodies, so feedback rules, logs, and the
 drift check still come from this workflow. On a pre-brief server (404) the
 hook injects nothing, silently; a project with no stored GitHub block gets no
-GitHub line.
+GitHub line. A key the server refuses (401: expired or recalled) is the one
+failure the hook names, in a single line pointing at `/ui/keys.html`, since
+its silence is how an agent would otherwise lose its vault context unnoticed.
 
 This workflow is **MCP-native** — steps 2 and 5 are tool calls, not shell. The
 Bash is `check-drift.sh` (step 1) and `fleet-status.mjs` (step 3), each run

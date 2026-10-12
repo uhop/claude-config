@@ -74,6 +74,36 @@ none='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"
 out=$(jq -r "$prog" <<<"$none" 2>&1)
 [[ "$out" == "[vault] lint ok" ]] && ok || bad "stalls null: nothing added (out=$out)"
 
+# The caller's own key when it expires (vault-storage D210): named within seven
+# days, on its own line after the first; the server's ISO time has milliseconds.
+keyed() { printf '{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"key":%s,"latest_log":null,"project":null}' "$1"; }
+key_line() { printf '[vault] key laptop expires %s (%s); make a new one on /ui/keys.html (a fresh sign-in)' "$1" "$2"; }
+at=$(date -u -d '+3 days +1 hour' +%FT%T.123Z)
+out=$(jq -r "$prog" <<<"$(keyed "{\"name\":\"laptop\",\"expiresAt\":\"$at\"}")" 2>&1)
+[[ "$out" == "[vault] lint ok"$'\n'"$(key_line 'in 3 days' "${at:0:10}")" ]] && ok || bad "a key three days out is named (out=$out)"
+at=$(date -u -d '+1 day +1 hour' +%FT%T.000Z)
+out=$(jq -r "$prog" <<<"$(keyed "{\"name\":\"laptop\",\"expiresAt\":\"$at\"}")" 2>&1)
+[[ "$(tail -n1 <<<"$out")" == "$(key_line 'in 1 day' "${at:0:10}")" ]] && ok || bad "one day, singular (out=$out)"
+at=$(date -u -d '+2 hours' +%FT%T.000Z)
+out=$(jq -r "$prog" <<<"$(keyed "{\"name\":\"laptop\",\"expiresAt\":\"$at\"}")" 2>&1)
+[[ "$(tail -n1 <<<"$out")" == "$(key_line 'within a day' "${at:0:10}")" ]] && ok || bad "under a day (out=$out)"
+at=$(date -u -d '+10 days' +%FT%T.000Z)
+out=$(jq -r "$prog" <<<"$(keyed "{\"name\":\"laptop\",\"expiresAt\":\"$at\"}")" 2>&1)
+[[ "$out" == "[vault] lint ok" ]] && ok || bad "ten days out: nothing yet (out=$out)"
+out=$(jq -r "$prog" <<<"$(keyed null)" 2>&1)
+[[ "$out" == "[vault] lint ok" ]] && ok || bad "a key that never expires: nothing (out=$out)"
+
+# A key the server refuses (401) is said, never silent: the day it expires, or a recall (D210).
+port_file=$(mktemp)
+node -e 'const s=require("http").createServer((q,r)=>{r.writeHead(401,{"content-type":"application/json"});r.end("{}")}).listen(0,"127.0.0.1",()=>require("fs").writeFileSync(process.argv[1],String(s.address().port)))' "$port_file" &
+srv=$!
+for _ in $(seq 50); do [[ -s $port_file ]] && break; sleep 0.1; done
+refusing="http://127.0.0.1:$(cat "$port_file")"
+out=$(cd / && env PROGRAM_CLERK_URL="$refusing" PROGRAM_CLERK_KEY=pck VAULT_API_URL="$refusing" VAULT_API_TOKEN=pck bash "$HOOK" 2>/dev/null); rc=$?
+kill "$srv" 2>/dev/null; rm -f "$port_file"
+[[ $rc -eq 0 && "$out" == "[vault] the vault refused PROGRAM_CLERK_KEY (401): expired or recalled; make a new key on /ui/keys.html (a fresh sign-in)" ]] && ok ||
+  bad "a refused key is said in one line (rc=$rc out=$out)"
+
 # The vault's branch against its remote (vault-storage D193): said only when it needs a person.
 store() { printf '{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"stalls":null,"store":%s,"latest_log":null,"project":null}' "$1"; }
 out=$(jq -r "$prog" <<<"$(store '{"remote":"origin/main","ahead":2,"behind":1,"diverged":true,"lastError":null}')" 2>&1)
