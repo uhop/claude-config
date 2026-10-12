@@ -18,7 +18,7 @@ lease_marker_of() { printf '%s/%s' "$lease_pending_dir" "${1//\//_}"; }
 # lease_list <seconds> — GET /leases; fails on any trouble.
 lease_list() {
   curl -sf --connect-timeout 1 --max-time "$1" \
-    -H "Authorization: Bearer $VAULT_API_TOKEN" "$VAULT_API_URL/leases"
+    -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$PROGRAM_CLERK_URL/leases"
 }
 
 # lease_release_held <holder> <leases-json> <post-seconds> <max-posts>
@@ -44,8 +44,8 @@ lease_release_held() {
       continue
     }
     code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time "$post_t" \
-      -H "Authorization: Bearer $VAULT_API_TOKEN" -H 'Content-Type: application/json' \
-      --data-binary "$body" "$VAULT_API_URL/leases/release") || code=000
+      -H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json' \
+      --data-binary "$body" "$PROGRAM_CLERK_URL/leases/release") || code=000
     case "$code" in
       200 | 404 | 409)
         rm -f "$lease_cache_dir/$(printf '%s' "$resource" | cksum | tr -d ' ')" 2>/dev/null

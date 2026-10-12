@@ -7,7 +7,10 @@
 # or pre-brief server (404), and non-repo cwd all exit 0 immediately.
 
 set -u
-[[ -n "${VAULT_API_URL:-}" && -n "${VAULT_API_TOKEN:-}" ]] || exit 0
+# The product's names first, the old ones until the switch (vault-storage D141).
+PROGRAM_CLERK_URL=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}}
+PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
+[[ -n $PROGRAM_CLERK_URL && -n $PROGRAM_CLERK_KEY ]] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
 
@@ -26,13 +29,13 @@ fi
 # Start loading the embedding model now, so the session's first semantic
 # search does not wait ~35 s for it (vault-storage D80); answers at once.
 curl -sf --connect-timeout 1 --max-time 1 -X POST -o /dev/null \
-  -H "Authorization: Bearer $VAULT_API_TOKEN" "$VAULT_API_URL/maintenance/warm-embedder" || true
+  -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$PROGRAM_CLERK_URL/maintenance/warm-embedder" || true
 
-url="$VAULT_API_URL/system/resume-brief"
+url="$PROGRAM_CLERK_URL/system/resume-brief"
 [[ $project =~ ^[a-z0-9][a-z0-9-]*$ ]] && url="$url?project=$project"
 
 resp=$(curl -sf --connect-timeout 1 --max-time 2 \
-  -H "Authorization: Bearer $VAULT_API_TOKEN" "$url") || exit 0
+  -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$url") || exit 0
 
 jq -r '
   def join_present: [.[] | select(. != null)] | join("; ");
@@ -83,8 +86,8 @@ jq -r '
 # stale rather than as quiet. No block, no line; any failure, no line.
 if [[ $project =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
   state=$(curl -sf --connect-timeout 1 --max-time 2 \
-    -H "Authorization: Bearer $VAULT_API_TOKEN" \
-    "$VAULT_API_URL/vault/projects/$project/state.md") || state=""
+    -H "Authorization: Bearer $PROGRAM_CLERK_KEY" \
+    "$PROGRAM_CLERK_URL/vault/projects/$project/state.md") || state=""
   block=$(awk '/^## GitHub/{f=1} f && /^```json/{g=1; next} g && /^```/{exit} g' <<<"$state")
   if [[ -n "$block" ]]; then
     jq -r '

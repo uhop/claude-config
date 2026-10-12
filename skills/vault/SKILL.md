@@ -14,8 +14,9 @@ The MCP server is registered once per host, in `~/.claude.json`, because
 `settings.json` cannot carry a server definition (claude-config learnings,
 2026-08-02):
 `claude mcp add --scope user vault -- npx -y @uhop/vault-storage-mcp@latest`.
-It reads `VAULT_API_URL` and `VAULT_API_TOKEN` from the shell, and a session
-loads it only at start. When no `mcp__vault__*` tool is in the session, the
+It reads `VAULT_API_URL` and `VAULT_API_TOKEN` from the shell (through 0.16.0 only
+those; the next release reads `PROGRAM_CLERK_URL` and `PROGRAM_CLERK_KEY` first,
+vault-storage D206), and a session loads it only at start. When no `mcp__vault__*` tool is in the session, the
 host has no registration (`claude mcp list` says which): use `vault-curl` for
 the session and give the user that command; the next session has the tools.
 
@@ -248,10 +249,19 @@ missing; fall back to
 `vault-curl "/system/resume-bundle?project=<name>&logs=0&project_bodies=feedback,learnings,decisions" -X POST -s`.
 
 Requires two environment variables (set in `~/.env`, which is sourced by
-`.bashrc`) — used by `vault-curl`, `vault-put`, and the MCP server alike:
+`.bashrc`) — used by `vault-curl`, `vault-put`, the skill scripts, the session
+hooks, and the MCP server alike:
 
-- `VAULT_API_URL` — base URL of the vault REST API (vault-storage; e.g., `http://host:8123`)
-- `VAULT_API_TOKEN` — bearer token for authentication
+- `PROGRAM_CLERK_URL` — base URL of the vault REST API (vault-storage; for example, `http://host:8123`)
+- `PROGRAM_CLERK_KEY` — bearer token for authentication
+
+Each falls back to its old name, `VAULT_API_URL` and `VAULT_API_TOKEN`, until the
+switch to the AWS host (vault-storage D141, D206; the skill scripts read both
+through `vault-settings.mjs`). **Keep both pairs equal on every host until the
+adapter release after 0.16.0:** the published adapter reads only the old pair, so
+a new pair pointed at another server sends an agent's hooks and scripts there and
+its MCP tools to the old one. A host's own `~/.local/bin/vault-curl` reads the new
+names only when it is a copy of vault-storage's `bin/vault-curl` from 7p-1 on.
 
 ### Agent coordination — repo leases and handoffs
 
@@ -592,7 +602,7 @@ silently, which is worse than either rule.)
 
 ### Use `vault-curl` — don't hand-roll `curl`
 
-There is a `vault-curl` wrapper on `$PATH` (installed under `~/.local/bin/vault-curl`). **Prefer it over raw `curl`** — it prepends `$VAULT_API_URL` and the `Authorization: Bearer $VAULT_API_TOKEN` header, checks the env vars, and forwards every remaining flag straight to `curl`.
+There is a `vault-curl` wrapper on `$PATH` (installed under `~/.local/bin/vault-curl`). **Prefer it over raw `curl`** — it prepends `$PROGRAM_CLERK_URL` and the `Authorization: Bearer $PROGRAM_CLERK_KEY` header (each falling back to its old name), checks the env vars, and forwards every remaining flag straight to `curl`.
 
 Quick check before the first vault op in a session:
 
@@ -600,9 +610,9 @@ Quick check before the first vault op in a session:
 command -v vault-curl >/dev/null || { echo "vault-curl missing — falling back to curl"; }
 ```
 
-`vault-curl` itself exits with a clear error if `VAULT_API_URL` or `VAULT_API_TOKEN` is unset, so no separate guard is required. Only fall back to raw `curl` if `vault-curl` isn't installed on the machine.
+`vault-curl` itself exits with a clear error if `PROGRAM_CLERK_URL` or `PROGRAM_CLERK_KEY` is unset and so is its old name, so no separate guard is required. Only fall back to raw `curl` if `vault-curl` isn't installed on the machine.
 
-**Never grep dotfiles for the credentials.** `vault-curl` resolves `VAULT_API_URL` / `VAULT_API_TOKEN` from the already-sourced env (`~/.env` via `.bashrc`). If a call fails for missing creds, report it — do **not** scan `~/.bashrc` / `~/.env` / other dotfiles to find them. The auto-mode classifier flags systematic dotfile credential-scanning as Credential Exploration and denies it (correctly).
+**Never grep dotfiles for the credentials.** `vault-curl` resolves `PROGRAM_CLERK_URL` and `PROGRAM_CLERK_KEY` (or the old names) from the already-sourced env (`~/.env` via `.bashrc`). If a call fails for missing creds, report it — do **not** scan `~/.bashrc` / `~/.env` / other dotfiles to find them. The auto-mode classifier flags systematic dotfile credential-scanning as Credential Exploration and denies it (correctly).
 
 API endpoints (invoked via `vault-curl <path> [curl-options...]`):
 
@@ -684,10 +694,11 @@ Read the drift report from stdout; the exit code is not the signal.
 If `vault-curl` is unavailable, verify env vars explicitly:
 
 ```bash
-[[ -z "${VAULT_API_URL:-}" || -z "${VAULT_API_TOKEN:-}" ]] && { echo "Error: VAULT_API_URL and VAULT_API_TOKEN must be set in ~/.env"; exit 1; }
+url=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}} key=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
+[[ -z $url || -z $key ]] && { echo "Error: set PROGRAM_CLERK_URL and PROGRAM_CLERK_KEY (or the old VAULT_API_URL and VAULT_API_TOKEN) in ~/.env"; exit 1; }
 ```
 
-Then use `curl -H "Authorization: Bearer $VAULT_API_TOKEN" "$VAULT_API_URL/<path>"` with the same endpoints listed above.
+Then use `curl -H "Authorization: Bearer $key" "$url/<path>"` with the same endpoints listed above.
 
 ## Vault structure
 

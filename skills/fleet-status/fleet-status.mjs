@@ -63,6 +63,7 @@ import {execFile, execFileSync} from 'node:child_process';
 import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import {vaultSettings} from '../vault/vault-settings.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -314,10 +315,9 @@ const requireGhAuth = () => {
 
 // ─── Vault helpers ───────────────────────────────────────────────────────────
 
-const VAULT = (process.env.VAULT_API_URL ?? '').replace(/\/+$/, ''),
-  TOKEN = process.env.VAULT_API_TOKEN;
+const {base: VAULT, token: TOKEN, problem: VAULT_PROBLEM} = vaultSettings();
 const requireVault = () => {
-  if (!VAULT || !TOKEN) fail(1, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
+  if (VAULT_PROBLEM) fail(1, VAULT_PROBLEM);
 };
 
 const vaultFetch = (route, init = {}) =>

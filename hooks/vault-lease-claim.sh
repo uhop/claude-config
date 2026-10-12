@@ -31,7 +31,10 @@ payload=$(cat)
 
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
-[[ -n "${VAULT_API_URL:-}" && -n "${VAULT_API_TOKEN:-}" ]] || exit 0
+# The product's names first, the old ones until the switch (vault-storage D141).
+PROGRAM_CLERK_URL=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}}
+PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
+[[ -n $PROGRAM_CLERK_URL && -n $PROGRAM_CLERK_KEY ]] || exit 0
 
 agent_id=$(jq -r '.agent_id // ""' <<<"$payload" 2>/dev/null) || exit 0
 [[ -z "$agent_id" ]] || exit 0
@@ -88,8 +91,8 @@ body=$(jq -cn --arg r "$resource" --arg h "$me" --arg t "$token" \
 # -w appends the status on its own line so a 409 body is still readable
 # (curl -f would discard it, and the 409 body is the whole point).
 raw=$(curl -s --connect-timeout 1 --max-time 2 \
-  -H "Authorization: Bearer $VAULT_API_TOKEN" -H 'Content-Type: application/json' \
-  --data-binary "$body" -w $'\n%{http_code}' "$VAULT_API_URL/leases/claim") || exit 0
+  -H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json' \
+  --data-binary "$body" -w $'\n%{http_code}' "$PROGRAM_CLERK_URL/leases/claim") || exit 0
 code=${raw##*$'\n'}
 resp=${raw%$'\n'*}
 

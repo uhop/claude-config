@@ -7,7 +7,8 @@
 #
 # Two halves. The OFFLINE half asserts fail-open (exit 0, no stdout) for the
 # unknowns every hook must swallow: no vault env, non-repo cwd, sub-agent
-# payload. It runs anywhere. The LIVE half needs VAULT_API_URL/TOKEN and a
+# payload. It runs anywhere. The LIVE half needs the vault settings
+# (PROGRAM_CLERK_URL and PROGRAM_CLERK_KEY, or the old names) and a
 # reachable server; it round-trips claim → gate-allow → second-session
 # 409/subordinate line → gate-block → release against a THROWAWAY git repo
 # whose remote is fake (repo:github.com/uhop/zz-lease-hook-test), so no real
@@ -39,43 +40,44 @@ touch_() {
 stampfile() { printf '%s/%s.renew' "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease" "$(printf '%s' "$1" | cksum | tr -d ' ')"; }
 
 # ── OFFLINE: fail-open on every unknown ──────────────────────────────────
-run "$CLAIM"   '{"session_id":"deadbeefcafe","cwd":"/"}' VAULT_API_URL= VAULT_API_TOKEN=
+run "$CLAIM"   '{"session_id":"deadbeefcafe","cwd":"/"}' PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL= VAULT_API_TOKEN=
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "claim: no env must exit 0 silently (rc=$rc out=$out)"
-run "$RELEASE" '{"session_id":"deadbeefcafe","cwd":"/"}' VAULT_API_URL= VAULT_API_TOKEN=
+run "$RELEASE" '{"session_id":"deadbeefcafe","cwd":"/"}' PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL= VAULT_API_TOKEN=
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "release: no env must exit 0 silently"
-run "$GATE" '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/x"},"session_id":"deadbeefcafe","cwd":"/tmp"}' VAULT_API_URL= VAULT_API_TOKEN=
+run "$GATE" '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/x"},"session_id":"deadbeefcafe","cwd":"/tmp"}' PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL= VAULT_API_TOKEN=
 [[ $rc -eq 0 ]] && ok || bad "gate: no env must allow"
-touch_ '{"session_id":"deadbeefcafe","cwd":"/tmp"}' VAULT_API_URL= VAULT_API_TOKEN=
+touch_ '{"session_id":"deadbeefcafe","cwd":"/tmp"}' PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL= VAULT_API_TOKEN=
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "touch: no env must exit 0 silently"
-touch_ '{"session_id":"deadbeefcafe","cwd":"/tmp","agent_id":"sub-1"}' VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=x
+touch_ '{"session_id":"deadbeefcafe","cwd":"/tmp","agent_id":"sub-1"}' PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=x
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "touch: sub-agent payload must exit 0 silently"
-touch_ '{"session_id":"deadbeefcafe","cwd":"/tmp"}' VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=x
+touch_ '{"session_id":"deadbeefcafe","cwd":"/tmp"}' PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=x
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "touch: non-repo cwd must exit 0 silently"
 
 nonrepo=$(mktemp -d)
-run "$CLAIM" "$(jq -nc --arg c "$nonrepo" '{session_id:"deadbeefcafe",cwd:$c}')" VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=x
+run "$CLAIM" "$(jq -nc --arg c "$nonrepo" '{session_id:"deadbeefcafe",cwd:$c}')" PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=x
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "claim: non-repo cwd must exit 0 silently"
-run "$CLAIM" '{"session_id":"deadbeefcafe","cwd":"/","agent_id":"sub-1"}' VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=x
+run "$CLAIM" '{"session_id":"deadbeefcafe","cwd":"/","agent_id":"sub-1"}' PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=x
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "claim: sub-agent payload must exit 0 silently"
-run "$CLAIM" '{"session_id":"deadbeefcafe","cwd":"/"}' VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=x
+run "$CLAIM" '{"session_id":"deadbeefcafe","cwd":"/"}' PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=x
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "claim: unreachable server must exit 0 silently"
 rmdir "$nonrepo"
 
 # A release that cannot reach the server leaves a marker for the next start; no env, no marker.
 ST=$(mktemp -d)
 MARK="$ST/claude-vault-lease/pending-release/$(hostname -s)_deadbeef"
-run "$RELEASE" '{"session_id":"deadbeefcafe","cwd":"/"}' VAULT_API_URL= VAULT_API_TOKEN= XDG_STATE_HOME="$ST"
+run "$RELEASE" '{"session_id":"deadbeefcafe","cwd":"/"}' PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL= VAULT_API_TOKEN= XDG_STATE_HOME="$ST"
 [[ $rc -eq 0 && ! -e "$MARK" ]] && ok || bad "release: no env must not write a marker"
-run "$RELEASE" '{"session_id":"deadbeefcafe","cwd":"/"}' VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=x XDG_STATE_HOME="$ST"
+run "$RELEASE" '{"session_id":"deadbeefcafe","cwd":"/"}' PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=x XDG_STATE_HOME="$ST"
 [[ $rc -eq 0 && -z "$out" && "$(cat "$MARK" 2>/dev/null)" == "$(hostname -s)/deadbeef" ]] && ok ||
   bad "release: an unreachable server must leave a marker naming the holder"
 rm -rf "$ST"
 
 # ── LIVE: round-trip on a throwaway repo with a fake remote ──────────────
-if [[ -z "${VAULT_API_URL:-}" || -z "${VAULT_API_TOKEN:-}" ]] ||
-   ! curl -sf --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $VAULT_API_TOKEN" \
-       "$VAULT_API_URL/leases" >/dev/null 2>&1; then
-  echo "live half skipped (no VAULT_API_URL/TOKEN or server unreachable)"
+live_url=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}} live_key=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
+if [[ -z $live_url || -z $live_key ]] ||
+   ! curl -sf --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $live_key" \
+       "$live_url/leases" >/dev/null 2>&1; then
+  echo "live half skipped (no vault settings or server unreachable)"
 else
   W=$(mktemp -d)
   git -C "$W" init -q && git -C "$W" remote add origin git@github.com:uhop/zz-lease-hook-test.git
@@ -83,17 +85,17 @@ else
   RES="repo:github.com/uhop/zz-lease-hook-test"
   S1=aaaa1111beef; S2=bbbb2222beef
   ME1="$(hostname -s)/${S1:0:8}"; ME2="$(hostname -s)/${S2:0:8}"
-  hdr=(-H "Authorization: Bearer $VAULT_API_TOKEN")
+  hdr=(-H "Authorization: Bearer $live_key")
   # make sure no leftover from an aborted run
   curl -s -o /dev/null "${hdr[@]}" -H 'Content-Type: application/json' \
     --data-binary "$(jq -nc --arg r "$RES" '{resource:$r,holder:"test-cleanup",force:true}')" \
-    "$VAULT_API_URL/leases/release" || true
+    "$live_url/leases/release" || true
   rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease/$(printf '%s' "$RES" | cksum | tr -d ' ')"*
 
   # 1. session 1 claims its cwd repo
   run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
   [[ $rc -eq 0 && "$out" == *"claimed (cwd) as $ME1"* ]] && ok || bad "claim: session 1 must claim (out=$out)"
-  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""')
   [[ "$holder" == "$ME1" ]] && ok || bad "server must show $ME1 as holder (got '$holder')"
 
   # 1a. the claim token is kept on disk for renew and release (vault-storage D67)
@@ -124,51 +126,51 @@ else
 
   # 5. release by session 2 must NOT drop session 1's lease; release by session 1 must
   run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S2" '{session_id:$s,cwd:$c}')"
-  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""')
   [[ "$holder" == "$ME1" ]] && ok || bad "release: non-holder must not release (holder now '$holder')"
   run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
-  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""')
   [[ -z "$holder" ]] && ok || bad "release: holder's release must clear the lease (holder still '$holder')"
   [[ ! -e "$(tokenfile "$ME1")" ]] && ok || bad "release: the token must be dropped with the lease"
 
   # 6. gate re-claims an unheld OWN repo on touch (the TTL-lapse healing path)
   rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease/$(printf '%s' "$RES" | cksum | tr -d ' ')"*
   run "$GATE" "$(jq -nc --arg f "$W/a.txt" --arg s "$S1" --arg c "$W" '{tool_name:"Edit",tool_input:{file_path:$f},session_id:$s,cwd:$c}')"
-  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""')
   [[ $rc -eq 0 && "$holder" == "$ME1" ]] && ok || bad "gate: touching an unheld own repo must re-claim it (rc=$rc holder='$holder')"
   # 7. …but NOT a foreign unheld repo: cwd elsewhere → allow without claiming
   run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
   rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease/$(printf '%s' "$RES" | cksum | tr -d ' ')"*
   run "$GATE" "$(jq -nc --arg f "$W/a.txt" --arg s "$S1" '{tool_name:"Edit",tool_input:{file_path:$f},session_id:$s,cwd:"/tmp"}')"
-  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""')
   [[ $rc -eq 0 && -z "$holder" ]] && ok || bad "gate: an unheld foreign repo is allowed but never claimed (rc=$rc holder='$holder')"
 
   # 8. --touch re-claims an unheld own repo (the Bash-only session's healing path), silently
   rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease/$(printf '%s' "$RES" | cksum | tr -d ' ')"*
   touch_ "$(jq -nc --arg s "$S1" --arg c "$W" '{session_id:$s,cwd:$c,tool_name:"Bash"}')"
-  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""')
   [[ $rc -eq 0 && -z "$out" && "$holder" == "$ME1" ]] && ok || bad "touch: unheld own repo must be re-claimed silently (rc=$rc out='$out' holder='$holder')"
   [[ -f "$(stampfile "$RES")" ]] && ok || bad "touch: re-claim must write the renew stamp"
   # 9. a fresh stamp is the fast path: no network, no change (server unreachable must still pass)
-  touch_ "$(jq -nc --arg s "$S1" --arg c "$W" '{session_id:$s,cwd:$c}')" VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=x
+  touch_ "$(jq -nc --arg s "$S1" --arg c "$W" '{session_id:$s,cwd:$c}')" PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=x
   [[ $rc -eq 0 && -z "$out" ]] && ok || bad "touch: fresh stamp must short-circuit before the network (rc=$rc)"
   # 10. a stale stamp renews: stamp advances, holder unchanged
   printf '0\n' >"$(stampfile "$RES")"
   rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease/$(printf '%s' "$RES" | cksum | tr -d ' ')"
   touch_ "$(jq -nc --arg s "$S1" --arg c "$W" '{session_id:$s,cwd:$c}')"
   last=$(cat "$(stampfile "$RES")" 2>/dev/null || echo 0)
-  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""')
   [[ $rc -eq 0 && "$last" -gt 0 && "$holder" == "$ME1" ]] && ok || bad "touch: stale stamp must renew and advance the stamp (rc=$rc last=$last holder='$holder')"
   # 11. a second session's touch never claims, never blocks, never prints — and stamps its check
   rm -f "$(stampfile "$RES")" "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease/$(printf '%s' "$RES" | cksum | tr -d ' ')"
   touch_ "$(jq -nc --arg s "$S2" --arg c "$W" '{session_id:$s,cwd:$c}')"
-  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""')
   [[ $rc -eq 0 && -z "$out" && "$holder" == "$ME1" && -f "$(stampfile "$RES")" ]] && ok || bad "touch: a non-holder must be a silent no-op that stamps its check (rc=$rc holder='$holder')"
   # 12. a sub-agent's touch never re-claims a lapsed lease under its own prefix
   run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
   rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease/$(printf '%s' "$RES" | cksum | tr -d ' ')"*
   touch_ "$(jq -nc --arg s "$S2" --arg c "$W" '{session_id:$s,cwd:$c,agent_id:"sub-1"}')"
-  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""')
   [[ $rc -eq 0 && -z "$holder" ]] && ok || bad "touch: a sub-agent payload must never claim (rc=$rc holder='$holder')"
 
   # 12a. a release the server never saw leaves a marker; the next session's claim drains it
@@ -176,15 +178,15 @@ else
   ST=$(mktemp -d)
   cachefile() { printf '%s/%s' "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease" "$(printf '%s' "$RES" | cksum | tr -d ' ')"; }
   run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')" XDG_STATE_HOME="$ST"
-  run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')" VAULT_API_URL=http://127.0.0.1:9 XDG_STATE_HOME="$ST"
+  run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')" PROGRAM_CLERK_URL=http://127.0.0.1:9 XDG_STATE_HOME="$ST"
   marker="$ST/claude-vault-lease/pending-release/$(hostname -s)_${S1:0:8}"
-  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""')
   [[ -e "$marker" && "$holder" == "$ME1" ]] && ok || bad "release: a stranded release must leave the marker and the lease (holder='$holder')"
   run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S2" '{session_id:$s,cwd:$c}')" XDG_STATE_HOME="$ST"
   [[ $rc -eq 0 && "$out" == *"claimed (cwd) as $ME2"* && ! -e "$marker" ]] && ok ||
     bad "claim: the next session must drain the marker and claim (out=$out)"
   run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S2" '{session_id:$s,cwd:$c}')" XDG_STATE_HOME="$ST"
-  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$VAULT_API_URL/leases" | jq -r '.items[0].holder // ""')
+  holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""')
   [[ -z "$holder" && -z "$(ls -A "$ST/claude-vault-lease/pending-release" 2>/dev/null)" ]] && ok ||
     bad "release: a release that finishes must leave no marker (holder='$holder')"
   rm -rf "$ST"
@@ -194,7 +196,7 @@ else
   printf '0\n%s\nagent\n' "$ME1" >"$(cachefile)"
   curl -s -o /dev/null "${hdr[@]}" -H 'Content-Type: application/json' \
     --data-binary "$(jq -nc --arg r "$RES" '{resource:$r,holder:"test-cleanup",force:true}')" \
-    "$VAULT_API_URL/leases/release"
+    "$live_url/leases/release"
   run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S2" '{session_id:$s,cwd:$c}')"
   printf '0\n' >"$(stampfile "$RES")"
   touch_ "$(jq -nc --arg s "$S1" --arg c "$W" '{session_id:$s,cwd:$c}')"

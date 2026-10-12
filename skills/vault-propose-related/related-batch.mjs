@@ -29,6 +29,7 @@
 
 import {readFileSync, writeFileSync} from 'node:fs';
 import process from 'node:process';
+import {vaultSettings} from '../vault/vault-settings.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -49,9 +50,8 @@ const fail = (code, message) => {
   process.exit(code);
 };
 
-const base = process.env.VAULT_API_URL?.replace(/\/+$/, ''),
-  token = process.env.VAULT_API_TOKEN;
-if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
+const {base, token, problem} = vaultSettings();
+if (problem) fail(2, problem);
 
 const usage = `Usage:
   related-batch prepare [--limit=N] [--k=15] [--out=FILE]

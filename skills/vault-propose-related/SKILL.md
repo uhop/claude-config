@@ -132,7 +132,8 @@ prompt: |
 
 ## Backend requirement
 
-vault-storage on `:8123` (`VAULT_API_URL`/`VAULT_API_TOKEN` in `~/.env`);
+vault-storage on `:8123` (`PROGRAM_CLERK_URL` and `PROGRAM_CLERK_KEY` in `~/.env`, or the old
+`VAULT_API_URL` and `VAULT_API_TOKEN`);
 `/sections/{id}/similar` needs the BGE embedding index, and `apply` needs
 the FM membership-patch endpoint.
 

@@ -383,6 +383,6 @@ snapshot items and discussions store the same two fields.
 - `fleet-deps` (dotfiles, `~/.local/bin`) — the fleet dependency graph; missing or failing, the
   packages keep their npm numbers and lose only their relations for that run.
 - Network access to `api.npmjs.org`, `registry.npmjs.org`, and `api.deps.dev` — no keys.
-- `VAULT_API_URL` / `VAULT_API_TOKEN` — the baseline, the queue items, and the digest (server
-  ≥ 2026-07-24 for `POST /vault/edit`).
+- `PROGRAM_CLERK_URL` and `PROGRAM_CLERK_KEY`, or the old `VAULT_API_URL` and `VAULT_API_TOKEN` —
+  the baseline, the queue items, and the digest (server ≥ 2026-07-24 for `POST /vault/edit`).
 - `jq` — reading the digest in the procedure; the script itself doesn't need it.

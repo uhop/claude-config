@@ -22,6 +22,7 @@
 
 import {readFileSync} from 'node:fs';
 import process from 'node:process';
+import {vaultSettings} from './vault-settings.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -40,9 +41,8 @@ const fail = (code, message) => {
   process.exit(code);
 };
 
-const base = process.env.VAULT_API_URL,
-  token = process.env.VAULT_API_TOKEN;
-if (!base || !token) fail(1, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
+const {base, token, problem} = vaultSettings();
+if (problem) fail(1, problem);
 
 const args = process.argv.slice(2);
 let path = null,
@@ -98,7 +98,7 @@ if (modes !== 1) fail(1, `exactly one mode required (json write | --append | --r
 if ((fmFile && !bodyFile) || (bodyFile && !fmFile))
   fail(1, 'the JSON write mode needs both --fm and --body');
 
-const url = `${base.replace(/\/+$/, '')}/vault/${path}`;
+const url = `${base}/vault/${path}`;
 const headers = {Authorization: `Bearer ${token}`};
 
 const put = async (contentType, payload, etag) => {
@@ -144,7 +144,7 @@ const editOp = async op => {
     console.log(`DRY RUN — would POST /vault/edit ${JSON.stringify({path, ...op}).slice(0, 2000)}`);
     return true;
   }
-  const response = await fetch(`${base.replace(/\/+$/, '')}/vault/edit`, {
+  const response = await fetch(`${base}/vault/edit`, {
     method: 'POST',
     headers: {...headers, 'Content-Type': 'application/json'},
     body: JSON.stringify({path, ...op})

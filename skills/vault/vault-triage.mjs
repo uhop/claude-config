@@ -40,6 +40,7 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import process from 'node:process';
 import {nearestTags, neighborPrefixes, NEIGHBOR_KEEP, NEIGHBOR_WINDOW} from './tag-distance.mjs';
 import {reportPathFor, worksheetPathFor} from './triage-report.mjs';
+import {vaultSettings} from './vault-settings.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -62,9 +63,8 @@ const fail = (code, message) => {
   process.exit(code);
 };
 
-const base = process.env.VAULT_API_URL?.replace(/\/+$/, ''),
-  token = process.env.VAULT_API_TOKEN;
-if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
+const {base, token, problem} = vaultSettings();
+if (problem) fail(2, problem);
 
 const usage = `Usage:
   vault-triage prepare <kind> [--limit=N] [--claim] [--holder=H] [--ttl=S] [--scan[=DIST]] [--out=FILE]

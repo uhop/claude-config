@@ -26,6 +26,7 @@
 import process from 'node:process';
 import {readFileSync} from 'node:fs';
 import {hostname} from 'node:os';
+import {vaultSettings} from '../vault/vault-settings.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -64,9 +65,8 @@ const value = key => {
   return v.startsWith('@') ? readFileSync(v.slice(1), 'utf8').replace(/\s+$/, '') : v;
 };
 
-const base = process.env.VAULT_API_URL?.replace(/\/+$/, ''),
-  token = process.env.VAULT_API_TOKEN;
-if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
+const {base, token, problem} = vaultSettings();
+if (problem) fail(2, problem);
 
 const headers = {Authorization: `Bearer ${token}`};
 const get = async (path, {optional = false} = {}) => {

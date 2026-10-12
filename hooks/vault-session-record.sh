@@ -26,7 +26,10 @@ payload=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
 command -v git >/dev/null 2>&1 || exit 0
-[[ -n "${VAULT_API_URL:-}" && -n "${VAULT_API_TOKEN:-}" ]] || exit 0
+# The product's names first, the old ones until the switch (vault-storage D141).
+PROGRAM_CLERK_URL=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}}
+PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
+[[ -n $PROGRAM_CLERK_URL && -n $PROGRAM_CLERK_KEY ]] || exit 0
 
 agent_id=$(jq -r '.agent_id // ""' <<<"$payload" 2>/dev/null) || exit 0
 [[ -z "$agent_id" ]] || exit 0
@@ -82,8 +85,8 @@ if [[ -f "$transcript" ]]; then
   logs=$(grep "^C${tab}" <<<"$touched" | cut -f2 | grep -E '^logs/')
   if [[ -n "$logs" ]]; then
     # --max-time 1: with the append and the create, inside the hook's 5 s.
-    named=$(curl -s --connect-timeout 1 --max-time 1 "$VAULT_API_URL/vault/projects/$project/sessions.md" \
-      -H "Authorization: Bearer $VAULT_API_TOKEN" 2>/dev/null | grep -oE 'log: logs/[A-Za-z0-9._/-]+\.md' | cut -c6-)
+    named=$(curl -s --connect-timeout 1 --max-time 1 "$PROGRAM_CLERK_URL/vault/projects/$project/sessions.md" \
+      -H "Authorization: Bearer $PROGRAM_CLERK_KEY" 2>/dev/null | grep -oE 'log: logs/[A-Za-z0-9._/-]+\.md' | cut -c6-)
     first_log=$(grep -vxF -f <(printf '%s\n' "$named") <<<"$logs" | head -1)
     [[ -n "$first_log" ]] && log="$first_log"
   fi
@@ -102,8 +105,8 @@ line="$line, log: $log."
 path="projects/$project/sessions.md"
 edit=$(jq -cn --arg path "$path" --arg text "$line" '{path: $path, op: "append", text: $text}')
 status=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 \
-  -X POST "$VAULT_API_URL/vault/edit" \
-  -H "Authorization: Bearer $VAULT_API_TOKEN" -H 'Content-Type: application/json' \
+  -X POST "$PROGRAM_CLERK_URL/vault/edit" \
+  -H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json' \
   --data-binary "$edit" 2>/dev/null) || exit 0
 if [[ $status == 404 ]]; then
   body="Sessions of $project, one bullet each, appended at each session's end by the SessionEnd hook (vault-storage D105). A bullet whose log is \`none\` is a session that ended without a wrap; the next resume writes that log and names it here.
@@ -113,8 +116,8 @@ $line
   create=$(jq -cn --arg title "$project — Sessions" --arg body "$body" \
     '{frontmatter: {title: $title, type: "state", status: "active"}, body: $body}')
   curl -s -o /dev/null --connect-timeout 1 --max-time 2 \
-    -X PUT "$VAULT_API_URL/vault/$path" \
-    -H "Authorization: Bearer $VAULT_API_TOKEN" -H 'Content-Type: application/json' \
+    -X PUT "$PROGRAM_CLERK_URL/vault/$path" \
+    -H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json' \
     --data-binary "$create" >/dev/null 2>&1
 fi
 exit 0

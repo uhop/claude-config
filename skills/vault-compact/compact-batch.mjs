@@ -25,6 +25,7 @@ import {randomBytes} from 'node:crypto';
 import {readFileSync, writeFileSync} from 'node:fs';
 import {hostname} from 'node:os';
 import process from 'node:process';
+import {vaultSettings} from '../vault/vault-settings.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -39,9 +40,8 @@ const fail = (code, message) => {
   process.exit(code);
 };
 
-const base = process.env.VAULT_API_URL?.replace(/\/+$/, ''),
-  token = process.env.VAULT_API_TOKEN;
-if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
+const {base, token, problem} = vaultSettings();
+if (problem) fail(2, problem);
 
 const usage = `Usage:
   compact-batch plan <folder> [--keep=N | --before=YYYY-MM-DD] [--holder=H] [--out=FILE]

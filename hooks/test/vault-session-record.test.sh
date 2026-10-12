@@ -15,19 +15,19 @@ pass=0 fail=0
 ok()  { ((++pass)); }
 bad() { ((++fail)); printf 'FAIL  %s\n' "$1"; }
 
-refused=(env VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=x)
+refused=(env PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=x)
 
 bullet() { # <server url> <cwd> <transcript> <session id>
   local trace
   trace=$(printf '{"session_id":"%s","cwd":"%s","transcript_path":"%s","reason":"prompt_input_exit"}' "$4" "$2" "$3" |
-    env VAULT_API_URL="$1" VAULT_API_TOKEN=x bash -x "$HOOK" 2>&1 | grep -E "^\+ line=.*log:" | tail -1)
+    env PROGRAM_CLERK_URL="$1" PROGRAM_CLERK_KEY=x bash -x "$HOOK" 2>&1 | grep -E "^\+ line=.*log:" | tail -1)
   trace=${trace#+ line=}
   trace=${trace#\'}
   printf '%s' "${trace%\'}"
 }
 
 # ── fail-open ────────────────────────────────────────────────────────────
-out=$(printf '{"session_id":"abc","cwd":"/"}' | env VAULT_API_URL= VAULT_API_TOKEN= bash "$HOOK" 2>/dev/null); rc=$?
+out=$(printf '{"session_id":"abc","cwd":"/"}' | env PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL= VAULT_API_TOKEN= bash "$HOOK" 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "no env must exit 0 silently (rc=$rc out=$out)"
 out=$(printf '{"session_id":"abc","cwd":"/tmp"}' | "${refused[@]}" bash "$HOOK" 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "a non-repo cwd must exit 0 silently (rc=$rc out=$out)"

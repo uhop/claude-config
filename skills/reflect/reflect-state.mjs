@@ -28,6 +28,7 @@ import {mkdirSync, writeFileSync} from 'node:fs';
 import {homedir, hostname} from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import {vaultSettings} from '../vault/vault-settings.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -39,9 +40,8 @@ const fail = (code, message) => {
   process.exit(code);
 };
 
-const base = process.env.VAULT_API_URL?.replace(/\/+$/, ''),
-  token = process.env.VAULT_API_TOKEN;
-if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
+const {base, token, problem} = vaultSettings();
+if (problem) fail(2, problem);
 
 const extras = {};
 let watermark = null;

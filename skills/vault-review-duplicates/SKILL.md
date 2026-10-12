@@ -159,6 +159,7 @@ any actual merges per § Merge with user confirmation.
 
 ## Backend requirement
 
-vault-storage on `:8123` (`VAULT_API_URL`/`VAULT_API_TOKEN` in `~/.env`).
+vault-storage on `:8123` (`PROGRAM_CLERK_URL` and `PROGRAM_CLERK_KEY` in `~/.env`, or the old
+`VAULT_API_URL` and `VAULT_API_TOKEN`).
 The harness needs the 2026-07-13+ claim/resolve-batch endpoints; on an
 older server fall back to this file's git history (pre-harness procedure).

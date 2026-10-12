@@ -77,4 +77,4 @@ vault-storage (`:8123`) is the only backend. It supports both lexical and semant
 ## Dependencies
 
 - `mcp__vault__vault_search` in your tool registry — the primary path, and it needs nothing else.
-- Fallback only: `vault-curl` on `$PATH` (then raw `curl` with `Authorization: Bearer $VAULT_API_TOKEN` if that is missing too).
+- Fallback only: `vault-curl` on `$PATH` (then raw `curl` with `Authorization: Bearer $PROGRAM_CLERK_KEY`, or the old `$VAULT_API_TOKEN`, if that is missing too).

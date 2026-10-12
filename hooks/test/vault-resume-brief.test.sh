@@ -19,10 +19,16 @@ ok()  { ((++pass)); }
 bad() { ((++fail)); printf 'FAIL  %s\n' "$1"; }
 
 # ── OFFLINE: fail-open ───────────────────────────────────────────────────
-out=$(cd / && env VAULT_API_URL= VAULT_API_TOKEN= bash "$HOOK" 2>/dev/null); rc=$?
+out=$(cd / && env PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL= VAULT_API_TOKEN= bash "$HOOK" 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "no env must exit 0 silently (rc=$rc out=$out)"
-out=$(cd / && env VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=x bash "$HOOK" 2>/dev/null); rc=$?
+out=$(cd / && env PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=x bash "$HOOK" 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "unreachable server must exit 0 silently (rc=$rc out=$out)"
+
+# The product's names win over the old ones, which still work alone (vault-storage D141).
+trace=$(cd / && env PROGRAM_CLERK_URL=http://127.0.0.1:59999 PROGRAM_CLERK_KEY=new VAULT_API_URL=http://127.0.0.1:59998 VAULT_API_TOKEN=old bash -x "$HOOK" 2>&1 >/dev/null)
+[[ "$trace" == *"Bearer new"*"http://127.0.0.1:59999/system/resume-brief"* && "$trace" != *59998* ]] && ok || bad "the new names must win (trace=$trace)"
+trace=$(cd / && env PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL=http://127.0.0.1:59998 VAULT_API_TOKEN=old bash -x "$HOOK" 2>&1 >/dev/null)
+[[ "$trace" == *"Bearer old"*"http://127.0.0.1:59998/system/resume-brief"* ]] && ok || bad "the old names must work alone (trace=$trace)"
 
 # ── OFFLINE: the ACTIVE line, from the hook's own jq program ─────────────
 # The program is read out of the hook so the test pins what runs. A brief from
@@ -63,10 +69,11 @@ out=$(jq -r "$prog" <<<"$(store '{"remote":"origin/main","ahead":0,"behind":0,"d
 [[ "$out" == "[vault] lint ok" ]] && ok || bad "store: a clean branch adds nothing (out=$out)"
 
 # ── LIVE: this repository has a stored GitHub baseline ───────────────────
-if [[ -z "${VAULT_API_URL:-}" || -z "${VAULT_API_TOKEN:-}" ]] ||
-   ! curl -sf --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $VAULT_API_TOKEN" \
-       "$VAULT_API_URL/system/resume-brief" >/dev/null 2>&1; then
-  echo "live half skipped (no VAULT_API_URL/TOKEN or server unreachable)"
+live_url=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}} live_key=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
+if [[ -z $live_url || -z $live_key ]] ||
+   ! curl -sf --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $live_key" \
+       "$live_url/system/resume-brief" >/dev/null 2>&1; then
+  echo "live half skipped (no vault settings or server unreachable)"
 else
   out=$(cd "$HERE/.." && bash "$HOOK" 2>/dev/null); rc=$?
   [[ $rc -eq 0 && "$out" == *"[vault] github uhop/claude-config:"* ]] && ok || bad "from this repo: a GitHub line is expected (rc=$rc out=$out)"

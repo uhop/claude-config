@@ -77,7 +77,10 @@ mode=edit
 
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
-[[ -n "${VAULT_API_URL:-}" && -n "${VAULT_API_TOKEN:-}" ]] || exit 0
+# The product's names first, the old ones until the switch (vault-storage D141).
+PROGRAM_CLERK_URL=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}}
+PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
+[[ -n $PROGRAM_CLERK_URL && -n $PROGRAM_CLERK_KEY ]] || exit 0
 
 if [[ $mode == edit ]]; then
   tool=$(jq -r '.tool_name // ""' <<<"$payload" 2>/dev/null) || exit 0
@@ -110,7 +113,7 @@ TTL=10
 RENEW_EVERY=900
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease"
 now=$(date +%s)
-auth=(-H "Authorization: Bearer $VAULT_API_TOKEN" -H 'Content-Type: application/json')
+auth=(-H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json')
 holder=""
 kind=""
 
@@ -168,8 +171,8 @@ lookup() {
     holder=""
     kind=""
   fi
-  resp=$(curl -sf --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $VAULT_API_TOKEN" \
-    --get --data-urlencode "resource=$resource" "$VAULT_API_URL/leases") || return 1
+  resp=$(curl -sf --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $PROGRAM_CLERK_KEY" \
+    --get --data-urlencode "resource=$resource" "$PROGRAM_CLERK_URL/leases") || return 1
   # Empty `items` means "not held" — an answer, not an error.
   parsed=$(jq -r '(.items[0] // {}) | "\(.holder // "")\n\(.holder_kind // "")"' \
     <<<"$resp" 2>/dev/null) || return 1
@@ -191,7 +194,7 @@ claim_cwd() {
     '{resource: $r, holder: $h, kind: "agent", priority: "cwd"}
      + (if $t == "" then {} else {claim_token: $t} end)') || return 1
   raw=$(curl -s --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
-    -w $'\n%{http_code}' "$VAULT_API_URL/leases/claim") || return 1
+    -w $'\n%{http_code}' "$PROGRAM_CLERK_URL/leases/claim") || return 1
   code=${raw##*$'\n'}
   resp=${raw%$'\n'*}
   case "$code" in
@@ -224,7 +227,7 @@ renew_if_due() {
   body=$(jq -cn --arg r "$resource" --arg h "$me" --arg t "$(lease_token_of "$me" "$resource")" \
     '{resource: $r, holder: $h} + (if $t == "" then {} else {claim_token: $t} end)') || return 0
   curl -s -o /dev/null --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
-    "$VAULT_API_URL/leases/renew" || true
+    "$PROGRAM_CLERK_URL/leases/renew" || true
   printf '%s\n' "$now" >"$stamp" 2>/dev/null || true
 }
 

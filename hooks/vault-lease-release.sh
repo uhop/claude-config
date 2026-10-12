@@ -32,7 +32,10 @@ payload=$(cat)
 
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
-[[ -n "${VAULT_API_URL:-}" && -n "${VAULT_API_TOKEN:-}" ]] || exit 0
+# The product's names first, the old ones until the switch (vault-storage D141).
+PROGRAM_CLERK_URL=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}}
+PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
+[[ -n $PROGRAM_CLERK_URL && -n $PROGRAM_CLERK_KEY ]] || exit 0
 
 agent_id=$(jq -r '.agent_id // ""' <<<"$payload" 2>/dev/null) || exit 0
 [[ -z "$agent_id" ]] || exit 0

@@ -46,6 +46,7 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import {reportPathFor} from './triage-report.mjs';
+import {vaultSettings} from './vault-settings.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -92,9 +93,8 @@ const fail = (code, message) => {
   process.exit(code);
 };
 
-const base = process.env.VAULT_API_URL?.replace(/\/+$/, ''),
-  token = process.env.VAULT_API_TOKEN;
-if (!base || !token) fail(2, 'VAULT_API_URL and VAULT_API_TOKEN must be set (see ~/.env)');
+const {base, token, problem} = vaultSettings();
+if (problem) fail(2, problem);
 
 const usage = `Usage:
   vault-sweep begin --state=FILE [--include=k,k] [--exclude=k,k] [--max-passes=N] [--max-rounds=N] [--dry-run]

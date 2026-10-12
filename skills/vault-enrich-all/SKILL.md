@@ -261,6 +261,7 @@ whole note); hash drift files `agent_enrichment_stale`, auto-resolved
 
 ## Backend requirement
 
-vault-storage on `:8123` (`VAULT_API_URL`/`VAULT_API_TOKEN` in `~/.env`).
+vault-storage on `:8123` (`PROGRAM_CLERK_URL` and `PROGRAM_CLERK_KEY` in `~/.env`, or the old
+`VAULT_API_URL` and `VAULT_API_TOKEN`).
 The harness needs `coverage.enrichment.unenriched_records` (2026-07-09+);
 older-server fallback enumeration lives in this file's git history.

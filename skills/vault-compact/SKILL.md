@@ -110,5 +110,6 @@ to bother; *deletion* intent (compaction is move-not-delete).
 
 ## Backend requirement
 
-vault-storage on `:8123` (`VAULT_API_URL`/`VAULT_API_TOKEN` in `~/.env`);
+vault-storage on `:8123` (`PROGRAM_CLERK_URL` and `PROGRAM_CLERK_KEY` in `~/.env`, or the old
+`VAULT_API_URL` and `VAULT_API_TOKEN`);
 `POST /vault/move` does the identity-preserving renames.
