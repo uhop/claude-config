@@ -14,8 +14,8 @@ The MCP server is registered once per host, in `~/.claude.json`, because
 `settings.json` cannot carry a server definition (claude-config learnings,
 2026-08-02):
 `claude mcp add --scope user vault -- npx -y @uhop/vault-storage-mcp@latest`.
-It reads `VAULT_API_URL` and `VAULT_API_TOKEN` from the shell (through 0.16.0 only
-those; the next release reads `PROGRAM_CLERK_URL` and `PROGRAM_CLERK_KEY` first,
+It reads `PROGRAM_CLERK_URL` and `PROGRAM_CLERK_KEY` from the shell (from 0.17.0;
+the old `VAULT_API_URL` and `VAULT_API_TOKEN` where those are unset,
 vault-storage D206), and a session loads it only at start. When no `mcp__vault__*` tool is in the session, the
 host has no registration (`claude mcp list` says which): use `vault-curl` for
 the session and give the user that command; the next session has the tools.
@@ -257,13 +257,10 @@ hooks, and the MCP server alike:
 
 Each falls back to its old name, `VAULT_API_URL` and `VAULT_API_TOKEN`, until the
 switch to the AWS host (vault-storage D141, D206; the skill scripts read both
-through `vault-settings.mjs`). **Keep both pairs equal on every host until the
-adapter release after 0.16.0:** the published adapter reads only the old pair, so
-a new pair pointed at another server sends an agent's hooks and scripts there and
-its MCP tools to the old one. The SessionStart digest names a pair that differs, or
-an old pair left unset beside a new one, in a `[vault] settings:` line, and never
-prints a value (D208). A host's own `~/.local/bin/vault-curl` reads the new
-names only when it is a copy of vault-storage's `bin/vault-curl` from 7p-1 on.
+through `vault-settings.mjs`). From adapter 0.17.0 every client reads the new
+pair first, so a host that sets it reaches one server through all of them. A
+host's own `~/.local/bin/vault-curl` reads the new names only when it is a copy
+of vault-storage's `bin/vault-curl` from 7p-1 on.
 
 ### Agent coordination — repo leases and handoffs
 
