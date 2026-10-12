@@ -21,12 +21,27 @@ bad() { ((++fail)); printf 'FAIL  %s\n' "$1"; }
 # ── OFFLINE: fail-open ───────────────────────────────────────────────────
 out=$(cd / && env PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL= VAULT_API_TOKEN= bash "$HOOK" 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "no env must exit 0 silently (rc=$rc out=$out)"
-out=$(cd / && env PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=x bash "$HOOK" 2>/dev/null); rc=$?
+refused=(PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=pck VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=pck)
+out=$(cd / && env "${refused[@]}" bash "$HOOK" 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "unreachable server must exit 0 silently (rc=$rc out=$out)"
+
+# Until the adapter release after 0.16.0 its MCP tools read only the old names, so a pair
+# that differs is named at session start, its values never (vault-storage D208).
+out=$(cd / && env "${refused[@]}" VAULT_API_URL=http://127.0.0.1:8 bash "$HOOK" 2>/dev/null); rc=$?
+[[ $rc -eq 0 && "$out" == "[vault] settings: VAULT_API_URL does not match PROGRAM_CLERK_URL; "* && "$out" != *127.0.0.1* ]] && ok ||
+  bad "a differing URL must be named, never its value (rc=$rc out=$out)"
+out=$(cd / && env "${refused[@]}" VAULT_API_TOKEN=tok-zz2 bash "$HOOK" 2>/dev/null)
+[[ "$out" == "[vault] settings: VAULT_API_TOKEN does not match PROGRAM_CLERK_KEY; "* && "$out" != *pck* && "$out" != *tok-zz2* ]] && ok ||
+  bad "a differing key must be named, never its value (out=$out)"
+out=$(cd / && env -u VAULT_API_URL -u VAULT_API_TOKEN PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=pck bash "$HOOK" 2>/dev/null)
+[[ "$out" == "[vault] settings: VAULT_API_URL and VAULT_API_TOKEN do not match PROGRAM_CLERK_URL and PROGRAM_CLERK_KEY; "* && $(wc -l <<<"$out") -eq 1 ]] && ok ||
+  bad "an unset old pair beside a new one must be named in one line (out=$out)"
+out=$(cd / && env PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL=http://127.0.0.1:9 VAULT_API_TOKEN=old bash "$HOOK" 2>/dev/null)
+[[ -z "$out" ]] && ok || bad "the old pair alone must stay silent (out=$out)"
 
 # The product's names win over the old ones, which still work alone (vault-storage D141).
 trace=$(cd / && env PROGRAM_CLERK_URL=http://127.0.0.1:59999 PROGRAM_CLERK_KEY=new VAULT_API_URL=http://127.0.0.1:59998 VAULT_API_TOKEN=old bash -x "$HOOK" 2>&1 >/dev/null)
-[[ "$trace" == *"Bearer new"*"http://127.0.0.1:59999/system/resume-brief"* && "$trace" != *59998* ]] && ok || bad "the new names must win (trace=$trace)"
+[[ "$trace" == *"Bearer new"*"http://127.0.0.1:59999/system/resume-brief"* && "$trace" != *"59998/"* ]] && ok || bad "the new names must win (trace=$trace)"
 trace=$(cd / && env PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL=http://127.0.0.1:59998 VAULT_API_TOKEN=old bash -x "$HOOK" 2>&1 >/dev/null)
 [[ "$trace" == *"Bearer old"*"http://127.0.0.1:59998/system/resume-brief"* ]] && ok || bad "the old names must work alone (trace=$trace)"
 

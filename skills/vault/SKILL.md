@@ -260,7 +260,9 @@ switch to the AWS host (vault-storage D141, D206; the skill scripts read both
 through `vault-settings.mjs`). **Keep both pairs equal on every host until the
 adapter release after 0.16.0:** the published adapter reads only the old pair, so
 a new pair pointed at another server sends an agent's hooks and scripts there and
-its MCP tools to the old one. A host's own `~/.local/bin/vault-curl` reads the new
+its MCP tools to the old one. The SessionStart digest names a pair that differs, or
+an old pair left unset beside a new one, in a `[vault] settings:` line, and never
+prints a value (D208). A host's own `~/.local/bin/vault-curl` reads the new
 names only when it is a copy of vault-storage's `bin/vault-curl` from 7p-1 on.
 
 ### Agent coordination — repo leases and handoffs
