@@ -122,13 +122,11 @@ need no claim. **Never force a work-claim release**, even when the claim
 looks stuck: a claim another holder left behind is the operator's to end on
 the agents page (`/ui/agents.html`). From adapter 0.15.0 neither
 `vault_work_release` nor `vault_lease_release` offers `force`; the REST
-route's `force` is a person's act, and every agent's token passes that check
-today, so the rule is all that stands in the way.
+route's `force` is a signed-in person's act, refused to an agent's key.
 
 **A call that fails with `code: "network"` says what happened** (adapter ≥
 0.12.0; server from 2026-09-29, vault-storage D99). The usual cause is a
-deploy: the server is down for about two seconds while its container is
-recreated. The adapter repeats a refused connection every half second for
+deploy: the server restarts briefly. The adapter repeats a refused connection every half second for
 eight seconds, so most restarts pass unseen. When the error still arrives,
 read `details.cause`: `ECONNREFUSED` sent nothing, so repeat the call once
 `vault_health` answers; a message that says the write may have applied went
@@ -143,13 +141,10 @@ as `{field, line, kind}`, never the value. `field` is a JSON pointer into the
 body, `body` for a raw one, `path` for the note path or other path the request
 names, or `?<name>` for a query value (server from 2026-10-09, vault-storage
 D178), since a path becomes a file name and a query value can be stored. Take a real secret out of the text
-and write again; it never belongs in the vault. A value the vault already
-holds is not refused (4f-3), so rewriting a note that carries an allowed fake,
-or removing a held secret with `replace`, needs nothing. **The override is
+and write again; it never belongs in the vault. **The override is
 Eugene's call, never yours**, as `git commit --no-verify` is for the dotfiles
-hook: a header `X-Program-Clerk-Allow-Secret: 1` you send on your own judgment
-stores a value you may have misread as a fake, and from then on every write
-of it passes. So stop, tell him which field, line, and kind were refused and
+hook: an override you send on your own judgment stores a value you may have
+misread as a fake. So stop, tell him which field, line, and kind were refused and
 why you believe it is a fake, and send the override only on his word for
 that write. On his word, pass `allow_secret: true` to that one call (adapter ≥
 0.16.0, on every tool that sends a body). An older adapter refuses the argument
@@ -255,14 +250,13 @@ hooks, and the MCP server alike:
 - `PROGRAM_CLERK_URL` — base URL of the vault REST API (vault-storage; for example, `http://host:8123`)
 - `PROGRAM_CLERK_KEY` — bearer token for authentication
 
-Each falls back to its old name, `VAULT_API_URL` and `VAULT_API_TOKEN`, until the
-switch to the AWS host (vault-storage D141, D206; the skill scripts read both
-through `vault-settings.mjs`). From adapter 0.17.0 every client reads the new
-pair first, so a host that sets it reaches one server through all of them. A
-host's `~/.local/bin/vault-curl` is the dotfiles' copy, installed by chezmoi, and
-reads the new names from 2026-10-14 on: never copy vault-storage's
-`bin/vault-curl` over it, since chezmoi then refuses to overwrite the changed file
-and the daily update fails (2026-10-14).
+Each falls back to its old name, `VAULT_API_URL` and `VAULT_API_TOKEN` (vault-storage
+D141, D206; the skill scripts read both through `vault-settings.mjs`). From adapter
+0.17.0 every client reads the new pair first, so a host that sets it reaches one
+server through all of them. `vault-curl`'s only home is the dotfiles, where chezmoi
+installs it as `~/.local/bin/vault-curl`; it reads the new names from 2026-10-14 on.
+Never copy another version over it, since chezmoi then refuses to overwrite the
+changed file and the daily update fails (2026-10-14).
 
 ### Agent coordination — repo leases and handoffs
 
@@ -327,7 +321,7 @@ worktree + a handoff to `repo:X` (below), and ping the holder with
 `SendMessage` when `ListAgents` shows it reachable. **Address the doorbell
 by repo, not by holder id**: `ListAgents` names a peer
 `<cwd-basename>-<xx> [<ref>]` and neither part is the session prefix in the
-holder id (verified 2026-08-19: holder `nuke/36eb0a3e` was
+holder id (verified 2026-08-19: holder `host1/36eb0a3e` was
 `claude-config-ca [51bbb5]`) — send to the peer(s) named after the repo's
 basename and put the resource + holder id in the text so a non-holder can
 tell and ignore it. Record first, ring second. Taking the lease is the
@@ -336,10 +330,9 @@ operator's act, never yours, and it happens in the UI only (ruled
 says *"take the lease"*, point him there; **never force a lease release**,
 and never route a refused release through `vault-curl`. Adapter 0.15.0
 dropped `force` from `vault_lease_release`, and an older adapter still
-offers it: do not send it. The REST route's `force` is open to every token
-holder until the switch to signed-in keys (vault-storage D141), so this
-is a rule, not a permission, and the auto-mode classifier refuses the call
-anyway. The same holds for a work claim (§ Work claims).
+offers it: do not send it. The REST route refuses `force` to an agent's key,
+and the auto-mode classifier refuses the call anyway. The same holds for a
+work claim (§ Work claims).
 Before that ruling the section said single-agent sessions claim nothing;
 that left the registry unable to tell "nobody is there" from "nobody
 claimed", which is why the claim moved into a hook.

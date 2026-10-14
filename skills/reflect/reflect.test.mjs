@@ -437,34 +437,31 @@ test('a message typed mid-turn is a human turn; harness rows in the same shape a
 });
 
 test('a relayed side-agent note splits into its title, its text, and his own words', () => {
-  // vault-storage 6518cf61, 2026-10-04T22:21:28Z (shortened); reports/2026-10-06-uhop P1
+  // The shape of a relayed note (2026-10-04), with invented text
   const withWords =
     'Here is a note offered by a side agent:\n\n' +
-    "> Heads up · The deploy keys you chose give our server lasting write access to each client's repository.\n" +
+    '> Heads up · The cache you chose keeps every reply for a week.\n' +
     '>\n' +
-    '> **Deploy keys never expire and get backed up**\n' +
-    "> - GitHub deploy keys don't expire.\n" +
-    '> - The GitHub App option uses tokens that expire in an hour.\n\n' +
-    'Should it be a secret?';
+    '> **Cached replies outlive their source**\n' +
+    "> - The cache doesn't check for updates.\n" +
+    '> - The other option rechecks every reply after an hour.\n\n' +
+    'Should it be shorter?';
   const side = parseSideNote(withWords);
-  assert.equal(side.title, 'Deploy keys never expire and get backed up');
-  assert.equal(
-    side.heads_up,
-    "The deploy keys you chose give our server lasting write access to each client's repository."
-  );
-  assert.ok(side.note.endsWith('expire in an hour.'));
-  assert.equal(side.addendum, 'Should it be a secret?');
-  // Eugene's words are classified as his turn; the note's "don't" is not.
+  assert.equal(side.title, 'Cached replies outlive their source');
+  assert.equal(side.heads_up, 'The cache you chose keeps every reply for a week.');
+  assert.ok(side.note.endsWith('after an hour.'));
+  assert.equal(side.addendum, 'Should it be shorter?');
+  // Eugene's words are classified as his turn; the note's "doesn't" is not.
   assert.equal(classifyUserTurn(side.addendum).negation, false);
 
-  // vault-storage 6518cf61, 2026-10-04T21:20:30Z: a queued note with nothing after it
+  // A queued note with nothing after it, invented text
   const bare =
     'Here is a note offered by a side agent:\n\n' +
-    '> Heads up · The t4g.small you approved is a "burstable" machine.\n' +
+    '> Heads up · The build machine you picked is a shared one.\n' +
     '>\n' +
-    '> **The t4g.small rations its CPU with credits**\n' +
-    '> - Short bursts are covered by saved credits.';
-  assert.equal(parseSideNote(bare).title, 'The t4g.small rations its CPU with credits');
+    '> **A shared machine slows down under load**\n' +
+    '> - Short builds run at full speed.';
+  assert.equal(parseSideNote(bare).title, 'A shared machine slows down under load');
   assert.equal(parseSideNote(bare).addendum, '');
 
   // No bold title: the heads-up line names it.

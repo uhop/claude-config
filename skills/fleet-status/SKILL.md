@@ -69,11 +69,10 @@ dependents' names (deps.dev returns counts only, and npmjs.com's list needs a sp
 user agent).
 
 **Private repositories** are collected only when a project declares one in the `trackers:` list of
-its `queue.md` (vault-storage D95), ruled 2026-10-06 when vault-storage moved to the private
-`apodictum/pc`; the 2026-08-28 ruling had left every private repository out. A declared private
-repository is collected like a public one, except that its advisories are not read (GitHub
-answers 404 for a private repository's). On `apodictum/pc` both alert counts read `unavailable`:
-Dependabot alerts and code scanning answer 403 there, since neither feature is enabled.
+its `queue.md` (vault-storage D95), ruled 2026-10-06; the 2026-08-28 ruling had left every
+private repository out. A declared private repository is collected like a public one, except that
+its advisories are not read (GitHub answers 404 for a private repository's). An alert count reads
+`unavailable` where GitHub answers 403, as it does when the repository has that feature off.
 
 ## Invocation
 

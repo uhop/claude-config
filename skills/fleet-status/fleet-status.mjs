@@ -609,8 +609,8 @@ const collectRepo = async ({
     default_branch: repoMeta.default_branch
   };
 
-  // GitHub answers 404 for a private repository's advisories (apodictum/pc,
-  // 2026-10-06), so the read is skipped there rather than logged every run.
+  // GitHub answers 404 for a private repository's advisories (2026-10-06),
+  // so the read is skipped there rather than logged every run.
   const advisories = {};
   for (const a of repoMeta.private
     ? []

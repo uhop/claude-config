@@ -138,12 +138,9 @@ class ApiError extends Error {
   }
 }
 
-// GETs retry network-level failures (ECONNRESET & friends) with backoff: the
-// server's synchronous DB serializes concurrent bursts, and a long queue once
-// pushed sockets past its headers timeout — every width-6 prepare crashed on
-// the first reset (2026-07-18/23; server since bounds /similar cost and
-// raised its timeouts, this is the client's half of the fix). Non-GETs stay
-// fail-fast: a write's socket death is not provably un-applied.
+// GETs retry network-level failures (ECONNRESET & friends) with backoff
+// (2026-07-18/23). Non-GETs stay fail-fast: a write's socket death is not
+// provably un-applied.
 const RETRY_DELAYS_MS = [300, 1200, 4800];
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -372,7 +369,7 @@ const prepare = async () => {
           if (data.baseline && data.changed_fraction <= opts.fullThreshold) delta = data;
         } catch {}
       }
-      // A delta keeps current_agent.related_proposed; /similar costs ~7 s a call (vault-storage queue, 2026-09-27).
+      // A delta keeps current_agent.related_proposed, which saves the /similar call (2026-09-27).
       let similar = [];
       if (!delta) {
         try {

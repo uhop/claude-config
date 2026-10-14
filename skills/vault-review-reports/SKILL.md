@@ -6,16 +6,14 @@ user_invocable: true
 
 # Vault — review backend-shape reports
 
-The time-to-upgrade evaluator (`src/maintenance/find-upgrade-signals.ts` in
-vault-storage) periodically checks whether the SQLite + sqlite-vec +
-recursive-CTE backend is hitting an inefficiency point and files:
+The server's time-to-upgrade evaluator periodically checks whether its
+storage backend is reaching an inefficiency point and files:
 
 - **`inefficiency_detected`** — tune-and-stay signals:
-  `record_count_high` (50K), `db_bytes_high` (1 GiB), `edge_fanout_high`
-  (200 outbound edges on one record), `review_backlog_high` (5K pending
-  suggestions).
-- **`infrastructure_upgrade`** — migrate-tier: `record_count_migrate`
-  (100K → Postgres + pgvector + AGE per `design/backend-comparison.md`).
+  `record_count_high`, `db_bytes_high`, `edge_fanout_high` (outbound edges
+  on one record), `review_backlog_high` (pending suggestions); each payload
+  carries its threshold.
+- **`infrastructure_upgrade`** — migrate-tier: `record_count_migrate`.
   **Never auto-resolve this kind** — leave it pending and surface it; the
   migration decision is the user's, always.
 
