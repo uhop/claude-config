@@ -180,7 +180,7 @@ test('a slash command collapses to its command line, never to the injected skill
 
 test('a sub-agent hand-back is machine traffic, whatever its trailer says', () => {
   // the harness's shape for a background Agent's final report (2026-09-15,
-  // reports/2026-09-15-nuke P2: 13 of a window's 49 corrections were these)
+  // reports/2026-09-15 P2: 13 of a window's 49 corrections were these)
   const t =
     'Another Claude session sent a message:\n<agent-message from="aead3f2ba8c145273">\n' +
     '[Subagent hand-back] The text below is the final report of a subagent this session ' +
@@ -203,7 +203,7 @@ test('a sub-agent hand-back is machine traffic, whatever its trailer says', () =
 });
 
 test('error signature: one failure signs one way whatever the agent echoed in front of it', () => {
-  // the five `jq` shapes from the 2026-09-13 window (reports/2026-09-13-nuke P1)
+  // the five `jq` shapes from the 2026-09-13 window (reports/2026-09-13 P1)
   const jq = [
     'Exit code 5\njq: error (at /tmp/tmp.W7F2VvgCWw/github.json:7): Cannot iterate over null (null)',
     'Exit code 5\nWORK=/tmp/tmp.WlXrNd11ki\nexit=0\njq: error (at /tmp/tmp.WlXrNd11ki/github.json:7): Cannot iterate over null (null)',
@@ -286,13 +286,13 @@ test('short-turn gates read the first line: a short ask over a paste still fires
 });
 
 test('did_you marks the bare announced-step check and leaves the quoted form to unlanded', () => {
-  // 2026-09-11 hits (reports/2026-09-11-nuke)
+  // 2026-09-11 hits (reports/2026-09-11)
   for (const t of [
     'Did you take into account for JS that it may use `.d.ts` files? Usually they are referred with a meta-comment, or by convention.',
     'Did you updated the writing voice-related records in the vault?',
     'Did we harvest TSX/JSX code?',
     "Didn't we agree to keep the pin?",
-    // 2026-09-29: a second sentence after the question (reports/2026-09-29-nuke)
+    // 2026-09-29: a second sentence after the question (reports/2026-09-29)
     'Did you count lines only in a parser or in related utility files too? Like the assembler 2nd pass file.',
     'Did you wrap a progress bar as a web component? If so, I can use its attributes to check it by manually changing the current value.'
   ]) {

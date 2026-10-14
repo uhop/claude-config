@@ -41,7 +41,7 @@ export const OBSERVATIONAL_CORRECTION_PATTERNS = [
   /\brather than\b/i,
   // The negated-auxiliary forms were missing until 2026-09-05: "Why didn't we
   // test PostGres?" (apodict 53989575, 2026-08-25) fell through a list that had
-  // `don't` and `did we` but not `didn't` (reports/2026-08-25-nuke).
+  // `don't` and `did we` but not `didn't` (reports/2026-08-25).
   /\bwhy\s+(?:don'?t|didn'?t|doesn'?t|wasn'?t|weren'?t|not|are you|did you|would you|are we|did we)\b/i,
   // Sentence-final bare "Why?" — the form actually used to open a challenge
   // ("…yet we never talked about it. Why?"); the pattern above requires an
@@ -182,7 +182,7 @@ const stripMachineText = s =>
     // turn goes. Requires the envelope to follow the preamble, so a user
     // quoting the phrase keeps their text.
     // A background sub-agent's hand-back arrives the same way in an
-    // `<agent-message>` envelope (2026-09-15, reports/2026-09-15-nuke P2);
+    // `<agent-message>` envelope (2026-09-15, reports/2026-09-15 P2);
     // the row loop drops it on `origin.kind`, and this is the fallback for a
     // transcript without `origin`.
     .replace(
@@ -206,7 +206,7 @@ const stripMachineText = s =>
 // Until 2026-09-15 it was the first 120 characters of the whole text, which
 // put the agent's own `echo` lines and a `mktemp` path in front of the error:
 // five identical jq failures signed five ways and reported `repeated_failures:
-// 0` (reports/2026-09-13-nuke P1). Now: strip ANSI, normalize `/tmp/tmp.*` and
+// 0` (reports/2026-09-13 P1). Now: strip ANSI, normalize `/tmp/tmp.*` and
 // the session scratchpad, drop the harness's `Exit code N` line and stack
 // frames, then take the first line that reads as an error. With no such line
 // a short text (one or two lines left) signs as its last line — a tool's
@@ -255,13 +255,13 @@ export const SUPPRESSED_FAILURE_PATTERNS = [
   // Q-2026-05-17-001 — accepted as noise. Tool description already says
   // "must Read before Edit/Write"; recovery is one Read call.
   'file has not been read yet',
-  // 2026-08-29 (reports/2026-08-29-nuke P3) — the CLAUDE.md § Background shells
+  // 2026-08-29 (reports/2026-08-29 P3) — the CLAUDE.md § Background shells
   // registry probe: the error text is the enumeration, not a failure. The id is
   // whatever the agent types (probe-no-such-task, probe-none, nonexistent-probe,
-  // …), so match `probe` anywhere in it (prefix 2026-08-30, reports/2026-08-30-nuke
-  // P2; regex 2026-09-03, reports/2026-09-03-nuke P2), or the bare `x` the
+  // …), so match `probe` anywhere in it (prefix 2026-08-30, reports/2026-08-30
+  // P2; regex 2026-09-03, reports/2026-09-03 P2), or the bare `x` the
   // rule's own example shows, which the rule now prescribes (2026-09-15,
-  // reports/2026-09-15-nuke P1).
+  // reports/2026-09-15 P1).
   /no task found with id: (x\b|\S*probe)/
 ];
 export const isSuppressed = text =>
@@ -272,7 +272,7 @@ export const isSuppressed = text =>
 // A headless `claude -p` run writes a transcript like any other, but its
 // "user" turns are a launcher's prompt: apodict's model-sensitivity arms and
 // its one-turn probes counted as 14 of a window's 16 sessions on 2026-08-30
-// (reports/2026-08-30-nuke P4). The discriminator is structural, not textual:
+// (reports/2026-08-30 P4). The discriminator is structural, not textual:
 // every row of such a transcript carries `entrypoint: "sdk-cli"`, where an
 // interactive session carries `"cli"` (measured 2026-09-05 over 140 transcripts
 // from 30 days: 13 sdk-cli, 127 cli, no third value). An absent entrypoint is
@@ -300,7 +300,7 @@ export const firstLine = (text, cap = USER_TURN_LINE_MAX) => {
 // claude-config 70bb29c) that Eugene relayed: a prefix line, a quoted heads-up
 // with a bold title, then any words of his own. It reports on the main agent,
 // so it is not his correction; 10 of 22 scored as corrections on 2026-10-06
-// (reports/2026-10-06-uhop P1). Anchored at turn start, so a user quoting the
+// (reports/2026-10-06 P1). Anchored at turn start, so a user quoting the
 // phrase keeps the turn. Returns null for any other turn.
 const SIDE_NOTE_PREFIX = /^\s*Here is a note offered by a side agent:[ \t]*\n/;
 export const parseSideNote = text => {
@@ -339,7 +339,7 @@ export const isHumanUserRow = row =>
   row?.type === 'user' && !(typeof row.origin?.kind === 'string' && row.origin.kind !== 'human');
 
 // A message typed while the agent works is stored as an attachment, not a user
-// row (first seen 2026-08-18; reports/2026-09-17-nuke P2). Hand-backs can ride
+// row (first seen 2026-08-18; reports/2026-09-17 P2). Hand-backs can ride
 // the same mode, so their envelopes stay out.
 export const asHumanRow = row => {
   const a = row?.type === 'attachment' ? row.attachment : null;

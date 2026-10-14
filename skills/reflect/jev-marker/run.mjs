@@ -7,13 +7,13 @@
 // reflect report cited since that date, by epoch or by session and minute, as
 // `signal`, the reports' "False positives" as `fp`, and hand labels for the
 // withheld class written before any answer was seen (labels.json). Floor: the
-// scanner's own `correction` cue on the same turns. Private repositories
-// (apodict, blog-hugo, articles; `gh api repos/… .private`, 2026-09-22) are
-// built and never sent unless `--all` says so.
+// scanner's own `correction` cue on the same turns. Private repositories are
+// built and never sent unless `--all` says so; which ones are private, and
+// which of them may be sent, is listed in PRIVATE_FILE, kept on the machine.
 //
 //   node run.mjs build --scan scan.json                → states.json
 //   node run.mjs ask --arm before|after|rule [--all] [--limit N] → responses-<arm>.json (needs TYPESAFE_API_KEY)
-//     --all adds the private repositories Eugene allowed (blog-hugo); apodict is never asked or scored
+//     --all adds the private repositories the list marks sendable; the others are never asked or scored
 //   node run.mjs score --arm before|after              → score-<arm>.json + a summary
 import {readFileSync, writeFileSync} from 'node:fs';
 import {homedir} from 'node:os';
@@ -37,14 +37,24 @@ const PRICE_PER_INPUT_TOKEN = 0.042 / 1e6;
 const CONCURRENCY = 6;
 const THRESHOLDS = [0.5, 0.7, 0.9];
 const ARMS = ['before', 'after', 'rule'];
-const PRIVATE = new Set([
-  '-home-eugene-Open-apodict',
-  '-home-eugene-Open-blog-hugo',
-  '-home-eugene-Open-articles'
-]);
-// Eugene, 2026-09-22: "Private repos: apodict --- no, blog-hugo --- yes." Articles was not named and stays out.
+// Kept out of this public repository (2026-10-14); without it nothing runs, since a missing list would send everything.
+const PRIVATE_FILE = join(homedir(), '.config', 'reflect', 'jev-private.json');
+const readPrivate = () => {
+  try {
+    const {private: all, sendable} = JSON.parse(readFileSync(PRIVATE_FILE, 'utf8'));
+    if (!Array.isArray(all) || !Array.isArray(sendable))
+      throw new TypeError('"private" and "sendable" must be arrays of project directories');
+    return [new Set(all), new Set(sendable)];
+  } catch (error) {
+    console.error(
+      `run.mjs: cannot read ${PRIVATE_FILE}: ${error.message}\n` +
+        'It lists {"private": ["-home-…-Open-<repo>", …], "sendable": [<the private ones --all may send>]}.'
+    );
+    process.exit(2);
+  }
+};
 // `--all` reaches SENDABLE_PRIVATE only; a NEVER_SEND project is neither asked nor scored.
-const SENDABLE_PRIVATE = new Set(['-home-eugene-Open-blog-hugo']);
+const [PRIVATE, SENDABLE_PRIVATE] = readPrivate();
 const NEVER_SEND = new Set([...PRIVATE].filter(p => !SENDABLE_PRIVATE.has(p)));
 const TURN_MAX = 1500;
 const BEFORE_MAX = 700;

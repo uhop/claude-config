@@ -312,7 +312,7 @@ const inputFingerprint = input => {
 };
 
 // Human time beside every epoch: a report names a moment by its ISO time and
-// its session's subject, never by `ts=` (reports/2026-09-15-nuke, the
+// its session's subject, never by `ts=` (reports/2026-09-15, the
 // evidence coordinates item); the epoch stays for the transcript lookup.
 const iso = ms => (ms == null ? null : new Date(ms).toISOString());
 
@@ -335,7 +335,7 @@ const sessionGit = [];
 
 // Headless transcripts (entrypoint sdk-cli) are listed, not analyzed, unless
 // --include-automated: their "user" turns are a launcher's prompt, and Pass 4
-// would attribute the launcher's commits to them (reports/2026-08-30-nuke P4).
+// would attribute the launcher's commits to them (reports/2026-08-30 P4).
 const automatedSessions = [];
 
 // Every human-authored turn of every analyzed session, by first line — the
@@ -396,7 +396,7 @@ for (const t of transcripts) {
     if (row.type !== 'user' && row.type !== 'assistant') continue;
     // A user row whose `origin.kind` is not `human` is harness traffic — a
     // sub-agent hand-back (`peer`) or a task notification — never the user,
-    // whatever its text says (2026-09-15, reports/2026-09-15-nuke P2: 13
+    // whatever its text says (2026-09-15, reports/2026-09-15 P2: 13
     // hand-backs scored as corrections). Rows without `origin` (tool results,
     // `<bash-input>` echoes, local slash commands) fall through to the text
     // stripper.
@@ -718,7 +718,7 @@ for (const t of transcripts) {
   }
 
   // `first_turn` is the naming aid: a report names a session by its subject
-  // and day, never by its id prefix (reports/2026-09-15-nuke, the evidence
+  // and day, never by its id prefix (reports/2026-09-15, the evidence
   // coordinates item), and the first human turn is where the subject starts.
   const firstHuman = events.find(e => e.role === 'user' && e.userText);
   sessionGit.push({

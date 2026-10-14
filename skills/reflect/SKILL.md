@@ -181,7 +181,7 @@ Read all three to dedupe; write only to vault + claude-config.
    after the note (`addendum`) as his turn. On 2026-10-06, 11 of 22 notes
    caught a rule on record being broken, the unread residue four times, and
    the previous report had filed four as false positives
-   ([[projects/agent-workflow/reports/2026-10-06-uhop]] P1). Read each one
+   (the 2026-10-06 report, P1). Read each one
    against the transcript with `reflect-context.mjs`, since a note is a claim
    and one that day overstated its case. In the report, give each a row:
    the session, the note's title, the rule on record it shows broken (or
@@ -191,7 +191,7 @@ Read all three to dedupe; write only to vault + claude-config.
    **Jev is on demand here, never a step** (Eugene, 2026-09-22: *"Let's run
    without Jev for now, keep it on demand. But you can suggest when to use
    it."*). The arm in `skills/reflect/jev-marker/` measured it on 902 turns
-   (the public repositories plus blog-hugo; apodict is never sent): on
+   (the public repositories, plus the private ones its local list allows): on
    corrections alone the model loses to the cues above; a `rule` criterion,
    the engineer stating how the agent should work in general, finds the
    standing preferences no cue can name, 22 of its 25 strongest flags real;
@@ -232,8 +232,8 @@ Read all three to dedupe; write only to vault + claude-config.
    - `~/.claude/projects/<hash>/memory/*.md` for the relevant project hash
    - The relevant project's vault `feedback.md`, `learnings.md`, `decisions.md` (if any)
    - `projects/agent-workflow/queue.md` (already-queued improvements)
-   - **Recent other-host reports** — list `projects/agent-workflow/reports/` and read those from the last ~60 days whose `-<host>` filename suffix is *not* this machine. This is the **cross-machine recurrence input** for step 4: transcripts are local-only, so another host's report is the only fleet-visible evidence that the same signal also fired there. (Dedupe / `already_covered` still comes from the rules stores above — a report only *proposes*; the rule isn't "covered" until it lands in `CLAUDE.md` / `feedback.md` / `decisions.md` / `queue.md`.)
-   - **This host's previous report** — `prior_report` from scan.json (null on a first run or a pre-carry cache: fall back to the newest `-<host>` report in the listing). Read its `## Carried forward` section **and any ad-hoc deferral prose** (older reports used trailing "## Note — current session out of scope" paragraphs). Every item found there MUST be resolved in this run's report under `## Carried forward` (step 6): **covered** (the rule landed — cite where), **re-proposed** (as one of this run's P-entries), or **dropped** (with the reason stated). A deferral that is neither resolved nor re-carried is the write-only-report defect this step exists to close (2026-08-09: one deferral silently dropped, one accidentally re-derived seven weeks late).
+   - **Recent other-host reports** — list `projects/agent-workflow/reports/` and read those from the last ~60 days written on another machine: the title's `(<host>)` and the frontmatter's `host:` say which, or, for a report named before 2026-10-14, its `-<host>` filename suffix. This is the **cross-machine recurrence input** for step 4: transcripts are local-only, so another host's report is the only fleet-visible evidence that the same signal also fired there. (Dedupe / `already_covered` still comes from the rules stores above — a report only *proposes*; the rule isn't "covered" until it lands in `CLAUDE.md` / `feedback.md` / `decisions.md` / `queue.md`.)
+   - **This host's previous report** — `prior_report` from scan.json (null on a first run or a pre-carry cache: fall back to this machine's newest report in the listing, found by its title, or an older one's `-<host>` suffix). Read its `## Carried forward` section **and any ad-hoc deferral prose** (older reports used trailing "## Note — current session out of scope" paragraphs). Every item found there MUST be resolved in this run's report under `## Carried forward` (step 6): **covered** (the rule landed — cite where), **re-proposed** (as one of this run's P-entries), or **dropped** (with the reason stated). A deferral that is neither resolved nor re-carried is the write-only-report defect this step exists to close (2026-08-09: one deferral silently dropped, one accidentally re-derived seven weeks late).
 
    If the candidate's rule overlaps an existing entry, mark it `already_covered` — it goes in the report's "Already covered" section, not the proposals.
 
@@ -247,10 +247,9 @@ Read all three to dedupe; write only to vault + claude-config.
      case — publishing to debug a dependent repo (`tape-six` → `tape-six-*`) —
      is itself a process gap, so the proposal there is **not** "stop releasing"
      but "link the package locally (`npm link` or a file: install) and debug
-     without publishing". A second known-legitimate case (2026-09-04,
-     [[projects/agent-workflow/reports/2026-09-04-nuke]] P1): a private,
-     unpublished repository whose contract pins recorded answers to the version
-     (apodict, contract § 7), where each release is an explicit ask closing an
+     without publishing". A second known-legitimate case (the 2026-09-04
+     report, P1): a repository whose contract pins recorded answers to the
+     version, where each release is an explicit ask closing an
      answer-changing arc — the report names the case, cites the project's
      `feedback.md`, and proposes nothing. Read the `driver` on each release
      before proposing: it usually says outright why the second one happened.
@@ -271,7 +270,7 @@ Read all three to dedupe; write only to vault + claude-config.
    | Confirmation of non-obvious approach | same destinations as corrections — captures "do this" rather than "don't do that" |
    | `multi_release` — two releases, one session | vault `projects/<name>/feedback.md` when the fix is project-shaped (local-link workflow for its satellites); `CLAUDE.md` / [[topics/semver-and-release-cadence]] when it is a cadence rule |
 
-6. **Write the report.** Path: `projects/agent-workflow/reports/YYYY-MM-DD-<host>.md`, where `<host>` is the short hostname (`hostname -s`). The `-<host>` suffix disambiguates the per-machine runs done on each box — transcripts are local-only, so each host's run is distinct content, not a redundant overwrite. If that exact path already exists (a same-host re-run on the same day), append `-HHMM` → `YYYY-MM-DD-<host>-HHMM.md` rather than clobbering the earlier run. Write it with `mcp__vault__vault_write_file{path, frontmatter, body}` — it takes frontmatter as a JSON object and serializes the YAML server-side, which is what keeps the date fields from shadowing (fallback: the `vault-curl` JSON-PUT path, same reason). Body shape:
+6. **Write the report.** Path: `projects/agent-workflow/reports/YYYY-MM-DD.md`. If that exact path already exists (another machine's run, or a re-run, on the same day), append `-HHMM` → `YYYY-MM-DD-HHMM.md` rather than clobbering the earlier run: transcripts are local-only, so each host's run is distinct content, not a redundant overwrite. The machine, the short hostname (`hostname -s`), goes in the title and in the frontmatter as `host:`, never in the path, since report names reach public code as citations (Eugene, 2026-10-14). Reports named before that day keep their `-<host>` names. Write it with `mcp__vault__vault_write_file{path, frontmatter, body}` — it takes frontmatter as a JSON object and serializes the YAML server-side, which is what keeps the date fields from shadowing (fallback: the `vault-curl` JSON-PUT path, same reason). Body shape:
 
    ```markdown
    # Reflect — {date} · {host} (since {window_start_iso})
@@ -315,6 +314,7 @@ Read all three to dedupe; write only to vault + claude-config.
    ```yaml
    ---
    title: Reflect — YYYY-MM-DD (<host>)
+   host: <host>
    tags: [agent-workflow, reflect, report]
    type: query
    created: YYYY-MM-DD

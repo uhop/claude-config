@@ -483,8 +483,8 @@ on a parity adapter, prefer `vault_append` / `vault_replace` /
 `vault_replace_section` / `vault_write_file` — same server ops, no scratch files.
 
 `~/.claude/skills/vault/vault-put.mjs` replaces the hand-rolled jq/python
-payload-assembly blocks (which failed 4× in one session — reflect 2026-07-10;
-report [[projects/agent-workflow/reports/2026-07-10-nuke]]). Three modes, all
+payload-assembly blocks (which failed 4× in one session — the 2026-07-10
+reflect report). Three modes, all
 printing the HTTP status + new ETag:
 
 ```bash
