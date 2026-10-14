@@ -259,8 +259,10 @@ Each falls back to its old name, `VAULT_API_URL` and `VAULT_API_TOKEN`, until th
 switch to the AWS host (vault-storage D141, D206; the skill scripts read both
 through `vault-settings.mjs`). From adapter 0.17.0 every client reads the new
 pair first, so a host that sets it reaches one server through all of them. A
-host's own `~/.local/bin/vault-curl` reads the new names only when it is a copy
-of vault-storage's `bin/vault-curl` from 7p-1 on.
+host's `~/.local/bin/vault-curl` is the dotfiles' copy, installed by chezmoi, and
+reads the new names from 2026-10-14 on: never copy vault-storage's
+`bin/vault-curl` over it, since chezmoi then refuses to overwrite the changed file
+and the daily update fails (2026-10-14).
 
 ### Agent coordination — repo leases and handoffs
 
