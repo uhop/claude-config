@@ -54,7 +54,7 @@ jq -r '
       (if (.workflow.clarify_pending // 0) > 0 then "\(.workflow.clarify_pending) to /clarify" else null end),
       # loop stalls of the past week on the vault server (vault-storage D177); absent before 2026-10-09
       (.stalls | if . then
-        "loop stalls this week: \(.count), latest \(.latestMs) ms at \(.latestAt[0:16] | sub("T"; " "))Z, worst \(.worstMs) ms (vault_health)"
+        "loop stalls this week: \(.count), latest \(.latestMs) ms at \(.latestAt[0:16] | sub("T"; " "))Z, worst \(.worstMs) ms (/system/events?log=stalls)"
       else null end),
       # the vault branch against its remote (vault-storage D193), said only when a person must act
       (.store | if . == null then null

@@ -1090,11 +1090,17 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      event-loop stalls of the past week, `{count, latestAt, latestMs, worstAt,
      worstMs}`; null when none, and then stay quiet. Otherwise surface it in
      one line and file what is not filed yet, in any project's resume, since
-     the server is shared: read the records with `vault_health` (`loop.stalls`,
-     the newest ten, kept across restarts); find the newest `Loop stalls
-     recorded through <at>.` title among vault-storage's open and archived
-     items (`vault_queue_by_project` and `vault_queue_project_archive` with
-     `project: "vault-storage"`), which marks where filing stopped. **One
+     the server is shared: find the newest `Loop stalls recorded through
+     <at>.` title among vault-storage's open and archived items
+     (`vault_queue_by_project` and `vault_queue_project_archive` with
+     `project: "vault-storage"`), which marks where filing stopped; then read
+     every stall record since it with
+     `vault-curl -f '/system/events?log=stalls&since=<that at>&limit=1000'`
+     (server ≥ 2026-10-14, vault-storage D227), following `next` while it is
+     not null and leaving out the record at exactly that `at`, which is filed.
+     `-f` makes an HTTP error stop the step, since `vault-curl` exits 0 on one
+     otherwise. An older server answers 404: there read `vault_health`'s
+     `loop.stalls`, the newest ten, which a burst can outrun. **One
      open stall item at a time** (Eugene, 2026-10-09): when that newest item
      is still open on `projects/vault-storage/queue.md`, add the records after
      it to that item with `vault_replace`, its title's time moved to the
