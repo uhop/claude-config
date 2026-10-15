@@ -1095,7 +1095,7 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      (`vault_queue_by_project` and `vault_queue_project_archive` with
      `project: "vault-storage"`), which marks where filing stopped; then read
      every stall record since it with
-     `vault-curl -f '/system/events?log=stalls&since=<that at>&limit=1000'`
+     `vault-curl '/system/events?log=stalls&since=<that at>&limit=1000' -f`
      (server ≥ 2026-10-14, vault-storage D227), following `next` while it is
      not null and leaving out the record at exactly that `at`, which is filed.
      `-f` makes an HTTP error stop the step, since `vault-curl` exits 0 on one
