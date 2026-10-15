@@ -13,7 +13,7 @@
 //   vault-sweep next  --state=FILE
 //
 // Stage DAG (data-flow constraints — see the /vault skill § Ordering):
-//   0 one-shots: cleanup-lint ∥ embed-pending ∥ expire-logs ∥ gc-tags  (this script)
+//   0 one-shots: cleanup-lint ∥ embed-pending ∥ expire-logs ∥ gc-tags, then check-edges  (this script)
 //   1 enrich_backfill ∥ enrich_stale
 //   2 new_tag
 //   3 tag_suggestion ∥ edge_type
@@ -408,6 +408,9 @@ if (command === 'begin') {
       apiOptional('POST', '/maintenance/expire-logs'),
       apiOptional('POST', '/maintenance/gc-tags')
     ]);
+  // After the others, since expiring logs changes paths: the stored links checked against the
+  // notes, and rebuilt when they differ (vault-storage D247).
+  oneShots.check_edges = await apiOptional('POST', '/maintenance/check-edges');
   const state = {
     file: opts.state,
     started: new Date().toISOString(),

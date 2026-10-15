@@ -1586,7 +1586,9 @@ W=$(mktemp -d)
 1. **`begin`** computes the action set, runs the one-shot endpoints
    itself (`cleanup-lint` ∥ `embed-pending` ∥ `expire-logs` ∥ `gc-tags`,
    the last deleting taxonomy tags no note carries unless `manual`,
-   vault-storage D77), and prints
+   vault-storage D77; then `check-edges`, which reads every note, compares
+   its stored links and the edges they back with its file, and rebuilds the
+   links when they differ, vault-storage D247), and prints
    the first dispatch plan. `begin --dry-run` prints the action set with
    live per-kind counts and stops (no writes, no state) — the one-shots
    do not run there either, so nothing is deleted on a dry run.
@@ -1639,7 +1641,9 @@ W=$(mktemp -d)
    `logs` array, since a deletion the summary states only as a count is
    the one mutation nobody can reconstruct afterwards. `one_shots.gc_tags`
    likewise: every deleted tag by name from its `tags` array, with its
-   origin and aliases. This post-hoc itemization is
+   origin and aliases. `one_shots.check_edges` likewise when it reports
+   `repaired: true`: every note from its `samples` with its `kind`, and the
+   `after` counts, which should read zero. This post-hoc itemization is
    what replaced the retired `--include-destructive` pre-commitment
    gate.
 
