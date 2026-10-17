@@ -56,6 +56,9 @@ out=$(jq -r "$prog" <<<"$old" 2>&1)
 stalls='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"stalls":{"count":2,"latestAt":"2026-10-09T02:25:41.431Z","latestMs":659,"worstAt":"2026-10-08T13:43:55.870Z","worstMs":11353},"latest_log":null,"project":null}'
 out=$(jq -r "$prog" <<<"$stalls" 2>&1)
 [[ "$(head -n1 <<<"$out")" == "[vault] lint ok; loop stalls this week: 2, latest 659 ms at 2026-10-09 02:25Z, worst 11353 ms (/system/events?log=stalls)" ]] && ok || bad "stalls: the count, the latest, and the worst on the first line (out=$out)"
+filed='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"stalls":{"count":2,"latestAt":"2026-10-09T02:25:41.431Z","latestMs":659,"worstAt":"2026-10-08T13:43:55.870Z","worstMs":11353,"filedBy":"server","filedThrough":"2026-10-09T02:25:41.431Z"},"latest_log":null,"project":null}'
+out=$(jq -r "$prog" <<<"$filed" 2>&1)
+[[ "$(head -n1 <<<"$out")" == "[vault] lint ok; loop stalls this week: 2, latest 659 ms at 2026-10-09 02:25Z, worst 11353 ms, filed by the server (/system/events?log=stalls)" ]] && ok || bad "stalls the server files are said to be filed (vault-storage D264) (out=$out)"
 none='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"stalls":null,"latest_log":null,"project":null}'
 out=$(jq -r "$prog" <<<"$none" 2>&1)
 [[ "$out" == "[vault] lint ok" ]] && ok || bad "stalls null: nothing added (out=$out)"

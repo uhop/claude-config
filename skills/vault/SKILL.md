@@ -1088,9 +1088,14 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      summary line; the dedicated review skills handle decisions.
    - `stalls` (server ≥ 2026-10-09, vault-storage D177) — the vault server's
      event-loop stalls of the past week, `{count, latestAt, latestMs, worstAt,
-     worstMs}`; null when none, and then stay quiet. Otherwise surface it in
-     one line and file what is not filed yet, in any project's resume, since
-     the server is shared: find the newest `Loop stalls recorded through
+     worstMs}`; null when none, and then stay quiet. **When it carries
+     `filedBy: "server"`** (server ≥ 2026-10-17, vault-storage D264), the
+     server files them itself, into a note per day under
+     `projects/vault-storage/stalls/` and the queue's one open stall item, so
+     surface it in one line with `filedThrough` and file nothing. That is the
+     case once a queue note says `stalls: file` in its frontmatter. Otherwise
+     surface it in one line and file what is not filed yet, in any project's
+     resume, since the server is shared: find the newest `Loop stalls recorded through
      <at>.` title among vault-storage's open and archived items
      (`vault_queue_by_project` and `vault_queue_project_archive` with
      `project: "vault-storage"`), which marks where filing stopped; then read
@@ -1103,8 +1108,13 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      `loop.stalls`, the newest ten, which a burst can outrun. **One
      open stall item at a time** (Eugene, 2026-10-09): when that newest item
      is still open on `projects/vault-storage/queue.md`, add the records after
-     it to that item with `vault_replace`, its title's time moved to the
-     latest record's `at` and the new records first in its text; when it is
+     it to that item with one `vault_replace`, its title's time moved to the
+     latest record's `at` and the new records first in its text: one edit
+     whose `from` runs from the title line through the newest existing record
+     line, so another resume's filing refuses it whole. A 409 means another
+     resume filed first: read the item and stop. When the payload goes
+     through `vault-curl` instead, pass `-f` and check each call's status
+     before sending the next, since `vault-curl` exits 0 on a 409. When it is
      archived, or there is none, put them into one new Backlog item there
      titled `Loop stalls recorded through <the latest record's at>.`. Each
      record is one line: `at`, `lagMs`, CPU against the lag (near it is

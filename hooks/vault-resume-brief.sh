@@ -52,9 +52,10 @@ jq -r '
       (if .suggestions_pending > 0 then "\(.suggestions_pending) pending suggestions" else null end),
       (if .workflow.active then "agent-workflow Active non-empty" else null end),
       (if (.workflow.clarify_pending // 0) > 0 then "\(.workflow.clarify_pending) to /clarify" else null end),
-      # loop stalls of the past week on the vault server (vault-storage D177); absent before 2026-10-09
+      # loop stalls of the past week on the vault server (vault-storage D177); absent before 2026-10-09;
+      # filedBy once the server files them itself (D264), so no resume does
       (.stalls | if . then
-        "loop stalls this week: \(.count), latest \(.latestMs) ms at \(.latestAt[0:16] | sub("T"; " "))Z, worst \(.worstMs) ms (/system/events?log=stalls)"
+        "loop stalls this week: \(.count), latest \(.latestMs) ms at \(.latestAt[0:16] | sub("T"; " "))Z, worst \(.worstMs) ms\(if .filedBy == "server" then ", filed by the server" else "" end) (/system/events?log=stalls)"
       else null end),
       # the vault branch against its remote (vault-storage D193), said only when a person must act
       (.store | if . == null then null
