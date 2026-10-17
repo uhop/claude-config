@@ -1155,7 +1155,13 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      `summary` + `body_bytes`; fetch bodies with `vault_read_file` only
      as needed. Every entry carries `summary_stale` (server ≥ 2026-09-06):
      true means the summary was derived from an older body — fetch the
-     body and never relay that summary as current. A `null` entry means the file doesn't exist — not every
+     body and never relay that summary as current. `summaryPossiblyStale:
+     true` (server ≥ 2026-10-17, vault-storage D284) means the summary's
+     text stood through ten body writes, or a week with one at least
+     (`summaryUnchanged` gives when it changed and the writes since), so its
+     hash can read current while the text no longer describes the note:
+     read it the same way, fetch the body, and restate the summary in your
+     next write to the note if it no longer holds. A `null` entry means the file doesn't exist — not every
      project has a `feedback.md`.
      The block also carries `trackers` (server ≥ 2026-09-29, vault-storage
      D95): where the project's work is tracked, from the `trackers:` list in
