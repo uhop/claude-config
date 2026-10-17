@@ -91,11 +91,14 @@ day of appends to a 1.3 MB decisions log was 1.2% of its chunks (measured
   moves the span it states; and drop a "newest" clause an older summary still
   carries (§ Generate enrichment fields, `summary`). The note's own title,
   type, and `existing_tags` say what it is.
-- **An item with `reason: "possibly_stale"` is restated, never kept
-  unchanged** (vault-storage D287): its hash reads current, but the summary
-  text stood through many writes, and its delta holds everything added since
-  that text was written. Write the summary to cover what the delta adds; a
-  summary returned word for word keeps the note on the stale queue.
+- **An item with `reason: "possibly_stale"` is restated or confirmed**
+  (vault-storage D287, D289): its hash reads current, but the summary text
+  stood through many writes, and its delta holds everything added since that
+  text was written. Write the summary to cover what the delta adds, or, when
+  it still describes the note as it stands, answer `{"summary_holds": true}`
+  in place of an enrichment: `apply` confirms it for the body you read. A
+  summary returned word for word as a new enrichment keeps the note on the
+  stale queue; never reword an accurate summary only to clear the flag.
 - Keep `current_agent.related_proposed`: a delta item carries no
   `related_candidates`, since an append rarely moves a note's neighbours and
   the neighbour query is the slow part of a prepare.
@@ -119,7 +122,8 @@ notes as given, neither queue filtering them, each item with
 `current_agent` and the whole body (`read: "full"`). Judge it as a stale
 item read in full: write the summary from the note as it stands, covering its
 newest entries, and drop a "newest", "next", or "open" claim the body no
-longer supports.
+longer supports; or, when the summary still holds, answer
+`{"summary_holds": true}` (D289).
 
 `apply` rejects the whole file before any write (exit 3) on unknown paths,
 short summaries, bad `complexity`, non-wikilink `edge_classifications` keys,

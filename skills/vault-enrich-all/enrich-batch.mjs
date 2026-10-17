@@ -33,6 +33,8 @@
 //     "tags_suggested": [...], "related_proposed": ["[[...]]"],
 //     "edge_classifications": {"[[target]]": "derived-from"},
 //     "complexity": "prose"}}
+// An item with current_agent (--stale, --refresh) may answer {"summary_holds": true}
+// instead: `apply` confirms its summary for the body read (vault-storage D289).
 //
 // Exit 0 ok · 1 HTTP/partial failures · 2 usage · 3 enrichments rejected
 // before any write. Exits non-zero — run solo or `|| true` in parallel
@@ -420,6 +422,7 @@ const prepare = async () => {
           : {}),
         type: record.type,
         title: record.title,
+        body_hash: record.body_hash,
         existing_tags: fm.frontmatter.tags ?? [],
         existing_related: fm.frontmatter.related ?? [],
         ...(opts.stale || opts.refresh
@@ -493,6 +496,12 @@ const validate = (worksheet, enrichments) => {
     const item = byPath.get(path);
     const err = message => fail(3, `${path}: ${message} — nothing written`);
     if (typeof enrichment !== 'object') err('enrichment must be an object or null');
+    if (enrichment.summary_holds === true) {
+      if (!item.current_agent)
+        err('summary_holds needs an item with current_agent (--stale, --refresh)');
+      jobs.push({item, confirm: true});
+      continue;
+    }
     if (typeof enrichment.summary !== 'string' || enrichment.summary.trim().length < 10)
       err('summary must be a string (≥ 10 chars)');
     if (
@@ -541,6 +550,7 @@ const apply = async () => {
   const report = {
     mode: worksheet.mode,
     written: [],
+    confirmed: [],
     skipped: Object.values(enrichments).filter(e => e === null).length,
     needs_a_body: [],
     failures: []
@@ -549,13 +559,33 @@ const apply = async () => {
   if (opts.dryRun) {
     console.log(
       JSON.stringify(
-        {dry_run: true, would_write: jobs.map(j => j.item.file_path), skipped: report.skipped},
+        {
+          dry_run: true,
+          would_write: jobs.filter(j => !j.confirm).map(j => j.item.file_path),
+          would_confirm: jobs.filter(j => j.confirm).map(j => j.item.file_path),
+          skipped: report.skipped
+        },
         null,
         2
       )
     );
     return;
   }
+
+  const confirmOne = async item => {
+    try {
+      await api('POST', `/sections/${item.record_id}/summary-checked`, {body_hash: item.body_hash});
+      report.confirmed.push(item.file_path);
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      report.failures.push({
+        file_path: item.file_path,
+        status: err.status,
+        code: err.code,
+        message: err.message
+      });
+    }
+  };
 
   const writeOne = async ({item, enrichment}) => {
     // resolve the CURRENT path first — writing to a stale worksheet path
@@ -608,11 +638,12 @@ const apply = async () => {
     }
   };
   await pool(
-    jobs.map(job => () => writeOne(job)),
+    jobs.map(job => () => (job.confirm ? confirmOne(job.item) : writeOne(job))),
     4
   );
 
   report.written.sort();
+  report.confirmed.sort();
   if (worksheet.claim) report.claim = await releaseWork(worksheet.claim);
   console.log(JSON.stringify(report, null, 2));
   if (report.failures.length) process.exit(1);
