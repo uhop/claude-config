@@ -336,7 +336,8 @@ const prepare = async () => {
         const candidate = {
           record_id: item.payload.record_id,
           file_path: item.payload.file_path,
-          suggestion_id: item.id
+          suggestion_id: item.id,
+          ...(item.payload.reason ? {reason: item.payload.reason} : {})
         };
         if (!wanted || listed(candidate)) candidates.push(candidate);
       }
@@ -422,7 +423,11 @@ const prepare = async () => {
         existing_tags: fm.frontmatter.tags ?? [],
         existing_related: fm.frontmatter.related ?? [],
         ...(opts.stale || opts.refresh
-          ? {current_agent: fm.frontmatter.agent ?? null, suggestion_id: candidate.suggestion_id}
+          ? {
+              current_agent: fm.frontmatter.agent ?? null,
+              suggestion_id: candidate.suggestion_id,
+              ...(candidate.reason ? {reason: candidate.reason} : {})
+            }
           : {}),
         body_wikilinks: links,
         related_candidates: similar,

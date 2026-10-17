@@ -82,7 +82,12 @@ always restates its summary** (`from_agent: {summary}` on `vault_move_item`,
 what the summary names as next, in flight, or open; the server refuses a
 patch there without a new summary, the stored one sent back included, with a
 400 `summary_required` (server from 2026-10-17, vault-storage D283), and
-leaving the patch out marks the summary stale for the sweep instead. Recheck
+leaving the patch out marks the summary stale for the sweep instead. **For
+several moves out of one note in a row, leave `from_agent` out on all but
+the last and restate on the last:** the summary you would write at the first
+move is often already true after the second, and the server refuses it sent
+again, so writing it early leaves you nothing honest to send later (D287).
+Recheck
 a summary's dated and positional claims (`through D395`, `last swept`,
 "next") on every write. A patch without a summary over a summary that was
 already stale before your edit leaves the block stale, and the answer carries
@@ -1159,9 +1164,12 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      true` (server ≥ 2026-10-17, vault-storage D284) means the summary's
      text stood through ten body writes, or a week with one at least
      (`summaryUnchanged` gives when it changed and the writes since), so its
-     hash can read current while the text no longer describes the note:
-     read it the same way, fetch the body, and restate the summary in your
-     next write to the note if it no longer holds. A `null` entry means the file doesn't exist — not every
+     hash can read current while the text no longer describes the note.
+     For a note under 64 KB (`body_bytes`), fetch the body and restate the
+     summary in your next write to the note if it no longer holds. For a
+     larger one, relay the summary marked possibly stale and read only the
+     section you need: the server puts the note on the stale queue, and the
+     sweep restates it from what the summary has not seen (D287). A `null` entry means the file doesn't exist — not every
      project has a `feedback.md`.
      The block also carries `trackers` (server ≥ 2026-09-29, vault-storage
      D95): where the project's work is tracked, from the `trackers:` list in

@@ -91,6 +91,11 @@ day of appends to a 1.3 MB decisions log was 1.2% of its chunks (measured
   moves the span it states; and drop a "newest" clause an older summary still
   carries (§ Generate enrichment fields, `summary`). The note's own title,
   type, and `existing_tags` say what it is.
+- **An item with `reason: "possibly_stale"` is restated, never kept
+  unchanged** (vault-storage D287): its hash reads current, but the summary
+  text stood through many writes, and its delta holds everything added since
+  that text was written. Write the summary to cover what the delta adds; a
+  summary returned word for word keeps the note on the stale queue.
 - Keep `current_agent.related_proposed`: a delta item carries no
   `related_candidates`, since an append rarely moves a note's neighbours and
   the neighbour query is the slow part of a prepare.
