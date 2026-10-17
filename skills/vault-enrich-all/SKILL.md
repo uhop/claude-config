@@ -45,6 +45,7 @@ W=$(mktemp -d)
 "$E" prepare --limit=30 --out="$W/ws.json"          # missing blocks (add --type=T to narrow)
 "$E" prepare --stale --out="$W/ws.json"             # drifted blocks (from the suggestions queue; --full-threshold=F, default 0.4)
 "$E" prepare --records="$W/chunk.txt" --out="$W/ws.json"   # explicit shard (paths or ids, one per line)
+"$E" prepare --refresh --records="$W/list.txt" --out="$W/ws.json"   # these notes as given, each with current_agent and its whole body
 
 # 2. judge — write the enrichment content per note (see § Generate enrichment fields)
 #    (start from .enrichments_template; null = skip)
@@ -104,6 +105,16 @@ day of appends to a 1.3 MB decisions log was 1.2% of its chunks (measured
 `read: "full"` items carry `body` as before: no baseline yet (a note never
 enriched since the server gained baselines, or stale across a full reindex),
 a change past the threshold, or a server without the route.
+
+**Refresh items (`--refresh`, with `--records`).** A summary whose hash reads
+current can still describe an older note, since an `agent: {}` patch stamps
+it current whatever the edit did; the resume bundle marks one
+`summaryPossiblyStale` (vault-storage D284). `--refresh` takes the listed
+notes as given, neither queue filtering them, each item with
+`current_agent` and the whole body (`read: "full"`). Judge it as a stale
+item read in full: write the summary from the note as it stands, covering its
+newest entries, and drop a "newest", "next", or "open" claim the body no
+longer supports.
 
 `apply` rejects the whole file before any write (exit 3) on unknown paths,
 short summaries, bad `complexity`, non-wikilink `edge_classifications` keys,

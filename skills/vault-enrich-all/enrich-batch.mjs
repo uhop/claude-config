@@ -9,7 +9,7 @@
 // content; `apply` validates it all before any write and PUTs each block
 // through the JSON path with If-Match + current-path resolution.
 //
-//   enrich-batch prepare [--limit=N] [--stale] [--full-threshold=F] [--type=T] [--records=FILE] [--holder=H] [--out=FILE]
+//   enrich-batch prepare [--limit=N] [--stale | --refresh] [--full-threshold=F] [--type=T] [--records=FILE] [--holder=H] [--out=FILE]
 //   enrich-batch apply --worksheet=FILE --enrichments=FILE [--dry-run]
 //   enrich-batch release --worksheet=FILE
 //
@@ -22,7 +22,10 @@
 // bytes since its last enrichment carries `delta` (the added chunks) instead
 // of `body`; the rest carry the whole body (vault-storage enrichment-delta).
 // --records narrows either worklist to the paths or ids listed (the sweep's
-// shards, disjoint by construction).
+// shards, disjoint by construction). --refresh takes the --records list as
+// given instead, each note with its current agent: block and its whole body:
+// summaries whose hash reads current but whose text no longer describes the
+// note (vault-storage D284).
 //
 // Enrichments file (JSON; bare map or {enrichments: {...}}), keyed by
 // file_path exactly as in the worksheet; null = skip:
@@ -67,7 +70,7 @@ const {base, token, problem} = vaultSettings();
 if (problem) fail(2, problem);
 
 const usage = `Usage:
-  enrich-batch prepare [--limit=N] [--stale] [--full-threshold=F] [--type=T] [--records=FILE] [--holder=H] [--out=FILE]
+  enrich-batch prepare [--limit=N] [--stale | --refresh] [--full-threshold=F] [--type=T] [--records=FILE] [--holder=H] [--out=FILE]
   enrich-batch apply --worksheet=FILE --enrichments=FILE [--dry-run]
   enrich-batch release --worksheet=FILE`;
 
@@ -78,6 +81,7 @@ if (!['prepare', 'apply', 'release'].includes(command))
 const opts = {
   limit: 30,
   stale: false,
+  refresh: false,
   fullThreshold: 0.4,
   type: null,
   records: null,
@@ -97,6 +101,9 @@ for (const arg of rest) {
       break;
     case '--stale':
       opts.stale = true;
+      break;
+    case '--refresh':
+      opts.refresh = true;
       break;
     case '--full-threshold':
       opts.fullThreshold = +value;
@@ -296,8 +303,27 @@ const prepare = async () => {
     : null;
   const listed = r => wanted.has(r.file_path) || wanted.has(r.record_id);
 
+  if (opts.refresh && (!wanted || opts.stale))
+    fail(2, '--refresh takes its notes from --records, and not with --stale');
   let candidates;
-  if (opts.stale) {
+  if (opts.refresh) {
+    candidates = [];
+    const missing = [];
+    for (const entry of wanted) {
+      if (!entry.endsWith('.md')) {
+        candidates.push({record_id: entry});
+        continue;
+      }
+      const {data} = await api(
+        'GET',
+        `/sections?file_path=${encodeURIComponent(entry)}&fields=record_id,file_path`
+      );
+      const row = data.items?.[0];
+      if (row) candidates.push({record_id: row.record_id, file_path: row.file_path});
+      else missing.push(entry);
+    }
+    if (missing.length) fail(1, `no note at: ${missing.join(', ')}`);
+  } else if (opts.stale) {
     candidates = [];
     let offset = 0;
     while (candidates.length < opts.limit) {
@@ -395,7 +421,7 @@ const prepare = async () => {
         title: record.title,
         existing_tags: fm.frontmatter.tags ?? [],
         existing_related: fm.frontmatter.related ?? [],
-        ...(opts.stale
+        ...(opts.stale || opts.refresh
           ? {current_agent: fm.frontmatter.agent ?? null, suggestion_id: candidate.suggestion_id}
           : {}),
         body_wikilinks: links,
@@ -420,7 +446,7 @@ const prepare = async () => {
   const deltas = items.filter(item => item.read === 'delta').length;
 
   const worksheet = {
-    mode: opts.stale ? 'stale' : 'missing',
+    mode: opts.refresh ? 'refresh' : opts.stale ? 'stale' : 'missing',
     generated_at: new Date().toISOString(),
     coverage: {
       total: coverage.total,
