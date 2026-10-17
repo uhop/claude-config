@@ -72,11 +72,19 @@ D74; adapter ≥ 0.11.0). `vault_append`, `vault_replace`,
 optional `agent` patch, and `vault_move_item` takes `from_agent` and
 `to_agent`: the fields given are merged over the stored `agent:` block and
 the block is stamped current for the new body, so the note never reaches the
-sweep's stale queue. On an append to a rolling note (queue, archive,
-decisions, learnings, stack, feedback), pass `agent: {}` when its summary
-still holds, which it does whenever you added more entries of the kind it
-describes; pass `agent: {summary: "…"}` when your text opens something the
-summary does not cover. A patch without a summary over a summary that was
+sweep's stale queue. Pass `agent: {}` only when every statement in the
+summary is still true after the edit, as on an append to a rolling note
+(queue, archive, decisions, learnings, stack, feedback) of more entries of
+the kind it describes; pass `agent: {summary: "…"}` when your text opens
+something the summary does not cover. **A move or removal out of a note
+always restates its summary** (`from_agent: {summary}` on `vault_move_item`,
+`agent: {summary}` on `vault_remove_item`), since the item leaving is often
+what the summary names as next, in flight, or open; the server refuses a
+patch there without a new summary, the stored one sent back included, with a
+400 `summary_required` (server from 2026-10-17, vault-storage D283), and
+leaving the patch out marks the summary stale for the sweep instead. Recheck
+a summary's dated and positional claims (`through D395`, `last swept`,
+"next") on every write. A patch without a summary over a summary that was
 already stale before your edit leaves the block stale, and the answer carries
 `agent_stale: true` (server from 2026-10-01, vault-storage D133): read that
 summary, and restate it as `summary` if it holds or leave it for the sweep.
