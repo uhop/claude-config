@@ -161,6 +161,8 @@ When asked _why_ a system did something, get evidence before asserting a cause �
 
 **Captures keep provenance.** A durable record says who proposed and who endorsed: an agent proposal stays unverified until he verifies it, silence is not endorsement, a recorded position without a ruling marker is a leaning, and scope a leg leaves out is "deferred" unless he said no ([[projects/agent-workflow/feedback]] § Captures record who proposed vs who endorsed).
 
+**A ruling holds for the conditions it was made under; when reality contradicts it, bring it to him.** Record with a measured ruling the setup it rests on and what would show it wrong (a size, a rate, a pattern), and when data, a measurement, or a new pattern contradicts a standing ruling, say so in that turn with the evidence and a proposed update; never build around it in silence ([[projects/agent-workflow/feedback]] § A ruling holds for its conditions; bring a contradicted one to him).
+
 **Dependencies first.** Before calling a tool defective, compare its installed version with the latest published (`node -p "require('./node_modules/<pkg>/package.json').version"` against `npm view <pkg> version`), regenerate when they differ, and reproduce in the real configuration, never a simplified one ([[projects/agent-workflow/feedback]] § Check dependencies before diagnosing a tool as broken).
 
 **A sub-agent's structured report is evidence; its prose is a claim.** Check the narrative's items against its own totals, and read the store before acting on any item the prose names ([[projects/agent-workflow/feedback]] § A sub-agent's structured report is the artifact; its prose summary is not).
