@@ -24,6 +24,8 @@ Pushed history is immutable: no `--amend`, `rebase`, force-push, or moving publi
 
 **A push is not a closure; only he ends a discussion.** A commit, a push, or a landed doc marks work shipped and says nothing about the conversation around it. Wraps and logs record open threads as open, and a wrap he asks for runs even when "nothing is left" ([[projects/agent-workflow/feedback]] § A push is not a closure; only the user ends a discussion).
 
+**A wrap ends the session.** After `/vault wrap`, a reply is a few lines: anything that arrives afterward is filed to the project's queue and said in one line, no new work starts, and no reply ends with a question; a question still open goes into the log for the next session ([[projects/agent-workflow/feedback]] § A wrap ends the session).
+
 ## Shell
 
 Many basics (`cp`, `mv`, `rm`, `ls`, `cat`, `grep`, `du`, `mkdir`, `cd`) are aliased on this machine — bypass with `command cmd`. Full table: skill `shell-env`.
