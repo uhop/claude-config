@@ -89,7 +89,15 @@ move is often already true after the second, and the server refuses it sent
 again, so writing it early leaves you nothing honest to send later (D287).
 Recheck
 a summary's dated and positional claims (`through D395`, `last swept`,
-"next") on every write. A patch without a summary over a summary that was
+"next") on every write. **A rolling note's restated summary keeps the
+rolling form** (vault-storage D378): what the note holds and its span, as
+`/vault-enrich-all` § Generate enrichment fields gives it, the span moved
+and a subject added when the new entries open one, never a clause per
+write. Every resume ships a project's summaries and every write rewrites
+its note's, and two decision and learnings summaries that grew a clause an
+arc reached 10,000 characters. `/system/lint` counts a summary past 3,000
+characters as `oversized_summaries`; restate one you meet in the rolling
+form on your next write to its note. A patch without a summary over a summary that was
 already stale before your edit leaves the block stale, and the answer carries
 `agent_stale: true` (server from 2026-10-01, vault-storage D133): read that
 summary, and restate it as `summary` if it holds or leave it for the sweep.

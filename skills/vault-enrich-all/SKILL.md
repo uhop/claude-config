@@ -171,7 +171,9 @@ wholesale per write).
   for X, D1–D74: storage, sync, enrichment"), never its newest entry. A
   "Newest: …" clause goes stale at the next append and puts the note back on
   the stale queue by construction; recency is what logs and `summary_stale`
-  carry (vault-storage D74, 2026-09-27).
+  carry (vault-storage D74, 2026-09-27). Any summary stays under 3,000
+  characters, which `/system/lint` counts as `oversized_summaries`
+  (vault-storage D378).
 - **`key_concepts`**: 3-5 lowercase hyphen-separated noun-phrases the note
   hangs on — retrieval anchors, not necessarily taxonomy tags.
 - **`tags_suggested`**: only tags already in the worksheet's `taxonomy`
