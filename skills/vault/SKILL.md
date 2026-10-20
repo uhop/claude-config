@@ -1161,9 +1161,16 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      `topics/project-feedback-md-convention`). When it instead carries
      `body_omitted: {reason: "bundle_budget"}` (server ≥ 2026-08-04: the
      body would push the bundle past 32 KiB), the `headings` index shows
-     what rules exist — fetch the body with `vault_read_file` (or
-     read-to-a-file when `body_bytes` says it is huge) and still surface
-     the rules; don't skip them because the bundle didn't inline them.
+     what rules exist. The session-start hook `vault-feedback-rules.sh`
+     has then usually put each rule's heading and first paragraph in
+     context already, as a `[vault] <project>'s feedback rules` block
+     (vault-storage D380, every session and after a compaction too):
+     surface those, and fetch the body with `vault_read_file` when a
+     rule's Why or How to apply matters to the work at hand. With no such
+     block (a server before D380, or a host without the hook installed),
+     fetch the body (or read it to a file when `body_bytes` says it is
+     huge) and still surface the rules; don't skip them because the
+     bundle didn't inline them.
      The other files (queue/decisions/learnings/stack) come as
      `summary` + `body_bytes`; fetch bodies with `vault_read_file` only
      as needed. Every entry carries `summary_stale` (server ≥ 2026-09-06):
