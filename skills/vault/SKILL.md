@@ -137,13 +137,16 @@ worklist before you claim, never after. `enrich-batch.mjs` and
 claim by hand (their procedures say where).
 
 **A 409 `claimed_by_other` on a move, supersede, or delete** means another
-pass holds that note (`details` names it). Leave the note, or come back
-after the pass; edits and appends are never blocked, so ordinary writes
-need no claim. **Never force a work-claim release**, even when the claim
-looks stuck: a claim another holder left behind is the operator's to end on
-the agents page (`/ui/agents.html`). From adapter 0.15.0 neither
-`vault_work_release` nor `vault_lease_release` offers `force`; the REST
-route's `force` is a signed-in person's act, refused to an agent's key.
+pass holds that note, or, on a move or a supersede's archive slot, the path
+the note would arrive at (server from 2026-10-21, vault-storage D396;
+`details.item` names the claim's item). Leave the note, move it elsewhere,
+or come back after the pass; edits and appends are never blocked, so
+ordinary writes need no claim. **Never force a work-claim release**, even
+when the claim looks stuck: a claim another holder left behind is the
+operator's to end on the agents page (`/ui/agents.html`). From adapter
+0.15.0 neither `vault_work_release` nor `vault_lease_release` offers
+`force`; the REST route's `force` is a signed-in person's act, refused to
+an agent's key.
 
 **A call that fails with `code: "network"` says what happened** (adapter ≥
 0.12.0; server from 2026-09-29, vault-storage D99). The usual cause is a
