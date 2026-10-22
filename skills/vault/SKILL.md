@@ -428,7 +428,10 @@ leases: a single-agent session that owns its cwd repo never files one.
   pure question. **The idempotency key is mandatory and must be yours to
   regenerate**: a failed create is ambiguous, and retrying with the same key
   returns the original (`status: "existing"`) instead of filing twice. `from`
-  is `{host, session, repo?}` — provenance only, nothing keys off it. **Keep
+  is `{host, session, repo?}`, provenance save one use: `repo`, your project's
+  repository as `github.com/<owner>/<name>`, lists the handoff in your
+  project's resume once it is returned (server ≥ 2026-10-22, vault-storage
+  D403), so pass it. **Keep
   your branch/worktree until the handoff resolves**; it is the backup copy.
   **Declare what the work changes** in `touches: [{kind, key, operation}]`
   (`kind`: `file` | `symbol` | `schema` | `config` | `api`; `operation`:
@@ -1077,7 +1080,9 @@ calling key's name and date when it expires within seven days (server ≥
 2026-10-12, vault-storage D210), and the open handoffs created over a day ago
 in other projects, each project with its count and its oldest's age, since a
 handoff waits for a session in its own project (server ≥ 2026-10-22,
-vault-storage D402): a session in that project picks them up at its resume —
+vault-storage D402): a session in that project picks them up at its resume;
+the handoffs returned for rework over a day ago, by filer, and in the
+project's line the count of its own returned handoffs (vault-storage D403) —
 plus, since 2026-09-05, one
 `[vault] github <repo>:` line read from the project's stored `state.md`
 § GitHub block (open items, advisories without a CVE, open alerts, CI, and how
@@ -1275,8 +1280,10 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      waiting on this session, and each item carries only a
      `body_first_line`, so read the full request with `vault_handoff_get`
      before acting (§ Agent coordination — handoffs). A non-empty
-     `returned` list is *your* earlier submission sent back for rework —
-     surface it too. Both empty (the normal single-agent case): stay
+     `returned` list is *your* earlier submission sent back for rework,
+     matched by its `from.repo` against the project's GitHub repository
+     (server ≥ 2026-10-22, vault-storage D403; before that it listed the
+     recipient's returns) — surface it too. Both empty (the normal single-agent case): stay
      quiet.
 3. **GitHub status for the current repository** — the same information the
    fleet sweep collects, every class, not a one-line digest (ruled

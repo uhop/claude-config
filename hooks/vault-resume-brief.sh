@@ -82,6 +82,13 @@ jq -r '
       "\(.project) \(.open) (oldest \(if $h < 48 then "\($h) h" else "\($h / 24 | floor) days" end))"
     ) | join(", ")) + "; a session there picks them up"
   end),
+  # a returned handoff waits on its filer, named by its from.repo (vault-storage D403)
+  ((.handoffs_returned // []) | if length == 0 then empty else
+    "[vault] handoffs returned for rework over a day ago: " + (map(
+      ((now - (.oldest | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)) / 3600 | floor) as $h |
+      "\(.filer) \(.returned) (oldest \(if $h < 48 then "\($h) h" else "\($h / 24 | floor) days" end))"
+    ) | join(", ")) + "; their filer resubmits them"
+  end),
   (.project | if . == null then empty else
     "[vault] \(.name): " + ([
         (if (.queue.active | length) > 0 then
@@ -99,7 +106,8 @@ jq -r '
         ((.queue.hygiene // []) | if length > 0 then "queue hygiene \(length): \(.[0])" else null end),
         (if .feedback then "feedback.md updated \(.feedback.updated)" else null end),
         (if (.trackers.primary.kind // "vault") != "vault" then "tracked in \(.trackers.line)" else null end),
-        (if (.sessions_unlogged // 0) > 0 then "\(.sessions_unlogged) session(s) ended without a log" else null end)
+        (if (.sessions_unlogged // 0) > 0 then "\(.sessions_unlogged) session(s) ended without a log" else null end),
+        (if (.handoffs_returned // 0) > 0 then "\(.handoffs_returned) of its handoffs returned for rework" else null end)
       ] | join_present)
   end),
   (.latest_log | if . == null then empty

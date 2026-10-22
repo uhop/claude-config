@@ -95,6 +95,17 @@ out=$(jq -r "$prog" <<<"$(waiting '[]')" 2>&1)
 out=$(jq -r "$prog" <<<"$none" 2>&1)
 [[ "$out" != *"handoffs waiting"* ]] && ok || bad "an older server without the field: nothing added (out=$out)"
 
+# Returned handoffs wait on their filer (vault-storage D403): a line by filer, and the filer's own
+# project line counts the rework it owes.
+returned='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"handoffs_returned":[{"filer":"github.com/apodictum/pc","returned":1,"oldest":"'"$five"'"}],"latest_log":null,"project":null}'
+out=$(jq -r "$prog" <<<"$returned" 2>&1)
+[[ "$out" == "[vault] lint ok"$'\n'"[vault] handoffs returned for rework over a day ago: github.com/apodictum/pc 1 (oldest 5 days); their filer resubmits them" ]] && ok ||
+  bad "returned handoffs: a line by filer (out=$out)"
+owed='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":[],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"trackers":{"primary":{"kind":"vault"}},"sessions_unlogged":0,"handoffs_returned":2}}'
+out=$(jq -r "$prog" <<<"$owed" 2>&1)
+[[ "$out" == *"[vault] p: 0/0 backlog ready; 2 of its handoffs returned for rework"* ]] && ok ||
+  bad "the filer's project line counts its returned handoffs (out=$out)"
+
 # A key the server refuses (401) is said, never silent: the day it expires, or a recall (D210).
 port_file=$(mktemp)
 node -e 'const s=require("http").createServer((q,r)=>{r.writeHead(401,{"content-type":"application/json"});r.end("{}")}).listen(0,"127.0.0.1",()=>require("fs").writeFileSync(process.argv[1],String(s.address().port)))' "$port_file" &
