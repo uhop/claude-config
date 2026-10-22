@@ -164,3 +164,19 @@ before the parent pointer bump), grouped in commit order: each ride-along
 commit, then the parent commit that carries the bump, notes, lockfile, and
 pointer. Do **not** commit, tag, or publish — the user commits, tags, and
 publishes after their own review.
+
+End the report with the order after his commits, because CI runs only on the
+push: push the release commit, wait for its CI run to finish green, and only
+then tag and publish. A red run stops the release before `npm publish`. Hand
+him the wait as a command with the repository filled in, in its own block, to
+run a few seconds after the push, when GitHub has registered the run;
+`--exit-status` makes the watch exit non-zero on a failed run:
+
+```bash
+gh run watch --exit-status --repo OWNER/REPO "$(gh run list --repo OWNER/REPO --commit "$(git rev-parse HEAD)" --workflow tests.yml --json databaseId --jq '.[0].databaseId')"
+```
+
+(Origin: tape-six 1.18.0, 2026-10-22 — the CI run on the release commit
+failed on Node 24 macOS after the package was published, and nothing in the
+flow waited for it. Eugene: _"of course, nobody notified me before
+publishing"_.)
