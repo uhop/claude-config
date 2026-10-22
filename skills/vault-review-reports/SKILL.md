@@ -13,9 +13,16 @@ storage backend is reaching an inefficiency point and files:
   `record_count_high`, `db_bytes_high`, `edge_fanout_high` (outbound edges
   on one record), `review_backlog_high` (pending suggestions); each payload
   carries its threshold.
-- **`infrastructure_upgrade`** — migrate-tier: `record_count_migrate`.
+- **`infrastructure_upgrade`** — migrate-tier: `record_count_migrate`, a
+  single-tenant server's vault outgrowing SQLite, its remedy a move to the
+  hosted service.
   **Never auto-resolve this kind** — leave it pending and surface it; the
   migration decision is the user's, always.
+
+Each engine files its own signals (vault-storage 7ap-5g, D406): a
+single-tenant SQLite server files all five; an account on the hosted pool
+(Postgres) gets only `edge_fanout_high` and `review_backlog_high`, the two
+it can act on, since its size and record count are the operator's.
 
 Payload: `{signal, current, threshold, recommendation}` plus `top` (the
 outbound-edge leaderboard) on `edge_fanout_high`; `subject_id` names the
@@ -74,8 +81,8 @@ is no vault-triage.mjs harness kind for reports.
      transient mid-sweep spike.
    - **Real tune-and-stay condition → accept**, and in the same pass file
      a Backlog item in `projects/vault-storage/queue.md` naming the
-     remediation (VACUUM, retention tuning, chunk-size tuning, a
-     compaction/split target for an organically over-linked note). The
+     remediation (VACUUM, retention tuning, a compaction or split target
+     for an organically over-linked note). The
      accept note points at the queue item — acceptance without a tracked
      remediation is just a dismissed alarm.
    - **`infrastructure_upgrade` → leave pending.** Reopen if claimed;
