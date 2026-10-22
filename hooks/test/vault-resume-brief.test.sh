@@ -82,6 +82,19 @@ out=$(jq -r "$prog" <<<"$(keyed "{\"name\":\"laptop\",\"expiresAt\":\"$at\"}")" 
 out=$(jq -r "$prog" <<<"$(keyed null)" 2>&1)
 [[ "$out" == "[vault] lint ok" ]] && ok || bad "a key that never expires: nothing (out=$out)"
 
+# Open handoffs over a day old in other projects (vault-storage D402), one line, each project
+# with its count and its oldest's age; nothing from an older server or an empty list.
+waiting() { printf '{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"handoffs_waiting":%s,"latest_log":null,"project":null}' "$1"; }
+five=$(date -u -d '-5 days -1 hour' +%FT%T.817Z)
+day=$(date -u -d '-26 hours -5 minutes' +%FT%T.000Z)
+out=$(jq -r "$prog" <<<"$(waiting "[{\"project\":\"apodictum-web\",\"open\":1,\"oldest\":\"$five\"},{\"project\":\"apodict\",\"open\":2,\"oldest\":\"$day\"}]")" 2>&1)
+[[ "$out" == "[vault] lint ok"$'\n'"[vault] handoffs waiting over a day in other projects: apodictum-web 1 (oldest 5 days), apodict 2 (oldest 26 h); a session there picks them up" ]] && ok ||
+  bad "waiting handoffs: each project with its count and age, in days past two days (out=$out)"
+out=$(jq -r "$prog" <<<"$(waiting '[]')" 2>&1)
+[[ "$out" == "[vault] lint ok" ]] && ok || bad "no waiting handoffs: nothing added (out=$out)"
+out=$(jq -r "$prog" <<<"$none" 2>&1)
+[[ "$out" != *"handoffs waiting"* ]] && ok || bad "an older server without the field: nothing added (out=$out)"
+
 # A key the server refuses (401) is said, never silent: the day it expires, or a recall (D210).
 port_file=$(mktemp)
 node -e 'const s=require("http").createServer((q,r)=>{r.writeHead(401,{"content-type":"application/json"});r.end("{}")}).listen(0,"127.0.0.1",()=>require("fs").writeFileSync(process.argv[1],String(s.address().port)))' "$port_file" &

@@ -1074,7 +1074,11 @@ a feedback.md pointer, the latest log title, the project's own when it has
 one and marked `(fleet)` otherwise (server ≥ 2026-09-29, D104), and the vault
 server's loop stalls of the past week (server ≥ 2026-10-09, D177), and the
 calling key's name and date when it expires within seven days (server ≥
-2026-10-12, vault-storage D210) — plus, since 2026-09-05, one
+2026-10-12, vault-storage D210), and the open handoffs created over a day ago
+in other projects, each project with its count and its oldest's age, since a
+handoff waits for a session in its own project (server ≥ 2026-10-22,
+vault-storage D402): a session in that project picks them up at its resume —
+plus, since 2026-09-05, one
 `[vault] github <repo>:` line read from the project's stored `state.md`
 § GitHub block (open items, advisories without a CVE, open alerts, CI, and how
 old the collection is), never from GitHub itself. The digest is a *trigger*,

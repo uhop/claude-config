@@ -74,6 +74,14 @@ jq -r '
       ) (\(.expiresAt[0:10])); make a new one on /ui/keys.html (a fresh sign-in)"
     end
   end),
+  # a handoff waits for a session in its own project, so the others name it (vault-storage D402);
+  # absent before 2026-10-22
+  ((.handoffs_waiting // []) | if length == 0 then empty else
+    "[vault] handoffs waiting over a day in other projects: " + (map(
+      ((now - (.oldest | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)) / 3600 | floor) as $h |
+      "\(.project) \(.open) (oldest \(if $h < 48 then "\($h) h" else "\($h / 24 | floor) days" end))"
+    ) | join(", ")) + "; a session there picks them up"
+  end),
   (.project | if . == null then empty else
     "[vault] \(.name): " + ([
         (if (.queue.active | length) > 0 then
