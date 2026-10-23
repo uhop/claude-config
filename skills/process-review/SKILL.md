@@ -177,7 +177,8 @@ Three more limits worth stating:
 
 - `/reflect` — the transcript-side sibling; same routing, same clarify-queue. It
   imports this skill's `git-correlate.mjs` for its Pass 4, and raises a
-  `multi_release` signal (two releases in one session) at **high** confidence.
+  `multi_release` signal (two releases of a package within 24 hours, in one
+  session or across several) at **high** confidence.
 - [[topics/touched-is-not-current]] — the pattern `split_change` detects.
 - [[topics/semver-and-release-cadence]] — the rule `release_cluster` checks.
 - CLAUDE.md § Fix the class, not the instance.

@@ -77,7 +77,7 @@ Read all three to dedupe; write only to vault + claude-config.
        "stuck_loops":       [{kind, project, session_id, ts, ts_iso, tool, repetitions, excerpt}],
        "repeated_failures": [{kind, occurrences, sessions, tool, project, session_id, ts, ts_iso, error_text, excerpt}],
        "surprises":         [{...}],
-       "multi_release":     [{kind, project, session_id, repo, package, count, span_min, releases: [{version, sha, subject, npm_iso, tag, driver}], note}],
+       "multi_release":     [{kind, project, session_id, sessions, repo, package, count, span_min, releases: [{version, session_id, sha, subject, npm_iso, tag, driver}], note}],
        "release_alerts":    [{kind, project, session_id, repo, package, version, ts, ts_iso, tag_expected?, unrecorded?}],
        "side_notes":        [{kind, project, session_id, ts, ts_iso, title, heads_up, note, addendum?, queued?}]
      }
@@ -108,8 +108,11 @@ Read all three to dedupe; write only to vault + claude-config.
    npm comes first because it survives what git does not: a publish from
    changes never pushed, on another machine, leaves no commit here. Offline,
    `session_git[].npm` says `not checked` and the bumps alone stand.
-   `multi_release` is one signal per package with two or more releases in the
-   session. **`release_alerts` go to Eugene as alerts, not proposals:** a
+   `multi_release` is one signal per run of a package's releases less than 24
+   hours apart, across the whole window: one session or several, each release
+   naming its `session_id` and the signal listing `sessions` (2026-10-22:
+   tape-six's 1.17.0, 1.18.0, and 1.18.1 came from three sessions in 20 hours,
+   and the per-session count raised nothing). **`release_alerts` go to Eugene as alerts, not proposals:** a
    release with no tag (`tag_expected` names what was looked for), or
    `unrecorded: true`, a version npm has that no commit on any ref carries.
    List each in the report with the package, version, and what is missing;
@@ -268,7 +271,7 @@ Read all three to dedupe; write only to vault + claude-config.
    | Stuck loop pattern (recurring across sessions) | `projects/agent-workflow/queue.md` Backlog with proposed mitigation |
    | Surprise / discovery worth preserving | vault `topics/<topic-name>.md` (new note) or extend an existing topic |
    | Confirmation of non-obvious approach | same destinations as corrections — captures "do this" rather than "don't do that" |
-   | `multi_release` — two releases, one session | vault `projects/<name>/feedback.md` when the fix is project-shaped (local-link workflow for its satellites); `CLAUDE.md` / [[topics/semver-and-release-cadence]] when it is a cadence rule |
+   | `multi_release` — two releases within 24 hours | vault `projects/<name>/feedback.md` when the fix is project-shaped (local-link workflow for its satellites); `CLAUDE.md` / [[topics/semver-and-release-cadence]] when it is a cadence rule |
 
 6. **Write the report.** Path: `projects/agent-workflow/reports/YYYY-MM-DD.md`. If that exact path already exists (another machine's run, or a re-run, on the same day), append `-HHMM` → `YYYY-MM-DD-HHMM.md` rather than clobbering the earlier run: transcripts are local-only, so each host's run is distinct content, not a redundant overwrite. The machine, the short hostname (`hostname -s`), goes in the title and in the frontmatter as `host:`, never in the path, since report names reach public code as citations (Eugene, 2026-10-14). Reports named before that day keep their `-<host>` names. Write it with `mcp__vault__vault_write_file{path, frontmatter, body}` — it takes frontmatter as a JSON object and serializes the YAML server-side, which is what keeps the date fields from shadowing (fallback: the `vault-curl` JSON-PUT path, same reason). Body shape:
 

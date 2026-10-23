@@ -31,7 +31,7 @@ import {
 import {dirname, join} from 'node:path';
 import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
-import {correlateSession} from '../process-review/git-correlate.mjs';
+import {correlateSession, releaseClusters} from '../process-review/git-correlate.mjs';
 import {
   asHumanRow,
   classifyUserTurn,
@@ -332,6 +332,9 @@ const signals = {
 // Per-session git correlation (Pass 4), reported alongside the signals so a
 // reader can see which sessions produced commits and which were talk only.
 const sessionGit = [];
+
+// Every analyzed session's releases, clustered per package after the loop.
+const windowReleases = [];
 
 // Headless transcripts (entrypoint sdk-cli) are listed, not analyzed, unless
 // --include-automated: their "user" turns are a launcher's prompt, and Pass 4
@@ -741,22 +744,8 @@ for (const t of transcripts) {
     npm: git.npm
   });
 
-  for (const group of git.multi_release)
-    signals.multi_release.push({
-      kind: 'multi_release',
-      project: t.project,
-      session_id: t.session_id,
-      repo: git.repo,
-      ts: sessionStartMs,
-      ts_iso: iso(sessionStartMs),
-      ...group,
-      note:
-        'More than one release in a single session. Possible, but it should be the ' +
-        'exception — usually a critical bug surfaced, or the first release was cut ' +
-        'early. Known-legitimate case: publishing to debug a dependent repo, which ' +
-        'is itself a process gap (link the package locally instead). See ' +
-        'topics/semver-and-release-cadence § Release timing.'
-    });
+  for (const r of git.releases)
+    windowReleases.push({...r, repo: git.repo, project: t.project, session_id: t.session_id});
 
   // Eugene's alerts, not proposals: a release with no tag, and a version npm
   // has that no commit here carries (published from changes never pushed).
@@ -775,6 +764,28 @@ for (const t of transcripts) {
       ...(!r.recorded && {unrecorded: true})
     });
   }
+}
+
+for (const cluster of releaseClusters(windowReleases)) {
+  const [lead] = cluster.releases;
+  const head = windowReleases.find(
+    r => r.session_id === lead.session_id && r.version === lead.version
+  );
+  const ts = head?.ts ?? null;
+  signals.multi_release.push({
+    kind: 'multi_release',
+    project: head?.project ?? null,
+    session_id: lead.session_id,
+    ts,
+    ts_iso: iso(ts),
+    ...cluster,
+    note:
+      'More than one release of a package within 24 hours, in one session or across ' +
+      'several. Possible, but it should be the exception — usually a critical bug ' +
+      'surfaced, or the first release was cut early. Known-legitimate case: ' +
+      'publishing to debug a dependent repo, which is itself a process gap (link ' +
+      'the package locally instead). See topics/semver-and-release-cadence § Release timing.'
+  });
 }
 
 // Emit repeated_failures (≥ 3× across window), skipping suppressed sigs.

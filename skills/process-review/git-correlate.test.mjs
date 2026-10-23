@@ -14,7 +14,12 @@ import {mkdtempSync, mkdirSync, writeFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
-import {correlateSession, projectDirForRepo, isVersionBump} from './git-correlate.mjs';
+import {
+  correlateSession,
+  projectDirForRepo,
+  isVersionBump,
+  releaseClusters
+} from './git-correlate.mjs';
 
 const T0 = Date.parse('2026-10-06T20:00:00Z');
 const T1 = Date.parse('2026-10-06T23:01:00Z');
@@ -176,4 +181,90 @@ test('a repository with no package.json falls back to commit subjects', () =>
 test('subjects stay the fallback: a post is not a release', () => {
   assert.equal(isVersionBump('New version: 1.2.0.'), true);
   assert.equal(isVersionBump('Published.'), false);
+});
+
+// tape-six's shape (2026-10-22): three releases in 20 hours, one per session,
+// so every session's multi_release stayed empty.
+const HOUR = 60 * MIN;
+const D0 = Date.parse('2026-10-21T22:00:00Z');
+const RA = Date.parse('2026-10-22T02:26:00Z');
+const RB = Date.parse('2026-10-22T19:25:00Z');
+const RC = Date.parse('2026-10-22T22:08:00Z');
+
+const library = repo => {
+  writeJson(join(repo, 'package.json'), {name: 'fixture-lib', version: '1.16.1'});
+  git(repo, D0, 'add', '.');
+  git(repo, D0, 'commit', '-q', '-m', 'Started.');
+  for (const [version, ts] of [
+    ['1.17.0', RA],
+    ['1.18.0', RB],
+    ['1.18.1', RC]
+  ]) {
+    writeJson(join(repo, 'package.json'), {name: 'fixture-lib', version});
+    git(repo, ts, 'commit', '-q', '-am', `New version: ${version}.`);
+    git(repo, ts, 'tag', version);
+  }
+};
+
+const libraryRegistry = name =>
+  name === 'fixture-lib'
+    ? {
+        status: 'ok',
+        times: {'1.17.0': RA + 2 * MIN, '1.18.0': RB + 2 * MIN, '1.18.1': RC + 2 * MIN}
+      }
+    : {status: 'unpublished', times: {}};
+
+test('releases a day apart in separate sessions make one cluster', () =>
+  withRepo(library, repo => {
+    const windows = [
+      ['a', RA - HOUR, RA + HOUR],
+      ['b', RB - HOUR, RB + 20 * MIN],
+      ['c', RC - HOUR, RC + HOUR]
+    ];
+    const all = [];
+    for (const [id, start, end] of windows) {
+      const found = correlateSession(projectDirForRepo(repo), start, end, [], {
+        npmTimes: libraryRegistry
+      });
+      assert.equal(found.multi_release.length, 0, id);
+      for (const r of found.releases) all.push({...r, repo: found.repo, session_id: id});
+    }
+    const clusters = releaseClusters(all);
+    assert.equal(clusters.length, 1);
+    assert.deepEqual(
+      clusters[0].releases.map(r => [r.version, r.session_id]),
+      [
+        ['1.17.0', 'a'],
+        ['1.18.0', 'b'],
+        ['1.18.1', 'c']
+      ]
+    );
+    assert.deepEqual(clusters[0].sessions, ['a', 'b', 'c']);
+  }));
+
+const release = (version, ts, session_id) => ({
+  repo: '/r',
+  package: 'p',
+  path: 'package.json',
+  version,
+  ts,
+  session_id,
+  tag: version
+});
+
+test('a cluster needs two releases within a day, each counted once', () => {
+  assert.deepEqual(
+    releaseClusters([release('1.0.0', T0, 'a'), release('1.1.0', T0 + 30 * HOUR, 'b')]),
+    []
+  );
+  const [one] = releaseClusters([
+    release('1.0.0', T0, 'a'),
+    release('1.0.0', T0, 'b'),
+    release('1.0.1', T0 + 2 * HOUR, 'b')
+  ]);
+  assert.deepEqual(
+    one.releases.map(r => r.version),
+    ['1.0.0', '1.0.1']
+  );
+  assert.deepEqual(one.sessions, ['a', 'b']);
 });

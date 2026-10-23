@@ -263,6 +263,15 @@ export const releasesInWindow = (repo, sinceMs, untilMs, {npmTimes = npmPublishT
 // usually means either a critical bug surfaced or the first was cut early. The
 // known-legitimate case is debugging a dependent repo against an unpublished
 // change, which is itself a process gap (link the package locally instead).
+const releaseSummary = r => ({
+  version: r.version,
+  sha: r.bump?.sha ?? r.sha ?? null,
+  subject: r.bump?.subject ?? r.subject ?? null,
+  npm_iso: r.npm_ts ? new Date(r.npm_ts).toISOString() : null,
+  tag: r.tag,
+  driver: r.driver?.text ?? null
+});
+
 export const multiRelease = releases => {
   const byPackage = new Map();
   for (const r of releases) byPackage.set(r.path, [...(byPackage.get(r.path) ?? []), r]);
@@ -272,15 +281,43 @@ export const multiRelease = releases => {
       package: group[0].package,
       count: group.length,
       span_min: Math.round((group[group.length - 1].ts - group[0].ts) / 60000),
-      releases: group.map(r => ({
-        version: r.version,
-        sha: r.bump?.sha ?? r.sha ?? null,
-        subject: r.bump?.subject ?? r.subject ?? null,
-        npm_iso: r.npm_ts ? new Date(r.npm_ts).toISOString() : null,
-        tag: r.tag,
-        driver: r.driver?.text ?? null
-      }))
+      releases: group.map(releaseSummary)
     }));
+};
+
+// The cadence rule counts days, not sessions: tape-six shipped 1.17.0, 1.18.0,
+// and 1.18.1 in 20 hours on 2026-10-22, one per session, and the per-session
+// count raised nothing. Each release carries `repo` and `session_id`; one seen
+// by two overlapping sessions counts once.
+export const releaseClusters = (releases, {withinMs = 24 * 3600 * 1000} = {}) => {
+  const byPackage = new Map();
+  for (const r of releases) {
+    const key = (r.repo ?? '') + '\t' + (r.path ?? r.package ?? '');
+    const group = byPackage.get(key) ?? new Map();
+    const id = r.version ?? r.bump?.sha ?? r.sha;
+    if (!group.has(id)) group.set(id, r);
+    byPackage.set(key, group);
+  }
+  const runs = [];
+  for (const group of byPackage.values()) {
+    let run = [];
+    for (const r of [...group.values()].sort((a, b) => a.ts - b.ts)) {
+      if (run.length && r.ts - run[run.length - 1].ts > withinMs) {
+        if (run.length > 1) runs.push(run);
+        run = [];
+      }
+      run.push(r);
+    }
+    if (run.length > 1) runs.push(run);
+  }
+  return runs.map(run => ({
+    repo: run[0].repo ?? null,
+    package: run[0].package,
+    count: run.length,
+    span_min: Math.round((run[run.length - 1].ts - run[0].ts) / 60000),
+    sessions: [...new Set(run.map(r => r.session_id))],
+    releases: run.map(r => ({...releaseSummary(r), session_id: r.session_id}))
+  }));
 };
 
 // Convenience for callers that only have a project dir and a row window.
