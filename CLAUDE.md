@@ -209,6 +209,8 @@ Before building or refreshing a library/tool, check whether an authoritative exi
 
 **A shortlist is a disclosure.** When you narrow a candidate space by mechanical filters — price, license, a vendor's category tag — say what the filters were and which notable candidates they dropped, and put the list up before spending against it. A filter set with no capability axis can be the right call, but it is an invisible one, and the exclusions are what the user is being asked to accept without seeing them. (Origin: 2026-08-30 apodict — an OpenRouter shortlist drawn on tool-capability, open weights, price and a "programming" category tag, never shown; Eugene asked _"Why did you decide to do DeepSeek and not Kimi?"_ after ~$10 of arms had run. Kimi K3 had not been rejected, it had not been considered — and measured afterwards it was not a cheap-tier candidate at all: $3/$15 against Sonnet's $2/$10, at 20 tok/s.)
 
+**Give the history behind a design.** When explaining a design, a convention, or a tool, or proposing to change one, say why it was done that way, which alternatives were rejected and why, and whether those reasons still hold; mark each historical claim checked or recalled ([[projects/agent-workflow/feedback]] § Give the history behind a design).
+
 ## Tools
 
 - **Re-Read after mutating Bash.** Any Bash that may rewrite a file (`prettier --write`, `npm run lint:fix`, a formatting/codemod script, a pre-commit hook — and your own `cat >>`/heredoc appends) invalidates the harness's file-tracking. Read the file again before the next `Edit` on it. Otherwise `Edit` 400s with "File has been modified since read" and the retry hits the same error.
