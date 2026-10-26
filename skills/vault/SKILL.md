@@ -1291,11 +1291,15 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      (`replaced_baseline` names it: the project moved). Report the snapshot
      summary in one line (open items, stars, forks, published advisories
      without a CVE) and file nothing.
-   - Otherwise surface every event under a `GitHub:` heading with full
-     detail; file or update review items for the attention-worthy ones per
-     the `fleet-status` skill § Review items (`fleet-status.mjs file …` —
-     same title, updated in place, never duplicated); and only then
-     `fleet-status.mjs commit "$WORK/github.json"`, so the baseline
+   - Otherwise list every event under a `GitHub:` heading, one line each:
+     its kind, number, and title, as `show` prints them ("new PR #229
+     Preserve replacer context…", "new comment on issue #226"). File a
+     one-line item for each attention-worthy thread no open item mirrors
+     yet (`vault_queue_by_project` gives each item's `source`):
+     `fleet-status.mjs file … --source …` with a body of the event line,
+     its URL, and `Last seen:`. A thread an open item already mirrors is
+     listed and its item left alone, since `file` would replace the item's
+     prose. Only then `fleet-status.mjs commit "$WORK/github.json"`, so the baseline
      advances after the items exist — a run with events is also recorded
      in the fleet digest, where `fleet-status.mjs show --fleet` reads it
      back (2026-08-29). Partial `errors` are reported inline.
@@ -1304,11 +1308,17 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      repository belongs to `fleet-status.mjs show`, not to a resume).
    Never block the resume on GitHub: offline degrades to the baseline view.
    **The resume files and stops.** An issue, PR, advisory, or CI failure this
-   step surfaces becomes a review item on the queue, written from what is at
-   hand — the thread, the code, the docs — and Eugene schedules it. Reproducing
-   it, measuring it, or fixing it inside the resume is out of scope until he
-   asks; the same holds for anything else the resume turns up (a dependency
-   bump, a drifted note). (Ruled 2026-09-08, install-artifact-from-github: a
+   step surfaces becomes a one-line review item on the queue, written from
+   the collector's event line alone, and Eugene schedules it. Reading the
+   thread, the diff, or the code, writing the pre-review, reproducing,
+   measuring, and fixing belong to the session that takes the item up, never
+   to the resume; the same holds for anything else the resume turns up (a
+   dependency bump, a drifted note). (Narrowed 2026-10-26, stream-json: a
+   resume read four threads and their diffs and wrote four pre-reviews, ten
+   minutes before the session could start. Eugene: *"You just say: 'new PR',
+   'new issue', 'new comment in an existing PR' and so on. No need to analyze
+   more. Just titles and numbers."* and *"The deep work is for the session we
+   want to start."* Ruled 2026-09-08, install-artifact-from-github: a
    pre-review of issue #30 grew a scratch fixture, a local corepack install,
    and three package-manager measurements before he had seen the issue.
    Eugene: *"I ask you to bootstrap a session with `/vault resume`, not

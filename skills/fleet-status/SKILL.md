@@ -194,7 +194,8 @@ stored views render.
    stars, forks, published advisories without a CVE — and file nothing. The baseline is the
    deliverable of a first run.
 4. For every other repository, surface **every** event with full detail (an `/vault resume`
-   prints them under a `GitHub:` heading), write the review items per § Review items, and end
+   lists them one line each, kind, number, and title, under a `GitHub:` heading, and files
+   one-line items, § Review items), write the review items per § Review items, and end
    the reply with the brief, verbatim: `"$S" show "$WORK/github.json" --brief`.
 5. Commit, after the items exist, so the baseline advances only for changes that have been
    filed:
@@ -266,6 +267,10 @@ does the placement through the server's `insert-item` op (server ≥ 2026-09-06)
   stopped succeeding; an alert count that rose. Counters (stars, forks, watchers, dependents)
   and bot traffic go to the digest and the resume output only — that boundary is a proposal, trim it
   with Eugene.
+- **A resume files one line, never a pre-review** (ruled 2026-10-26): the event line, its URL,
+  and `Last seen:`, for a thread no open item mirrors; a thread an item already mirrors is
+  listed and the item left alone, since `file` replaces the item's prose. Reading the thread
+  and writing the pre-review belong to the session that takes the item up.
 - **Body = the pre-review**, in this order: what changed (the event lines, with URLs); how
   meaningful it is; your opinion; proposed actions; and, when a reply is warranted, a paste-ready
   draft response in its own fenced block per `topics/paste-ready-markdown-for-markdown-systems`.
