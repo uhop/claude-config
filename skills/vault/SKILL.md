@@ -1217,9 +1217,12 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      The other files (queue/decisions/learnings/stack) come as
      `summary` + `body_bytes`, each with `summary_stale` and, when its text
      stood long, `summaryPossiblyStale` (`owed` asks the reads they call
-     for); a file kept as an atomized folder comes as the note its path
-     composes, with `composed: true` and `pieces`; a `null` entry means the
-     file doesn't exist.
+     for). A note of 64 KB or more with `summaryPossiblyStale` is owed no
+     read: relay its summary marked possibly stale, and read only the
+     sections you need; the sweep restates it (vault-storage D287). A file
+     kept as an atomized folder comes as the note its path composes, with
+     `composed: true` and `pieces`; a `null` entry means the file doesn't
+     exist.
      The block also carries `trackers` (vault-storage D95): where the
      project's work is tracked, from the `trackers:` list in its `queue.md`
      frontmatter, as `{declared, trackers: [{kind, ref, role, create,
