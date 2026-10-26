@@ -36,6 +36,7 @@ in the same row.
 | Reads — document, folder, search, lint, status, suggestions, queue slices, graph | **MCP tools** | (always existed) |
 | Body edits — append, replace-a-string | **`vault_append` / `vault_replace`** | `vault-put --append/--replace` |
 | One `## Heading` section — read it, or replace its content leaving every other byte alone | **`vault_read_section` / `vault_replace_section`** (adapter ≥ 0.7.0; server ≥ 2026-09-06) | `vault-curl '/vault/<path>?section=<heading line>'` + `POST /vault/edit` with `{path, op: "replace-section", heading, body}` |
+| One span — a section by its heading's leading text (a heading cited without its date) or under a parent, one queue item by its bold title, or one table row by its first cell — read whole or cut to its tail or head, or a `replace` whose `from` need be unique only inside it | **`vault_read_span`**, and **`vault_replace`** with `within` (and `count`, the number it asserts), `prefix` on `vault_replace_section` and the item tools (adapter ≥ 0.18.0; server ≥ 2026-10-26, vault-storage 4h) | `vault-curl '/vault/<path>?item=<title>&section=<heading>&tail=<bytes>'` (or `section` with `prefix=true`, or `row`) + `POST /vault/edit` with `{path, op: "replace", from, to, within: {item: "<title>"}}` |
 | One queue item — remove it, insert it, or move it between documents with a trail after its title | **`vault_remove_item` / `vault_insert_item` / `vault_move_item`** (adapter ≥ 0.7.0; server ≥ 2026-09-06, D35) | `POST /vault/edit` with `{op: "remove-item" \| "insert-item", …}` + `POST /vault/move-item` |
 | One frontmatter array member (`related:`, `agent.tags_suggested`) | **`vault_patch_fm`** | `PATCH /sections/{record_id}/fm` via `vault-curl` |
 | One `tags:` member — the server refuses `/tags` in an FM patch (400 `protected_field`, since tags are taxonomy-validated) | **`vault_tag_add` / `vault_tag_remove`** (adapter ≥ 0.9.0) | `vault-curl /sections/{record_id}/tags -X POST` with `{"tag": "<tag>"}`, and `vault-curl /sections/{record_id}/tags/<tag> -X DELETE` |
@@ -150,14 +151,23 @@ an agent's key.
 
 **A call that fails with `code: "network"` says what happened** (adapter ≥
 0.12.0; server from 2026-09-29, vault-storage D99). The usual cause is a
-deploy: the server restarts briefly. The adapter repeats a refused connection every half second for
-eight seconds, so most restarts pass unseen. When the error still arrives,
-read `details.cause`: `ECONNREFUSED` sent nothing, so repeat the call once
-`vault_health` answers; a message that says the write may have applied went
-out before the connection dropped, so read the document before sending it
-again, since an `append`, or a `replace` whose `to` contains its `from`,
-applies twice. An older adapter reports every case as `network error: fetch
-failed`: treat a failed write there as possibly applied.
+deploy: the server restarts briefly. From adapter 0.18.0 (vault-storage D457,
+D459) a connection never made (refused, timed out, no route or name server)
+is repeated whatever the method, the waits doubling from a quarter second to
+16 s, for two minutes, and the hosted front's 503 `tenant_unavailable` and
+`verification_unavailable`, which applied nothing, are waited out the same
+way, so a restart, or a reboot of about a minute, passes unseen. Once one
+call has waited the two minutes out, later calls try once until the vault
+answers again, their error naming since when in `details.unreachableSince`:
+the vault is down, so do not repeat such a call at once. When the error still
+arrives, read `details.cause`: a connection never made sent nothing, so
+repeat the call once `vault_health` answers; a message that says the write
+may have applied went out before the connection dropped, as did a 502
+`tenant_dropped`, so read the document before sending it again, since an
+`append`, or a `replace` whose `to` contains its `from`, applies twice. An
+adapter before 0.18.0 repeats only a refused connection, every half second
+for eight seconds, and one before 0.12.0 reports every case as `network
+error: fetch failed`: treat a failed write there as possibly applied.
 
 **A 400 `secret_detected` means the write carried something key-shaped**
 (server from 2026-10-08, vault-storage D171): `details.found` names each find
@@ -226,7 +236,7 @@ Registered as `mcp__vault__<name>`; fetch schemas with
 | Where a project's work is tracked and which tracker is primary | `vault_project_trackers` (adapter ≥ 0.12.0; § Note format on declaring it) |
 | What changed in a project's notes and queue since a time or a commit | `vault_project_changes` (adapter ≥ 0.13.0; server ≥ 2026-09-30, vault-storage D117); before that adapter, `vault-curl '/projects/<name>/changes?since=<ISO\|Nd\|sha>'` |
 | List a folder | `vault_list_folder` |
-| Search | `vault_search` (`mode=lexical` default, `semantic` opt-in) |
+| Search | `vault_search` (`mode=lexical` default, `semantic` opt-in); each match carries `at`, its headings and its queue item, which `vault_read_span` and `vault_replace`'s `within` take as they stand, so an edit follows a search with no read (adapter ≥ 0.18.0) |
 | Integrity lint | `vault_lint` |
 | Indexer/DB state | `vault_status` |
 | Pending suggestions by kind | `vault_suggestions_summary` |
