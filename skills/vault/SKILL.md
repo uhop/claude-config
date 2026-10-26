@@ -1318,7 +1318,11 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
    minutes before the session could start. Eugene: *"You just say: 'new PR',
    'new issue', 'new comment in an existing PR' and so on. No need to analyze
    more. Just titles and numbers."* and *"The deep work is for the session we
-   want to start."* Ruled 2026-09-08, install-artifact-from-github: a
+   want to start."* The purpose, in his words the same day: *"a fast resume
+   by skipping unnecessary tasks --- it is quite possible that a developer
+   wants to work on their items rather than 3rd-party things, which are often
+   of low quality."* The rule covers the resume; a sweep he asks for is
+   another matter. Ruled 2026-09-08, install-artifact-from-github: a
    pre-review of issue #30 grew a scratch fixture, a local corepack install,
    and three package-manager measurements before he had seen the issue.
    Eugene: *"I ask you to bootstrap a session with `/vault resume`, not
