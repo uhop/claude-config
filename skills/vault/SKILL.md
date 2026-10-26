@@ -1280,12 +1280,20 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      turn, named in `since: {ended, holder}`; `notes` are the project's notes
      written since, by when each was written, and `queue: {entered, edited}`
      its queue items that entered a section (added, moved, or archived) or
-     changed in place. It shows what happened between sessions: edits in the
-     UI, a sweep, another project's agent. **Act on it**: an item that
+     changed in place. Each note carries `changed` (server ≥ 2026-10-26,
+     vault-storage 1g), what its writes since changed: `{created: true}` for
+     a note made since, else `{body, agent, frontmatter}`, whether the body
+     changed, whether the `agent:` block did, and the other frontmatter keys
+     written, by name; `changed` is null, or absent on an older server, when
+     the server cannot say. It shows what happened between sessions: edits in
+     the UI, a sweep, another project's agent. **Act on it**: an item that
      entered the Backlog or the Inbox since is placed by the project's plan
-     or triaged in this resume, and a changed decisions or queue note is
-     read before its summary is relayed. A deleted note is not listed. `null`
-     means no session record qualifies; stay quiet then.
+     or triaged in this resume, and a decisions or queue note made since,
+     whose body changed, or whose `changed` is null is read before its
+     summary is relayed. A note whose writes only restated its `agent:` block
+     (`{body: false, agent: true, frontmatter: []}`) or set frontmatter keys
+     needs no read: say what was restated or which keys. A deleted note is
+     not listed. `null` means no session record qualifies; stay quiet then.
      `vault_project_changes({project, since})` answers the same for any time
      or commit.
      The block also carries `handoffs: {open, returned, claimed}` (server
