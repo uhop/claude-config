@@ -125,6 +125,25 @@ newest entries, and drop a "newest", "next", or "open" claim the body no
 longer supports; or, when the summary still holds, answer
 `{"summary_holds": true}` (D289).
 
+**Folder items (`folder` set; vault-storage 0ah-2, D461).** A note kept as an
+atomized folder carries its summary on the folder's `_about.md`, judged
+against the note the folder composes, so a new piece makes it stale. The full
+`/system/lint` lists each folder, and `prepare` adds a folder without a
+summary to the missing worklist (`--type=meta` narrows to folders) and a
+stale one to `--stale`. Its item is the `_about.md` record with `folder` (the
+composed note's path), `pieces`, and `folder_hash`, and reads either the
+composed note whole (`read: "full"`, `body`), or, stale with a summary, the
+pieces written since that summary (`read: "folder-delta"`,
+`changed_pieces`, each with its path, title, and body) when they come to at
+most the threshold of the note. Summarize the folder's note as a whole, in
+the rolling form a decisions or learnings note takes (what it holds and its
+span); judge a folder delta as a delta item, a revision of
+`current_agent` for what the new pieces add, or `{"summary_holds": true}`.
+It has no `related_candidates`, since `_about.md`'s own text is a stub.
+`apply` writes the block onto `_about.md` with `folder_hash` as its
+`derived_from_hash`, and confirms a summary that holds by writing it again
+with that hash.
+
 `apply` rejects the whole file before any write (exit 3) on unknown paths,
 short summaries, bad `complexity`, non-wikilink `edge_classifications` keys,
 or invalid edge types. Writes go through the JSON path (the only sanctioned

@@ -1185,7 +1185,11 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      bundle didn't inline them.
      The other files (queue/decisions/learnings/stack) come as
      `summary` + `body_bytes`; fetch bodies with `vault_read_file` only
-     as needed. Every entry carries `summary_stale` (server ≥ 2026-09-06):
+     as needed. A file kept as an atomized folder (server ≥ 2026-10-26,
+     vault-storage D460) comes as the note its path composes, with
+     `composed: true` and `pieces`: its summary is the folder's `_about.md`'s,
+     judged stale against the composed note (D461), and `null` means neither
+     a file nor a folder exists. Every entry carries `summary_stale` (server ≥ 2026-09-06):
      true means the summary was derived from an older body — fetch the
      body and never relay that summary as current. `summaryPossiblyStale:
      true` (server ≥ 2026-10-17, vault-storage D284) means the summary's

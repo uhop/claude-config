@@ -27,6 +27,16 @@
 // summaries whose hash reads current but whose text no longer describes the
 // note (vault-storage D284).
 //
+// An atomized folder (vault-storage 0ah-2) keeps its summary on its `_about.md`,
+// judged against the note its folder composes: the full lint lists each folder
+// with that note's hash, a folder without a summary joins the missing worklist
+// and a stale one the --stale worklist, its item reads the composed note (or,
+// stale with a summary, `changed_pieces`, the pieces written since the summary,
+// under the same threshold), and apply writes the summary onto `_about.md` with
+// the folder's hash as its `derived_from_hash`; a summary that still holds is
+// written again with that hash, since summary-checked judges `_about.md`'s own
+// body.
+//
 // Enrichments file (JSON; bare map or {enrichments: {...}}), keyed by
 // file_path exactly as in the worksheet; null = skip:
 //   {"topics/x.md": {"summary": "...", "key_concepts": ["..."],
@@ -284,6 +294,66 @@ const releaseWork = async claim => {
   }
 };
 
+// --- atomized folders (vault-storage 0ah-2) -----------------------------------
+
+/** The pieces directly in a folder written on or after `since` (a date): its new entries. */
+const changedPieces = async (folder, since) => {
+  const dir = folder.folder.slice(0, -'.md'.length) + '/';
+  const pieces = [];
+  for (let offset = 0; ;) {
+    const {data: page} = await api(
+      'GET',
+      `/sections?file_prefix=${encodeURIComponent(dir)}&updated_since=${since}&sort=file_path_asc&limit=100&offset=${offset}`
+    );
+    for (const row of page.items) {
+      const name = row.file_path.slice(dir.length);
+      if (name.includes('/') || name === '_about.md') continue;
+      pieces.push({
+        file_path: row.file_path,
+        title: row.title,
+        updated: row.updated,
+        body: row.body
+      });
+    }
+    offset += page.items.length;
+    if (!page.items.length || offset >= page.total) return pieces;
+  }
+};
+
+/**
+ * A folder's worksheet item: its `_about.md` record with the composed note's body, or, for a stale
+ * summary, the pieces written since it when they are at most the threshold of the note.
+ */
+const folderItem = async (folder, record, frontmatter, candidate) => {
+  const {body} = splitDoc((await api('GET', `/vault/${folder.folder}`)).data);
+  const agent = frontmatter.agent ?? null;
+  let pieces = null;
+  if (opts.stale && agent?.summary && typeof agent.derived_at === 'string') {
+    pieces = await changedPieces(folder, agent.derived_at.slice(0, 10));
+    const bytes = pieces.reduce(
+      (sum, piece) => sum + Buffer.byteLength(piece.body ?? '', 'utf8'),
+      0
+    );
+    if (bytes > opts.fullThreshold * Buffer.byteLength(body, 'utf8')) pieces = null;
+  }
+  return {
+    record_id: candidate.record_id,
+    file_path: record.file_path,
+    folder: folder.folder,
+    folder_hash: folder.hash,
+    pieces: folder.pieces,
+    type: record.type,
+    title: record.title,
+    body_hash: record.body_hash,
+    existing_tags: frontmatter.tags ?? [],
+    existing_related: frontmatter.related ?? [],
+    ...(opts.stale || opts.refresh ? {current_agent: agent} : {}),
+    body_wikilinks: wikilinks(record.body ?? ''),
+    related_candidates: [],
+    ...(pieces ? {read: 'folder-delta', changed_pieces: pieces} : {read: 'full', body})
+  };
+};
+
 // --- prepare -----------------------------------------------------------------
 
 const prepare = async () => {
@@ -303,7 +373,13 @@ const prepare = async () => {
           .filter(Boolean)
       )
     : null;
-  const listed = r => wanted.has(r.file_path) || wanted.has(r.record_id);
+  const listed = r =>
+    wanted.has(r.file_path) || wanted.has(r.record_id) || (r.folder && wanted.has(r.folder));
+  const folders = new Map((coverage.folders ?? []).map(f => [f.record_id, f]));
+  const folderCandidates = keep =>
+    [...folders.values()]
+      .filter(f => keep(f) && (!wanted || listed(f)))
+      .map(f => ({record_id: f.record_id, file_path: f.file_path}));
 
   if (opts.refresh && (!wanted || opts.stale))
     fail(2, '--refresh takes its notes from --records, and not with --stale');
@@ -314,6 +390,11 @@ const prepare = async () => {
     for (const entry of wanted) {
       if (!entry.endsWith('.md')) {
         candidates.push({record_id: entry});
+        continue;
+      }
+      const folder = [...folders.values()].find(f => f.folder === entry);
+      if (folder) {
+        candidates.push({record_id: folder.record_id, file_path: folder.file_path});
         continue;
       }
       const {data} = await api(
@@ -345,11 +426,14 @@ const prepare = async () => {
       }
       offset += page.items.length;
     }
+    candidates.push(...folderCandidates(f => f.stale));
   } else if (wanted) {
     candidates = (coverage.unenriched_records ?? []).filter(listed);
+    candidates.push(...folderCandidates(f => !f.summary));
   } else {
     candidates = coverage.unenriched_records ?? [];
     if (opts.type) candidates = candidates.filter(r => r.type === opts.type);
+    if (!opts.type || opts.type === 'meta') candidates.push(...folderCandidates(f => !f.summary));
   }
   candidates = candidates.slice(0, opts.limit);
 
@@ -386,6 +470,11 @@ const prepare = async () => {
         return;
       }
       const {data: fm} = await api('GET', `/sections/${candidate.record_id}/fm?exclude=body`);
+      const folder = folders.get(candidate.record_id);
+      if (folder) {
+        items.push(await folderItem(folder, record, fm.frontmatter, candidate));
+        return;
+      }
       if (emptyBody(record.body ?? '')) {
         needsBody.push(record.file_path);
         return;
@@ -451,7 +540,7 @@ const prepare = async () => {
     })
   );
   items.sort((a, b) => a.file_path.localeCompare(b.file_path));
-  const deltas = items.filter(item => item.read === 'delta').length;
+  const deltas = items.filter(item => item.read !== 'full').length;
 
   const worksheet = {
     mode: opts.refresh ? 'refresh' : opts.stale ? 'stale' : 'missing',
@@ -587,7 +676,7 @@ const apply = async () => {
     }
   };
 
-  const writeOne = async ({item, enrichment}) => {
+  const writeOne = async ({item, enrichment, confirmed = false}) => {
     // resolve the CURRENT path first — writing to a stale worksheet path
     // resurrects ghost records (2026-07-12)
     const {data: record} = await api('GET', `/sections/${item.record_id}`);
@@ -601,7 +690,9 @@ const apply = async () => {
         return false;
       }
       const agent = {
-        derived_from_hash: 'auto',
+        derived_from_hash: item.folder_hash ?? 'auto',
+        // Stamped by the writer; a folder's next stale read takes the pieces written since.
+        derived_at: 'auto',
         summary: enrichment.summary.trim(),
         key_concepts: enrichment.key_concepts,
         tags_suggested: enrichment.tags_suggested ?? [],
@@ -617,12 +708,13 @@ const apply = async () => {
       );
       return true;
     };
+    const done = report[confirmed ? 'confirmed' : 'written'];
     try {
-      if (await put()) report.written.push(record.file_path);
+      if (await put()) done.push(record.file_path);
     } catch (err) {
       if (err instanceof ApiError && err.status === 412) {
         try {
-          if (await put()) report.written.push(record.file_path);
+          if (await put()) done.push(record.file_path);
           return;
         } catch (retryErr) {
           err = retryErr;
@@ -638,7 +730,13 @@ const apply = async () => {
     }
   };
   await pool(
-    jobs.map(job => () => (job.confirm ? confirmOne(job.item) : writeOne(job))),
+    jobs.map(job => () => {
+      if (!job.confirm) return writeOne(job);
+      // A folder's summary holds for the composed note it was read from, whose hash summary-checked never sees.
+      if (job.item.folder)
+        return writeOne({item: job.item, enrichment: job.item.current_agent, confirmed: true});
+      return confirmOne(job.item);
+    }),
     4
   );
 
