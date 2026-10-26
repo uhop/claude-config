@@ -1278,7 +1278,8 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      The block also carries `changes` (server ≥ 2026-09-30, vault-storage
      D117): what changed since the end of the latest session that took a
      turn, named in `since: {ended, holder}`; `notes` are the project's notes
-     written since, by when each was written, and `queue: {entered, edited}`
+     written since, the ones whose content changed first (server ≥
+     2026-10-26), each group by when it was written, and `queue: {entered, edited}`
      its queue items that entered a section (added, moved, or archived) or
      changed in place. Each note carries `changed` (server ≥ 2026-10-26,
      vault-storage 1g), what its writes since changed: `{created: true}` for
