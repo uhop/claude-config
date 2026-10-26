@@ -1121,6 +1121,13 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
    what used to be five separate reads. Do **not** hand-roll this as
    `vault-curl … | jq` into a scratch file — the MCP call returns the whole
    structure directly. Surface each block per the old rules:
+   - `owed` (server ≥ 2026-10-26, vault-storage 1h) — what this resume
+     owes, `[{kind, target, why}]`, in the order to act on it, `target`
+     being what the tool call takes: `log`, `handoff`, `rework`, `archive`,
+     `triage`, `place`, `read`, `fix-trackers`, and `file-stalls`, the
+     server applying the rules below. **Act on each entry**, and say in the
+     resume what you did with it; an empty list means nothing is owed.
+     Where `owed` is absent (an older server), the rules below decide.
    - `reindex` — quiet on a no-op (`changedFiles: 0`); report counts when
      something got reindexed; mention `fellBack: true` (the full-reindex
      path — history loss or first run).
