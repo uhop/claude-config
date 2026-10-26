@@ -1120,14 +1120,61 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
    name). The server runs the incremental reindex first, then packages
    what used to be five separate reads. Do **not** hand-roll this as
    `vault-curl … | jq` into a scratch file — the MCP call returns the whole
-   structure directly. Surface each block per the old rules:
+   structure directly.
    - `owed` (server ≥ 2026-10-26, vault-storage 1h) — what this resume
-     owes, `[{kind, target, why}]`, in the order to act on it, `target`
-     being what the tool call takes: `log`, `handoff`, `rework`, `archive`,
-     `triage`, `place`, `read`, `fix-trackers`, and `file-stalls`, the
-     server applying the rules below. **Act on each entry**, and say in the
-     resume what you did with it; an empty list means nothing is owed.
-     Where `owed` is absent (an older server), the rules below decide.
+     owes, `[{kind, target, why}]`, in the order to act on it: the server
+     applies the resume's rules to the blocks below, `target` is what the
+     tool call takes, and `why` is the evidence. **Act on each entry**, and
+     say in the resume what you did with it; an empty list means nothing is
+     owed. An older server sends no `owed`: apply the same kinds to the
+     blocks yourself.
+     - `log` — a session ended without a wrap. Write its log first, from
+       the bullet's commits and notes, the drift check, the queue and
+       decisions as they stand, and, on the host that ran it, the transcript
+       (`~/.claude/projects/<cwd with / as ->/<session id>.jsonl`); then
+       replace `log: none` in the bullet `target` names with the log's path
+       (`vault_replace` on the sessions note), so it is not written twice.
+     - `handoff` — another agent waits on this session: read the request
+       with `vault_handoff_get` before acting (§ Agent coordination —
+       handoffs). `rework` — your own submission came back: surface it.
+     - `archive` — the item's ticket is closed or merged upstream: move it
+       to `queue-archive.md` (`vault_move_item`) with a **Shipped** trail
+       when the work was yours and a **Closed** trail otherwise.
+     - `triage` — an Inbox item a secondary tracker took in: read it with
+       its `source:` and accept it (`vault_move_item` to `## Backlog` or
+       `## Active`, with a trail saying why) or reject it (to
+       `queue-archive.md` with a **Rejected** trail). Say what you decided;
+       leave an item you cannot judge and name it.
+     - `place` — the item entered the Backlog since the last session:
+       place it by the project's plan.
+     - `read` — read the note before relaying its summary, a note over
+       64 KB (its `body_bytes`) by the sections you need, and restate the
+       summary in your next write to the note when it no longer holds.
+     - `fix-trackers` — the queue's `trackers:` declaration is malformed:
+       fix it with `vault_patch_fm` on the queue, and keep going on the
+       answer as given.
+     - `file-stalls` — the server does not file its loop stalls, so this
+       resume files what is not filed yet, since the server is shared: find
+       the newest `Loop stalls recorded through <at>.` title among
+       vault-storage's open and archived items (`vault_queue_by_project`
+       and `vault_queue_project_archive` with `project: "vault-storage"`),
+       which marks where filing stopped; read every stall record since it
+       with `vault-curl '/system/events?log=stalls&since=<that at>&limit=1000' -f`,
+       following `next` while it is not null and leaving out the record at
+       exactly that `at`. `-f` makes an HTTP error stop the step, since
+       `vault-curl` exits 0 on one otherwise. **One open stall item at a
+       time** (Eugene, 2026-10-09): when the newest item is still open, add
+       the records to it with one `vault_replace`, its title's time moved to
+       the latest record's `at` and the new records first, its `from`
+       running from the title line through the newest existing record line,
+       so another resume's filing refuses it whole; a 409 means another
+       resume filed first: read the item and stop. When it is archived, or
+       there is none, put them into one new Backlog item titled
+       `Loop stalls recorded through <the latest record's at>.`. Each record
+       is one line: `at`, `lagMs`, CPU against the lag (near it is
+       computing, `gcMs` the collector's share; far below it is waiting, on
+       storage when `fsReads` or `majorFaults` moved), and `before`. Filing
+       is the whole step: the cause is looked for when Eugene schedules it.
    - `reindex` — quiet on a no-op (`changedFiles: 0`); report counts when
      something got reindexed; mention `fellBack: true` (the full-reindex
      path — history loss or first run).
@@ -1136,185 +1183,88 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      output. These are bug indicators — report, don't auto-fix.
    - `suggestions` — `{total, by_kind}` of pendings. If `total > 0`, one
      summary line; the dedicated review skills handle decisions.
-   - `stalls` (server ≥ 2026-10-09, vault-storage D177) — the vault server's
-     event-loop stalls of the past week, `{count, latestAt, latestMs, worstAt,
-     worstMs}`; null when none, and then stay quiet. **When it carries
-     `filedBy: "server"`** (server ≥ 2026-10-17, vault-storage D264), the
-     server files them itself, into a note per day under
-     `projects/vault-storage/stalls/` and the queue's one open stall item, so
-     surface it in one line with `filedThrough` and file nothing. That is the
-     case once a queue note says `stalls: file` in its frontmatter. Otherwise
-     surface it in one line and file what is not filed yet, in any project's
-     resume, since the server is shared: find the newest `Loop stalls recorded through
-     <at>.` title among vault-storage's open and archived items
-     (`vault_queue_by_project` and `vault_queue_project_archive` with
-     `project: "vault-storage"`), which marks where filing stopped; then read
-     every stall record since it with
-     `vault-curl '/system/events?log=stalls&since=<that at>&limit=1000' -f`
-     (server ≥ 2026-10-14, vault-storage D227), following `next` while it is
-     not null and leaving out the record at exactly that `at`, which is filed.
-     `-f` makes an HTTP error stop the step, since `vault-curl` exits 0 on one
-     otherwise. An older server answers 404: there read `vault_health`'s
-     `loop.stalls`, the newest ten, which a burst can outrun. **One
-     open stall item at a time** (Eugene, 2026-10-09): when that newest item
-     is still open on `projects/vault-storage/queue.md`, add the records after
-     it to that item with one `vault_replace`, its title's time moved to the
-     latest record's `at` and the new records first in its text: one edit
-     whose `from` runs from the title line through the newest existing record
-     line, so another resume's filing refuses it whole. A 409 means another
-     resume filed first: read the item and stop. When the payload goes
-     through `vault-curl` instead, pass `-f` and check each call's status
-     before sending the next, since `vault-curl` exits 0 on a 409. When it is
-     archived, or there is none, put them into one new Backlog item there
-     titled `Loop stalls recorded through <the latest record's at>.`. Each
-     record is one line: `at`, `lagMs`, CPU against the lag (near it is
-     computing, `gcMs` the collector's share; far below it is waiting, on
-     storage when `fsReads` or `majorFaults` moved), and `before`. Filing is
-     the whole step: the cause is looked for when Eugene schedules the item.
+   - `stalls` (vault-storage D177) — the vault server's event-loop stalls of
+     the past week, `{count, latestAt, latestMs, worstAt, worstMs}`, in one
+     line; null when none, and then stay quiet. With `filedBy: "server"`
+     (D264) the server files them itself, so add `filedThrough` and file
+     nothing; otherwise `owed` carries `file-stalls`.
    - `workflow` — `active` is the agent-workflow Active section: surface
      verbatim under a `Workflow:` heading when non-null. If
      `clarify_pending > 0`, one line like
      `Clarify queue: N pending (/clarify to drain)`. Nulls mean the
      surface isn't scaffolded — omit silently.
    - `logs` — the fleet's most recent session logs as their `agent.summary`
-     lines, each with `summary_stale`; `project.logs` (server ≥ 2026-09-29,
-     D104) is the project's own latest logs in the same shape and number,
-     since the fleet's newest can all belong to other projects — read those
-     first. Skim the summaries; fetch a full body (`vault_read_file`) only
-     when a summary is missing or stale, or the session directly continues
-     that log's work.
+     lines; `project.logs` is the project's own latest logs in the same
+     shape and number, since the fleet's newest can all belong to other
+     projects — read those first. Skim the summaries; fetch a full body
+     (`vault_read_file`) when a fleet log's summary is missing or
+     `summary_stale` (`owed` names the project's own), or when the session
+     directly continues that log's work.
    - `project` — `feedback.md` normally arrives with its full body:
      surface its rules near the top of the resume output (this is the
      read path for fleet-shared project feedback — the vault is
      pull-only, not auto-loaded like local memory; see
      `topics/project-feedback-md-convention`). When it instead carries
-     `body_omitted: {reason: "bundle_budget"}` (server ≥ 2026-08-04: the
-     body would push the bundle past 32 KiB), the `headings` index shows
-     what rules exist. The session-start hook `vault-feedback-rules.sh`
-     has then usually put each rule's heading and first paragraph in
-     context already, as a `[vault] <project>'s feedback rules` block
-     (vault-storage D380, every session and after a compaction too):
-     surface those, and fetch the body with `vault_read_file` when a
-     rule's Why or How to apply matters to the work at hand. With no such
-     block (a server before D380, or a host without the hook installed),
-     fetch the body (or read it to a file when `body_bytes` says it is
-     huge) and still surface the rules; don't skip them because the
-     bundle didn't inline them.
+     `body_omitted: {reason: "bundle_budget"}` (the body would push the
+     bundle past 32 KiB), the `headings` index shows what rules exist. The
+     session-start hook `vault-feedback-rules.sh` has then usually put each
+     rule's heading and first paragraph in context already, as a
+     `[vault] <project>'s feedback rules` block (vault-storage D380):
+     surface those, and fetch the body with `vault_read_file` when a rule's
+     Why or How to apply matters to the work at hand. With no such block (a
+     host without the hook installed), fetch the body (or read it to a file
+     when `body_bytes` says it is huge) and still surface the rules.
      The other files (queue/decisions/learnings/stack) come as
-     `summary` + `body_bytes`; fetch bodies with `vault_read_file` only
-     as needed. A file kept as an atomized folder (server ≥ 2026-10-26,
-     vault-storage D460) comes as the note its path composes, with
-     `composed: true` and `pieces`: its summary is the folder's `_about.md`'s,
-     judged stale against the composed note (D461), and `null` means neither
-     a file nor a folder exists. Every entry carries `summary_stale` (server ≥ 2026-09-06):
-     true means the summary was derived from an older body — fetch the
-     body and never relay that summary as current. `summaryPossiblyStale:
-     true` (server ≥ 2026-10-17, vault-storage D284) means the summary's
-     text stood through ten body writes, or a week with one at least
-     (`summaryUnchanged` gives when it changed and the writes since), so its
-     hash can read current while the text no longer describes the note.
-     For a note under 64 KB (`body_bytes`), fetch the body and restate the
-     summary in your next write to the note if it no longer holds. For a
-     larger one, relay the summary marked possibly stale and read only the
-     section you need: the server puts the note on the stale queue, and the
-     sweep restates it from what the summary has not seen (D287). A `null` entry means the file doesn't exist — not every
-     project has a `feedback.md`.
-     The block also carries `trackers` (server ≥ 2026-09-29, vault-storage
-     D95): where the project's work is tracked, from the `trackers:` list in
-     its `queue.md` frontmatter, as `{declared, trackers: [{kind, ref, role,
-     create, write, url}], primary, problems}`; no declaration means the
-     vault queue is primary. **When `primary.kind` is not `vault`, new work
-     is filed there** (through that tracker's own MCP server, or as a
+     `summary` + `body_bytes`, each with `summary_stale` and, when its text
+     stood long, `summaryPossiblyStale` (`owed` asks the reads they call
+     for); a file kept as an atomized folder comes as the note its path
+     composes, with `composed: true` and `pieces`; a `null` entry means the
+     file doesn't exist.
+     The block also carries `trackers` (vault-storage D95): where the
+     project's work is tracked, from the `trackers:` list in its `queue.md`
+     frontmatter, as `{declared, trackers: [{kind, ref, role, create,
+     write, url}], primary, problems}`; no declaration means the vault
+     queue is primary. **When `primary.kind` is not `vault`, new work is
+     filed there** (through that tracker's own MCP server, or as a
      paste-ready ticket handed to the user when you cannot write to it), and
      a queue item that mirrors an outside ticket carries `source:` with the
      tracker and its id; the vault keeps context, notes, edges, and
      handoffs either way. **The item in flight is one Active item with
-     `source:`** (ruled 2026-09-29; vault-storage D108): when you start on a
-     ticket, `vault_insert_item` under `## Active` with `  - source: github
-     owner/repo#15` (or `linear ENG-123`, `jira VS-7`) among its continuation
-     lines and your notes as the body — the server updates the open item that
-     already carries that source instead of filing a second (D107), so the
-     call is safe to repeat; the Backlog stays empty in that configuration,
-     since the tracker holds the list; when the ticket closes, move the item
-     to `queue-archive.md` with a **Shipped** trail (`vault_move_item`), or
-     remove it when the work moves off you. The brief's `queue.in_flight`
-     (server ≥ 2026-09-30) and the SessionStart line carry the source beside
-     the title, so the next session opens the right ticket. Before starting
-     on a ticket, read what the vault holds about it: `vault_links({key:
-     "<the source>"})` (or `{url}` for any link) lists the notes and queue
-     items that mention it (vault-storage D112; on an adapter without the
-     tool, `vault-curl /links -G --data-urlencode 'key=<the source>' -s`). A
-     GitHub ticket
-     the stored baseline shows closed or merged arrives marked, `, merged
-     upstream` on that line (`upstream` in `queue.in_flight`, vault-storage
-     D111): archive that item in the same resume, with a **Shipped** trail
-     when the work was yours and a **Closed** trail otherwise. The project
-     page's Tracked card lists the same items and archives a closed one on a
-     click. **An inbox is
-     triage owed** (vault-storage D109, 2026-09-30): when the brief's
-     `queue.inbox` is non-zero, the queue's `## Inbox` holds threads a
-     secondary tracker's `intake: triage` took in; read each with its
-     `source:`, and either accept it (`vault_move_item` from `## Inbox` to
-     `## Backlog` or `## Active` on the same queue path, with a trail saying
-     why) or reject it (`vault_move_item` to `queue-archive.md` with a
-     **Rejected** trail). Triage is a judgment, so say what you decided;
-     leave an item you cannot judge and name it. A non-empty `problems` list means the declaration
-     is malformed: say so, fix it with `vault_patch_fm` on the queue, and
-     keep going on the answer as given. `vault_project_trackers({project})`
-     reads the same view outside the resume flow.
-     The block also carries `notices` (server ≥ 2026-09-29, vault-storage
-     D90): the `supersedes` and `contradicts` edges pointing into the
-     project's files, each `{file, type, by: {record_id, file_path, title},
-     note, created}`. **Surface each one before relaying that file**: another
-     note replaces or disputes it, so read `by` with `vault_read_file` before
-     trusting the queue or the decisions it points at; an empty list means
-     nothing points at them.
-     The block also carries `sessions: {recent, unlogged}` (server ≥
-     2026-09-29, vault-storage D105): the project's last sessions from
-     `projects/<name>/sessions.md`, one bullet per session end, appended by
-     the SessionEnd hook `hooks/vault-session-record.sh` with when the session
-     started and ended, the commits that landed in the checkout meanwhile,
-     the notes it touched, and the log it created or `none`. **A non-empty
-     `unlogged` list is a session that ended without a wrap: write its log
-     first**, from the bullet's commits and notes, the drift check, the queue
-     and decisions as they stand, and, on the host that ran it, the transcript
-     (`~/.claude/projects/<cwd with / as ->/<session id>.jsonl`), then replace
-     `log: none` in that bullet with the log's path (`vault_replace` on the
-     sessions note) so it is not written twice. The SessionStart digest names
-     the count.
-     The block also carries `changes` (server ≥ 2026-09-30, vault-storage
-     D117): what changed since the end of the latest session that took a
-     turn, named in `since: {ended, holder}`; `notes` are the project's notes
-     written since, the ones whose content changed first (server ≥
-     2026-10-26), each group by when it was written, and `queue: {entered, edited}`
-     its queue items that entered a section (added, moved, or archived) or
-     changed in place. Each note carries `changed` (server ≥ 2026-10-26,
-     vault-storage 1g), what its writes since changed: `{created: true}` for
-     a note made since, else `{body, agent, frontmatter}`, whether the body
-     changed, whether the `agent:` block did, and the other frontmatter keys
-     written, by name; `changed` is null, or absent on an older server, when
-     the server cannot say. It shows what happened between sessions: edits in
-     the UI, a sweep, another project's agent. **Act on it**: an item that
-     entered the Backlog or the Inbox since is placed by the project's plan
-     or triaged in this resume, and a decisions or queue note made since,
-     whose body changed, or whose `changed` is null is read before its
-     summary is relayed. A note whose writes only restated its `agent:` block
-     (`{body: false, agent: true, frontmatter: []}`) or set frontmatter keys
-     needs no read: say what was restated or which keys. A deleted note is
-     not listed. `null` means no session record qualifies; stay quiet then.
-     `vault_project_changes({project, since})` answers the same for any time
-     or commit.
-     The block also carries `handoffs: {open, returned, claimed}` (server
-     ≥ 2026-08-10) — the coordination inbox, since claiming a repo means
-     inheriting it. **Surface a non-empty `open` list**: another agent is
-     waiting on this session, and each item carries only a
-     `body_first_line`, so read the full request with `vault_handoff_get`
-     before acting (§ Agent coordination — handoffs). A non-empty
-     `returned` list is *your* earlier submission sent back for rework,
-     matched by its `from.repo` against the project's GitHub repository
-     (server ≥ 2026-10-22, vault-storage D403; before that it listed the
-     recipient's returns) — surface it too. Both empty (the normal single-agent case): stay
-     quiet.
+     `source:`** (vault-storage D108): when you start on a ticket,
+     `vault_insert_item` under `## Active` with `  - source: github
+     owner/repo#15` (or `linear ENG-123`, `jira VS-7`) among its
+     continuation lines and your notes as the body — the server updates the
+     open item that already carries that source instead of filing a second
+     (D107), so the call is safe to repeat; the Backlog stays empty in that
+     configuration, since the tracker holds the list; when the ticket
+     closes, move the item to `queue-archive.md` with a **Shipped** trail
+     (`vault_move_item`), or remove it when the work moves off you. Before
+     starting on a ticket, read what the vault holds about it:
+     `vault_links({key: "<the source>"})` (or `{url}` for any link) lists
+     the notes and queue items that mention it (vault-storage D112).
+     `vault_project_trackers({project})` reads the same view outside the
+     resume flow.
+     The block also carries `notices` (vault-storage D90), the `supersedes`
+     and `contradicts` edges pointing into the project's files, each
+     `{file, type, by: {record_id, file_path, title}, note, created}`:
+     surface each before relaying that file. `sessions: {recent, unlogged}`
+     (D105) is the project's last sessions from `projects/<name>/sessions.md`,
+     one bullet per session end, appended by the SessionEnd hook.
+     `changes` (D117) is what changed since the end of the latest session
+     that took a turn, named in `since: {ended, holder}`: `notes`, the
+     project's notes written since, the ones whose content changed first,
+     each with `changed` (vault-storage 1g), `{created: true}` or
+     `{body, agent, frontmatter}`, null when the server cannot say; and
+     `queue: {entered, edited}`. It shows what happened between sessions:
+     edits in the UI, a sweep, another project's agent. A note whose writes
+     only restated its `agent:` block or set frontmatter keys needs no read:
+     say what was restated or which keys. `null` means no session record
+     qualifies; stay quiet then. `vault_project_changes({project, since})`
+     answers the same for any time or commit. `handoffs: {open, returned,
+     claimed}` is the coordination inbox, since claiming a repo means
+     inheriting it, `returned` matched by its `from.repo` against the
+     project's GitHub repository; both empty (the normal single-agent case):
+     stay quiet.
 3. **GitHub status for the current repository** — the same information the
    fleet sweep collects, every class, not a one-line digest (ruled
    2026-08-28; the `fleet-status` skill is the reference). Run
