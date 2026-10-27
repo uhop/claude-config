@@ -977,7 +977,7 @@ Extract learnings from the current project/session.
    missing — stay on curl for this call:
    `vault-curl "/system/resume-bundle?project=<name>&logs=0&project_bodies=feedback,learnings,decisions,stack,queue" -X POST -s`.
 3. Analyze recent work: git log, changed files, decisions made
-4. Create or update `projects/{name}/learnings.md`, `decisions.md`, `stack.md`. A learnings note kept as a folder (`projects/{name}/learnings/`, its `_about.md` opening "Atomized from") takes a new lesson as one bullet in its subject's piece, never an append to `learnings.md`, which the server refuses on a composed view; the `_about.md` states the folder's size policy, so read it first (blog's since its import, apodict's since its 2026-10-27 reorganization).
+4. Create or update `projects/{name}/learnings.md`, `decisions.md`, `stack.md`. A learnings note kept as a folder (`projects/{name}/learnings/`, its `_about.md` opening "Atomized from") takes a new lesson as one bullet in its subject's piece, never an append to `learnings.md`, which the server refuses on a composed view; the `_about.md` states the folder's size policy, so read it first (blog's since its import, apodict's since its 2026-10-27 reorganization). A note past its size bound is reorganized by `/vault-reorg`.
 5. Extract cross-project patterns into `topics/` notes (e.g., "api-rate-limiting", "docker-networking"). Propose-then-write: before creating, check neighbours with `POST /vault/propose` (search-before-write); if an existing note already covers the concept, extend it, and if the new write would *replace* it wholesale, use `POST /vault/supersede` rather than minting a near-duplicate. When creating a new topic note here, enrich at capture per the `/vault ingest` step 5 procedure — write the `agent:` block in the same PUT, with `complexity` one of `prose` | `code-heavy` | `tabular` | `mixed` | `hub` | `log-entry`, never a judgment word.
 6. **Promote this session's new durable local memories into the vault.** During the session the agent's auto-memory writes land in *per-machine* local memory (`~/.claude/projects/<hash>/memory/`), which is not fleet-shared. For each `feedback_*.md` / `project_*.md` written or materially updated this session, route it by the `projects/agent-workflow/decisions` D1 table — feedback rules → `projects/<name>/feedback.md`, project facts / deferred options → `decisions.md` / `queue.md` Backlog — **deduped and propose-then-confirm**, never a blind copy. Most candidates are already captured elsewhere: verify against `decisions.md` / `learnings.md` / global `CLAUDE.md` / existing `topics/` first (per `topics/project-feedback-md-convention`). The vault is the durable source of truth; where a local memory is promoted, leave a thin local pointer rather than a duplicate fact (double-writing the same rule to both stores reintroduces drift). This makes the local→vault migration continuous so per-machine memories stop accumulating. This is the **write path** that pairs with `/vault resume`'s read of `feedback.md`.
 
@@ -1542,6 +1542,11 @@ same stage run as parallel sub-agents):
   a suggestion is a request for a decision, and that one is made. Leaving
   it here is what gave the queue a permanent pending floor (measured
   2026-09-01: five pending, four of them logs).
+- A note past its size bound — `/vault-reorg` reorganizes it (2026-10-27,
+  Eugene: _"a big size should trigger a reorg"_), and
+  `reorg-batch measure` lists what is over. Not a sweep stage yet: the
+  server files no size suggestion, and a first reorganization costs
+  millions of agent tokens, so it runs on Eugene's word.
 
 #### Ordering constraints
 
