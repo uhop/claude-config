@@ -14,7 +14,7 @@
 //
 // Stage DAG (data-flow constraints — see the /vault skill § Ordering):
 //   0 one-shots: cleanup-lint ∥ embed-pending ∥ expire-logs ∥ gc-tags, then check-edges  (this script)
-//   1 enrich_backfill ∥ enrich_stale
+//   1 enrich_backfill ∥ enrich_stale ∥ enrich_oversized
 //   2 new_tag
 //   3 tag_suggestion ∥ edge_type
 //   4 duplicate
@@ -23,9 +23,18 @@
 //     so review_backlog_high verification sees the post-drain queue)
 //
 // Stale enrichment is frozen at `begin` and sharded: the notes whose staleness
-// was filed before the sweep started, at most STALE_PER_AGENT to an agent so
-// no model turn judges more than a handful. A note that goes stale mid-sweep
+// was filed before the sweep started, at most PER_AGENT.enrich_stale to an agent
+// so no model turn judges more than a handful. A note that goes stale mid-sweep
 // waits for the next sweep instead of forcing a second round.
+//
+// A summary past the lint's bound (`oversized_summaries`, vault-storage D378) is restated by an
+// enrichment agent in --refresh --outline mode, since its hash reads current and the stale stage
+// never sees it, and from the note's headings, since the notes that carry one run to megabytes
+// (apodict's decisions: 2.48 MB of body, a 93 KB outline). The lint lists at most ten a read, the
+// longest first: a pass takes those, one to an agent, and the next pass the rest.
+//
+// Every done report carries the lint's verdict, read fresh, each non-zero check with its samples,
+// so a sweep never reads converged over a failing lint (filed 2026-10-28).
 //
 // Every enrichment agent gets a holder: its enrich-batch prepare claims its
 // notes under that name (vault-storage D150), so a parallel sweep or ingest
@@ -54,7 +63,7 @@ if (!import.meta.main)
   );
 
 const STAGES = [
-  ['enrich_backfill', 'enrich_stale'],
+  ['enrich_backfill', 'enrich_stale', 'enrich_oversized'],
   ['new_tag'],
   ['tag_suggestion', 'edge_type'],
   ['duplicate'],
@@ -66,12 +75,14 @@ const ALIASES = {
   coverage: 'enrich_backfill',
   enrichment: 'enrich_backfill',
   agent_enrichment_stale: 'enrich_stale',
+  oversized_summaries: 'enrich_oversized',
   inefficiency_detected: 'report',
   infrastructure_upgrade: 'report'
 };
 const SKILL_FOR = {
   enrich_backfill: 'vault-enrich-all',
   enrich_stale: 'vault-enrich-all',
+  enrich_oversized: 'vault-enrich-all',
   new_tag: 'vault-review-tags',
   tag_suggestion: 'vault-review-tags',
   edge_type: 'vault-review-edges',
@@ -80,13 +91,14 @@ const SKILL_FOR = {
   report: 'vault-review-reports'
 };
 
-const STALE_PER_AGENT = 4;
+const PER_AGENT = {enrich_stale: 4, enrich_oversized: 1};
 const MAX_STALE_AGENTS = 6;
 
 // Seconds, from the 2026-09-27 21:32Z sweep on vault-sweep agents: 45 s to an
-// agent's first action, 52 s a stale note, 44 s for two tag suggestions.
+// agent's first action, 52 s a stale note, 44 s for two tag suggestions; an oversized summary is
+// taken at the stale rate, unmeasured.
 const AGENT_START_S = 45;
-const PER_ITEM_S = {enrich_stale: 52, triage: 5};
+const PER_ITEM_S = {enrich_stale: 52, enrich_oversized: 52, triage: 5};
 
 const fail = (code, message) => {
   console.error(message);
@@ -192,10 +204,26 @@ const measure = async () => {
       edge_type: by.edge_type ?? 0,
       duplicate: by.duplicate ?? 0,
       compaction_candidate: by.compaction_candidate ?? 0,
-      report: (by.inefficiency_detected ?? 0) + (by.infrastructure_upgrade ?? 0)
+      report: (by.inefficiency_detected ?? 0) + (by.infrastructure_upgrade ?? 0),
+      enrich_oversized: lint.checks?.oversized_summaries?.count ?? 0
     },
-    worklist: lint.coverage?.enrichment?.unenriched_records ?? []
+    lists: {
+      backfill: lint.coverage?.enrichment?.unenriched_records ?? [],
+      // by record id, which the harness reads as the folder a `_about.md` composes
+      oversized: (lint.checks?.oversized_summaries?.samples ?? []).map(item => item.id)
+    }
   };
+};
+
+// the lint's verdict, read fresh: the sweep drains some of its checks and reports the rest
+const lintVerdict = async () => {
+  const lint = await api('GET', '/system/lint');
+  const failing = Object.fromEntries(
+    Object.entries(lint.checks ?? {})
+      .filter(([, check]) => check?.count > 0)
+      .map(([name, {count, samples}]) => [name, {count, samples}])
+  );
+  return {ok: lint.ok, total_issues: lint.total_issues, failing};
 };
 
 // Ids the last pass released back to pending, from the report the triage
@@ -242,10 +270,33 @@ const actionSet = () => {
 const holderFor = (state, kind, i) =>
   `sweep-${state.started.slice(0, 10)}-${state.nonce ?? ''}${kind}-r${state.round}p${state.passes[kind]}${i > 0 ? `-${i}` : ''}`;
 
-const buildDispatch = async (state, kind, count, worklist) => {
+// at most PER_AGENT[kind] notes an agent, each shard a records file
+const shard = (state, entry, spec, records) => {
+  const {kind} = entry,
+    label = kind.replace('enrich_', ''),
+    per = PER_AGENT[kind];
+  const dir = path.dirname(path.resolve(state.file));
+  for (let i = 0; i < records.length && entry.agents.length < MAX_STALE_AGENTS; i += per) {
+    const part = records.slice(i, i + per);
+    const file = path.join(
+      dir,
+      `sweep-${label}-r${state.round}p${state.passes[kind]}-${entry.agents.length}.txt`
+    );
+    writeFileSync(file, part.join('\n') + '\n');
+    entry.agents.push({
+      ...spec,
+      records_file: file,
+      records: part.length,
+      holder: holderFor(state, kind, entry.agents.length)
+    });
+  }
+};
+
+const buildDispatch = async (state, kind, count, lists) => {
   ++state.passes[kind] || (state.passes[kind] = 1);
   const entry = {kind, count, skill: SKILL_FOR[kind], agents: []};
   if (kind === 'enrich_backfill') {
+    const worklist = lists.backfill;
     if (count > 100 && worklist.length) {
       const chunkSize = 50,
         maxAgents = 4;
@@ -265,28 +316,12 @@ const buildDispatch = async (state, kind, count, worklist) => {
       });
     } else entry.agents.push({mode: 'backfill', limit: 100, holder: holderFor(state, kind, 0)});
   } else if (kind === 'enrich_stale') {
-    const frozen = (await pendingItems('agent_enrichment_stale')).filter(
-      item => item.created <= state.started
-    );
-    const dir = path.dirname(path.resolve(state.file));
-    for (
-      let i = 0;
-      i < frozen.length && entry.agents.length < MAX_STALE_AGENTS;
-      i += STALE_PER_AGENT
-    ) {
-      const shard = frozen.slice(i, i + STALE_PER_AGENT);
-      const file = path.join(
-        dir,
-        `sweep-stale-r${state.round}p${state.passes[kind]}-${entry.agents.length}.txt`
-      );
-      writeFileSync(file, shard.map(item => item.payload.file_path).join('\n') + '\n');
-      entry.agents.push({
-        mode: 'stale',
-        records_file: file,
-        records: shard.length,
-        holder: holderFor(state, kind, entry.agents.length)
-      });
-    }
+    const frozen = (await pendingItems('agent_enrichment_stale'))
+      .filter(item => item.created <= state.started)
+      .map(item => item.payload.file_path);
+    shard(state, entry, {mode: 'stale'}, frozen);
+  } else if (kind === 'enrich_oversized') {
+    shard(state, entry, {mode: 'refresh', outline: true}, lists.oversized);
   } else if (kind === 'compaction_candidate') {
     const pending = await api(
       'GET',
@@ -302,7 +337,7 @@ const buildDispatch = async (state, kind, count, worklist) => {
 };
 
 const agentSeconds = (kind, agent, count) => {
-  if (kind === 'enrich_stale') return AGENT_START_S + agent.records * PER_ITEM_S.enrich_stale;
+  if (kind in PER_ITEM_S) return AGENT_START_S + agent.records * PER_ITEM_S[kind];
   if (agent.triage_kind) return AGENT_START_S + Math.min(count, agent.limit) * PER_ITEM_S.triage;
   return null;
 };
@@ -324,7 +359,7 @@ const emit = value => console.log(JSON.stringify(value, null, 2));
 const saveState = state => writeFileSync(state.file, JSON.stringify(state, null, 2) + '\n');
 
 // advance through stages; returns a plan, or null when the round is complete
-const plan = async (state, counts, worklist) => {
+const plan = async (state, counts, lists) => {
   while (state.stage < STAGES.length) {
     const active = [];
     for (const kind of STAGES[state.stage]) {
@@ -337,7 +372,7 @@ const plan = async (state, counts, worklist) => {
       const dispatch = [];
       state.holders = {};
       for (const kind of active) {
-        const entry = await buildDispatch(state, kind, counts[kind], worklist);
+        const entry = await buildDispatch(state, kind, counts[kind], lists);
         if (!entry.agents.length && !entry.candidates) {
           state.floors[kind] = counts[kind];
           continue;
@@ -385,13 +420,14 @@ const endOfRound = (state, counts) => {
 };
 
 if (command === 'begin') {
-  const {counts, worklist} = await measure();
+  const {counts, lists} = await measure();
   if (opts.dryRun) {
     emit({
       dry_run: true,
       action_set: actionSet(),
       counts,
-      would_run: actionSet().filter(k => counts[k] > 0)
+      would_run: actionSet().filter(k => counts[k] > 0),
+      lint: await lintVerdict()
     });
     process.exit(0);
   }
@@ -429,17 +465,19 @@ if (command === 'begin') {
     one_shots: oneShots,
     trail: [{round: 1, before: {...counts}}]
   };
-  const result =
-    (await plan(state, counts, worklist)) ??
-    endOfRound(state, counts) ??
-    (await plan(state, (await measure()).counts, worklist));
+  let result = (await plan(state, counts, lists)) ?? endOfRound(state, counts);
+  if (!result) {
+    const fresh = await measure();
+    result = (await plan(state, fresh.counts, fresh.lists)) ?? endOfRound(state, fresh.counts);
+  }
+  if (result.status === 'done') result.lint = await lintVerdict();
   saveState(state);
   emit({elapsed_s: elapsedSeconds(state), ...result});
 } else {
   const state = JSON.parse(readFileSync(opts.state, 'utf8'));
   opts.include = state.include;
   opts.exclude = state.exclude;
-  const {counts, worklist} = await measure();
+  const {counts, lists} = await measure();
   // progress evaluation for the kinds the last plan dispatched: a pending set
   // the pass released back whole is a floor now, with its items named; else a
   // count that stopped dropping is a stuck floor; a count above a floor reopens
@@ -465,13 +503,14 @@ if (command === 'begin') {
   }
   state.lastCounts = {...counts};
   state.pending = [];
-  let result = await plan(state, counts, worklist);
+  let result = await plan(state, counts, lists);
   if (!result) {
     result = endOfRound(state, counts);
-    if (!result) result = await plan(state, counts, worklist);
+    if (!result) result = await plan(state, counts, lists);
     if (!result) result = endOfRound(state, counts); // next round had nothing dispatchable
   }
   if (result.status === 'dispatch' && Object.keys(floored).length) result.skipped = floored;
+  if (result.status === 'done') result.lint = await lintVerdict();
   saveState(state);
   emit({elapsed_s: elapsedSeconds(state), ...result});
 }

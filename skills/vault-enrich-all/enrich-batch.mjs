@@ -9,7 +9,7 @@
 // content; `apply` validates it all before any write and PUTs each block
 // through the JSON path with If-Match + current-path resolution.
 //
-//   enrich-batch prepare [--limit=N] [--stale | --refresh] [--full-threshold=F] [--type=T] [--records=FILE] [--holder=H] [--out=FILE]
+//   enrich-batch prepare [--limit=N] [--stale | --refresh [--outline]] [--full-threshold=F] [--type=T] [--records=FILE] [--holder=H] [--out=FILE]
 //   enrich-batch apply --worksheet=FILE --enrichments=FILE [--dry-run]
 //   enrich-batch release --worksheet=FILE
 //
@@ -25,7 +25,9 @@
 // shards, disjoint by construction). --refresh takes the --records list as
 // given instead, each note with its current agent: block and its whole body:
 // summaries whose hash reads current but whose text no longer describes the
-// note (vault-storage D284).
+// note (vault-storage D284). --outline gives each refresh item the note's size
+// and its headings to level 2 in place of its body, for restating a summary
+// past the lint's bound, which the long rolling notes carry (/vault sweep).
 //
 // An atomized folder (vault-storage 0ah-2) keeps its summary on its `_about.md`,
 // judged against the note its folder composes: the full lint lists each folder
@@ -82,7 +84,7 @@ const {base, token, problem} = vaultSettings();
 if (problem) fail(2, problem);
 
 const usage = `Usage:
-  enrich-batch prepare [--limit=N] [--stale | --refresh] [--full-threshold=F] [--type=T] [--records=FILE] [--holder=H] [--out=FILE]
+  enrich-batch prepare [--limit=N] [--stale | --refresh [--outline]] [--full-threshold=F] [--type=T] [--records=FILE] [--holder=H] [--out=FILE]
   enrich-batch apply --worksheet=FILE --enrichments=FILE [--dry-run]
   enrich-batch release --worksheet=FILE`;
 
@@ -94,6 +96,7 @@ const opts = {
   limit: 30,
   stale: false,
   refresh: false,
+  outline: false,
   fullThreshold: 0.4,
   type: null,
   records: null,
@@ -116,6 +119,9 @@ for (const arg of rest) {
       break;
     case '--refresh':
       opts.refresh = true;
+      break;
+    case '--outline':
+      opts.outline = true;
       break;
     case '--full-threshold':
       opts.fullThreshold = +value;
@@ -320,6 +326,16 @@ const changedPieces = async (folder, since) => {
   }
 };
 
+// a note's shape without its text, for restating a summary it has outgrown: the notes whose
+// summaries pass the lint's bound are the long rolling notes, megabytes of body (2026-10-28)
+const outlineOf = body => ({
+  body_bytes: Buffer.byteLength(body, 'utf8'),
+  headings: body
+    .split('\n')
+    .filter(line => /^#{1,2} /.test(line))
+    .map(line => line.slice(0, 160))
+});
+
 /**
  * A folder's worksheet item: its `_about.md` record with the composed note's body, or, for a stale
  * summary, the pieces written since it when they are at most the threshold of the note.
@@ -350,7 +366,11 @@ const folderItem = async (folder, record, frontmatter, candidate) => {
     ...(opts.stale || opts.refresh ? {current_agent: agent} : {}),
     body_wikilinks: wikilinks(record.body ?? ''),
     related_candidates: [],
-    ...(pieces ? {read: 'folder-delta', changed_pieces: pieces} : {read: 'full', body})
+    ...(pieces
+      ? {read: 'folder-delta', changed_pieces: pieces}
+      : opts.outline
+        ? {read: 'outline', outline: outlineOf(body)}
+        : {read: 'full', body})
   };
 };
 
@@ -383,6 +403,7 @@ const prepare = async () => {
 
   if (opts.refresh && (!wanted || opts.stale))
     fail(2, '--refresh takes its notes from --records, and not with --stale');
+  if (opts.outline && !opts.refresh) fail(2, '--outline goes with --refresh');
   let candidates;
   if (opts.refresh) {
     candidates = [];
@@ -535,7 +556,9 @@ const prepare = async () => {
                 added_chunks: delta.added_chunks
               }
             }
-          : {read: 'full', body: record.body})
+          : opts.outline
+            ? {read: 'outline', outline: outlineOf(record.body)}
+            : {read: 'full', body: record.body})
       });
     })
   );

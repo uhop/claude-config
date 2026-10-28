@@ -46,6 +46,7 @@ W=$(mktemp -d)
 "$E" prepare --stale --out="$W/ws.json"             # drifted blocks (from the suggestions queue; --full-threshold=F, default 0.4)
 "$E" prepare --records="$W/chunk.txt" --out="$W/ws.json"   # explicit shard (paths or ids, one per line)
 "$E" prepare --refresh --records="$W/list.txt" --out="$W/ws.json"   # these notes as given, each with current_agent and its whole body
+"$E" prepare --refresh --outline --records="$W/list.txt" --out="$W/ws.json"   # the same with each note's size and headings for its body
 
 # 2. judge — write the enrichment content per note (see § Generate enrichment fields)
 #    (start from .enrichments_template; null = skip)
@@ -124,6 +125,15 @@ item read in full: write the summary from the note as it stands, covering its
 newest entries, and drop a "newest", "next", or "open" claim the body no
 longer supports; or, when the summary still holds, answer
 `{"summary_holds": true}` (D289).
+
+**Outline items (`--refresh --outline`; `read: "outline"`).** The sweep's
+oversized summaries: each listed summary is past the lint's bound, and the
+notes that carry one are the long rolling notes, megabytes of body, so an item
+carries `outline` (`body_bytes`, and the headings to level 2, each cut to 160
+characters) in place of the body. Restate `current_agent.summary` in the
+rolling form under the bound, from the outline: what the note holds and its
+span, never a clause per entry. Never answer `summary_holds` for one, since the
+summary is what fails the lint (2026-10-28).
 
 **Folder items (`folder` set; vault-storage 0ah-2, D461).** A note kept as an
 atomized folder carries its summary on the folder's `_about.md`, judged
@@ -255,12 +265,13 @@ subagent_type: vault-sweep
 description: Enrich N vault notes with agent: blocks
 prompt: |
   Read ~/.claude/skills/vault-enrich-all/SKILL.md. Using the enrich-batch
-  harness exactly as its Workflow section shows: prepare (add --stale if
-  requested; --records=$FILE when given, else --limit=$LIMIT;
-  --holder=$HOLDER when given), write the
+  harness exactly as its Workflow section shows: prepare (add --stale, or
+  --refresh with --outline when asked, if requested; --records=$FILE when
+  given, else --limit=$LIMIT; --holder=$HOLDER when given), write the
   enrichment content for every
   worksheet item per § Generate enrichment fields (its quality bar and
-  biases are binding; null = skip only for notes you cannot judge), apply.
+  biases are binding; null = skip only for notes you cannot judge; an
+  outline item per § Outline items), apply.
   The harness prints the worksheet to stdout — don't redirect it to a fixed
   scratchpad filename; if you must write it to a file, namespace the name
   uniquely (sibling agents share one scratchpad).

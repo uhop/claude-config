@@ -98,7 +98,8 @@ write. Every resume ships a project's summaries and every write rewrites
 its note's, and two decision and learnings summaries that grew a clause an
 arc reached 10,000 characters. `/system/lint` counts a summary past 3,000
 characters as `oversized_summaries`; restate one you meet in the rolling
-form on your next write to its note. A patch without a summary over a summary that was
+form on your next write to its note, and `/vault sweep` restates the ones
+the lint lists. A patch without a summary over a summary that was
 already stale before your edit leaves the block stale, and the answer carries
 `agent_stale: true` (server from 2026-10-01, vault-storage D133): read that
 summary, and restate it as `summary` if it holds or leave it for the sweep.
@@ -1522,6 +1523,7 @@ same stage run as parallel sub-agents):
 | **`type: log` records past 90 days** — settled policy, not a judgment ([[topics/vault-hygiene-policy]], ruled 2026-07-31). Their own `archive_candidate` suggestions are always skipped (below), so this one-shot is the only thing that drains them. Called optionally: a server predating the route answers 404 and the sweep records `{skipped: "route_absent"}` rather than aborting, since the vault server is a singleton that any host's sweep may be newer than. | `POST /maintenance/expire-logs` (deletes from disk + DB; `dry_run=1` previews) |
 | **coverage**: enrichable knowledge notes with **no `agent:` block** — canonical source is `vault-storage`'s `GET /system/lint` → `coverage.enrichment` (`ENRICHABLE_TYPES` = `permanent`/`project`/`design`/`research`/`query`; the headline already excludes operational types, empty bodies, and archived). Read the count there; `/vault-enrich-all` § Enrichable set drives the enumeration. *Not* a suggestion kind, so invisible to `/suggestions/summary`. | `/vault-enrich-all --auto --limit=100` (backfill missing) |
 | `suggestions.agent_enrichment_stale` | `/vault-enrich-all --auto --stale --limit=100` (refresh drifted) |
+| `lint.oversized_summaries` — a summary past the lint's bound reads current, so the stale pass never sees it; the lint lists the ten longest a read (filed 2026-10-28) | `/vault-enrich-all --auto --refresh --outline --records=<file>` (restate in the rolling form from the note's headings, never its megabytes of body) |
 | `suggestions.new_tag` | `/vault-review-tags --auto --limit=100` |
 | `suggestions.tag_suggestion` | `/vault-review-tags --auto --kind=tag_suggestion --limit=100` |
 | `suggestions.edge_type` — only reopened rows since vault-storage D76: a default-cites link is filed already rejected as `default-cites`, so this stage is normally empty | `/vault-review-edges --auto --limit=100` |
@@ -1553,12 +1555,13 @@ same stage run as parallel sub-agents):
 Some kinds mutate state that other kinds read. Process them in declared
 order; never dispatch two ordered kinds as parallel sub-agents.
 
-- **Enrichment before the tag and edge passes.** Both enrichment passes
-  (the missing-block backfill `/vault-enrich-all --auto --limit=100` and the
-  `--stale` refresh) write `agent:` blocks, and a freshly written block makes
+- **Enrichment before the tag and edge passes.** The enrichment passes
+  (the missing-block backfill `/vault-enrich-all --auto --limit=100`, the
+  `--stale` refresh, and the `--refresh` of oversized summaries) write `agent:`
+  blocks, and a freshly written block makes
   the server file new `tag_suggestion` (from `agent.tags_suggested`),
   sometimes `new_tag` (an unknown suggested tag), and can feed `edge_type`
-  (from `agent.edge_classifications`). Run **both enrichment passes first**,
+  (from `agent.edge_classifications`). Run **the enrichment passes first**,
   then `new_tag`, then `tag_suggestion` ∥ `edge_type`, so the suggestions
   enrichment generates drain in the *same* sweep instead of surfacing as
   residue. (Before this ordering enrichment ran last, and the `tag_suggestion`
@@ -1584,8 +1587,10 @@ constraints — enrichment feeds the queues; `tag_suggestion` reads the
 taxonomy `new_tag` mutates — and stand regardless of writer safety.
 The resulting stage DAG:
 
-1. enrichment backfill ∥ `--stale` refresh (disjoint sets by
-   definition: no `agent:` block vs drifted block)
+1. enrichment backfill ∥ `--stale` refresh ∥ oversized `--refresh`
+   (backfill is disjoint from the others by definition, no `agent:` block;
+   a note both stale and oversized goes to whichever agent claims it first,
+   and the other skips it as held)
 2. `new_tag` alone (two concurrent minters could canonicalize
    conflicting tags/aliases)
 3. `tag_suggestion` ∥ `edge_type` (independent queues; when both hit
@@ -1664,10 +1669,16 @@ W=$(mktemp -d)
    advisor, which measured 85–161 s per call on 2026-09-27):
    - `vault-enrich-all` entries: its § Sub-agent mode prompt; pass
      `--records=<records_file>` when the plan sharded the worklist,
-     else `--limit=<limit>`; `mode: "stale"` → `--stale`; and always
+     else `--limit=<limit>`; `mode: "stale"` → `--stale`; `mode: "refresh"`
+     → `--refresh`, and `outline: true` → `--outline`; and always
      `--holder=<holder>`, the name its work claim goes under. The stale
      worklist is always sharded (at most four notes an agent) and frozen at
      `begin`: a note that goes stale mid-sweep waits for the next sweep.
+     An `enrich_oversized` entry restates each listed summary from the
+     note's outline (`/vault-enrich-all` § Outline items), one note an
+     agent: the notes past the lint's bound are the long rolling notes, and
+     their bodies run to megabytes (apodict's decisions: 2.48 MB, a 93 KB
+     outline).
    - Say the plan's `estimate_s` and the running `elapsed_s` in the message
      that dispatches it.
    - Triage entries (`vault-review-tags` / `-edges` / `-duplicates`):
@@ -1708,7 +1719,11 @@ W=$(mktemp -d)
    `repaired: true`: every note from its `samples` with its `kind`, and the
    `after` counts, which should read zero. This post-hoc itemization is
    what replaced the retired `--include-destructive` pre-commitment
-   gate.
+   gate. `lint` is the integrity lint read fresh at the end: when its `ok`
+   is false, name every check in `failing` with its count and samples, and
+   say the sweep does not drain it, since a converged sweep can leave a
+   check that no stage covers (filed 2026-10-28: a sweep converged while
+   `oversized_summaries` read 1). `begin --dry-run` prints the same verdict.
 
 A stuck kind isn't a failure — some suggestions legitimately need user
 input, and the sub-agent's `--auto` mode is conservative on ambiguity.
