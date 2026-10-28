@@ -37,6 +37,7 @@ in the same row.
 | Body edits — append, replace-a-string | **`vault_append` / `vault_replace`** | `vault-put --append/--replace` |
 | One `## Heading` section — read it, or replace its content leaving every other byte alone | **`vault_read_section` / `vault_replace_section`** (adapter ≥ 0.7.0; server ≥ 2026-09-06) | `vault-curl '/vault/<path>?section=<heading line>'` + `POST /vault/edit` with `{path, op: "replace-section", heading, body}` |
 | One span — a section by its heading's leading text (a heading cited without its date) or under a parent, one queue item by its bold title, or one table row by its first cell — read whole or cut to its tail or head, or a `replace` whose `from` need be unique only inside it | **`vault_read_span`**, and **`vault_replace`** with `within` (and `count`, the number it asserts), `prefix` on `vault_replace_section` and the item tools (adapter ≥ 0.18.0; server ≥ 2026-10-26, vault-storage 4h) | `vault-curl '/vault/<path>?item=<title>&section=<heading>&tail=<bytes>'` (or `section` with `prefix=true`, or `row`) + `POST /vault/edit` with `{path, op: "replace", from, to, within: {item: "<title>"}}` |
+| A note's tail or head with no span — the newest entries of a rolling note, the last decision's number | **`vault_read_span`** with only `tail` or `max_bytes` (adapter ≥ 0.19.0; server ≥ 2026-10-28, vault-storage D514): the body, frontmatter left out, no `hash`; a composed folder note is a 409 `composed_view` naming its pieces, since their order is not its newest (D515). Any cut keeps whole lines while they fill half of it and otherwise fills the rest from the line past them | `vault-curl '/vault/<path>?tail=<bytes>'` |
 | One queue item — remove it, insert it, or move it between documents with a trail after its title | **`vault_remove_item` / `vault_insert_item` / `vault_move_item`** (adapter ≥ 0.7.0; server ≥ 2026-09-06, D35) | `POST /vault/edit` with `{op: "remove-item" \| "insert-item", …}` + `POST /vault/move-item` |
 | One frontmatter array member (`related:`, `agent.tags_suggested`) | **`vault_patch_fm`** | `PATCH /sections/{record_id}/fm` via `vault-curl` |
 | One `tags:` member — the server refuses `/tags` in an FM patch (400 `protected_field`, since tags are taxonomy-validated) | **`vault_tag_add` / `vault_tag_remove`** (adapter ≥ 0.9.0) | `vault-curl /sections/{record_id}/tags -X POST` with `{"tag": "<tag>"}`, and `vault-curl /sections/{record_id}/tags/<tag> -X DELETE` |
@@ -157,7 +158,10 @@ D459) a connection never made (refused, timed out, no route or name server)
 is repeated whatever the method, the waits doubling from a quarter second to
 16 s, for two minutes, and the hosted front's 503 `tenant_unavailable` and
 `verification_unavailable`, which applied nothing, are waited out the same
-way, so a restart, or a reboot of about a minute, passes unseen. Once one
+way, so a restart, or a reboot of about a minute, passes unseen. From adapter
+0.19.0 a `tenant_unavailable` whose `details.reason` is `database`, a request
+that reached no database, is waited out for ten minutes, the time a resize of
+the database takes (vault-storage D491). Once one
 call has waited the two minutes out, later calls try once until the vault
 answers again, their error naming since when in `details.unreachableSince`:
 the vault is down, so do not repeat such a call at once. When the error still
