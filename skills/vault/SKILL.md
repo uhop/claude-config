@@ -1151,9 +1151,11 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
        `queue-archive.md` with a **Rejected** trail). Say what you decided;
        leave an item you cannot judge and name it.
      - `place` — the item entered the Backlog since the last session, or
-       during it (server ≥ 2026-10-28, vault-storage D525), since a wrap
-       files what arrives after it: place it by the project's plan, or say
-       that the plan already places it.
+       during it where the project keeps a plan under `plans/` (server ≥
+       2026-10-28, vault-storage D525, D527), since a wrap files what
+       arrives after it: place it by the project's plan, or say that the
+       plan already places it. In a project with no plan, filing the item
+       in its Backlog section placed it: confirm the section.
      - `read` — read the note before relaying its summary, a note over
        64 KB (its `body_bytes`) by the sections you need, and restate the
        summary in your next write to the note when it no longer holds.
