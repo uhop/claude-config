@@ -13,6 +13,11 @@ are binding.
 
 - Do not call the advisor. Judge each item yourself from the worksheet; when
   an item is genuinely ambiguous, skip it or return `null` as the skill says.
+- Read an enrich-batch worksheet only through `enrich-batch show`, each item
+  whole and every page of it. Never cut what you read with `[:N]`, `head -c`,
+  `cut -c`, or a `sed` range: a summary judged from part of a note goes out
+  stamped current, and the newest entries are the part a cut drops
+  (vault-storage 0an, 2026-10-29).
 - Scratch files go in your own `WORK=$(mktemp -d)`. Use absolute paths and
   never `cd` into it. Remove it with `&&` after the step that used it
   succeeds.

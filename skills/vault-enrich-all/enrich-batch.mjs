@@ -12,6 +12,12 @@
 //   enrich-batch prepare [--limit=N] [--stale | --refresh [--outline]] [--full-threshold=F] [--type=T] [--records=FILE] [--holder=H] [--out=FILE]
 //   enrich-batch apply --worksheet=FILE --enrichments=FILE [--dry-run]
 //   enrich-batch release --worksheet=FILE
+//   enrich-batch show --worksheet=FILE [--item=N [--from=C]]
+//
+// `show` is the read path for the judgment: with no --item, a line per item; with --item, that
+// item whole (worksheet-view.mjs), a page at a time past PAGE_CHARS, each page naming the next
+// --from. Read every page; a summary judged from part of a note goes out stamped current
+// (vault-storage 0an).
 //
 // `prepare` takes a work claim (purpose enrich, vault-storage D150) on its
 // worklist and keeps only what it got, so a parallel sweep leaves those notes
@@ -57,6 +63,7 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import {hostname} from 'node:os';
 import process from 'node:process';
 import {vaultSettings} from '../vault/vault-settings.mjs';
+import {pageOf, renderIndex, renderItem} from './worksheet-view.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -80,17 +87,18 @@ const fail = (code, message) => {
   process.exit(code);
 };
 
-const {base, token, problem} = vaultSettings();
-if (problem) fail(2, problem);
-
 const usage = `Usage:
   enrich-batch prepare [--limit=N] [--stale | --refresh [--outline]] [--full-threshold=F] [--type=T] [--records=FILE] [--holder=H] [--out=FILE]
   enrich-batch apply --worksheet=FILE --enrichments=FILE [--dry-run]
-  enrich-batch release --worksheet=FILE`;
+  enrich-batch release --worksheet=FILE
+  enrich-batch show --worksheet=FILE [--item=N [--from=C]]`;
 
 const [command, ...rest] = process.argv.slice(2);
-if (!['prepare', 'apply', 'release'].includes(command))
+if (!['prepare', 'apply', 'release', 'show'].includes(command))
   fail(command === '--help' || command === '-h' ? 0 : 2, usage);
+
+const {base, token, problem} = vaultSettings();
+if (problem && command !== 'show') fail(2, problem);
 
 const opts = {
   limit: 30,
@@ -104,7 +112,9 @@ const opts = {
   out: null,
   worksheet: null,
   enrichments: null,
-  dryRun: false
+  dryRun: false,
+  item: null,
+  from: 0
 };
 for (const arg of rest) {
   const [flag, value] = arg.includes('=')
@@ -146,6 +156,12 @@ for (const arg of rest) {
       break;
     case '--dry-run':
       opts.dryRun = true;
+      break;
+    case '--item':
+      opts.item = +value;
+      break;
+    case '--from':
+      opts.from = +value;
       break;
     default:
       fail(2, `unknown option: ${arg}\n${usage}`);
@@ -776,9 +792,33 @@ const release = async () => {
   console.log(JSON.stringify({claim: claim ? await releaseWork(claim) : 'none'}, null, 2));
 };
 
+const show = () => {
+  if (!opts.worksheet) fail(2, 'show needs --worksheet');
+  const worksheet = JSON.parse(readFileSync(opts.worksheet, 'utf8'));
+  const items = worksheet.items ?? [];
+  if (opts.item === null) {
+    console.log(renderIndex(worksheet));
+    console.log(
+      `--- ${items.length} items; read each with show --worksheet=${opts.worksheet} --item=N ---`
+    );
+    return;
+  }
+  if (!Number.isInteger(opts.item) || opts.item < 1 || opts.item > items.length)
+    fail(2, `--item must be 1..${items.length}`);
+  if (!Number.isInteger(opts.from) || opts.from < 0) fail(2, '--from must be a whole number');
+  const text = renderItem(items[opts.item - 1], opts.item, items.length);
+  const {page, next, total} = pageOf(text, opts.from);
+  console.log(page);
+  if (next !== null)
+    console.log(
+      `--- continued: show --worksheet=${opts.worksheet} --item=${opts.item} --from=${next} (${next} of ${total} characters shown) ---`
+    );
+};
+
 try {
   if (command === 'prepare') await prepare();
   else if (command === 'apply') await apply();
+  else if (command === 'show') show();
   else await release();
 } catch (err) {
   if (err instanceof ApiError) fail(1, `${err.status} ${err.code} — ${err.message}`);

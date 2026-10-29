@@ -48,10 +48,14 @@ W=$(mktemp -d)
 "$E" prepare --refresh --records="$W/list.txt" --out="$W/ws.json"   # these notes as given, each with current_agent and its whole body
 "$E" prepare --refresh --outline --records="$W/list.txt" --out="$W/ws.json"   # the same with each note's size and headings for its body
 
-# 2. judge — write the enrichment content per note (see § Generate enrichment fields)
+# 2. read — every item whole, through the harness, a page at a time
+"$E" show --worksheet="$W/ws.json"                  # a line per item
+"$E" show --worksheet="$W/ws.json" --item=1         # item 1 whole; a long one ends with the next --from
+
+# 3. judge — write the enrichment content per note (see § Generate enrichment fields)
 #    (start from .enrichments_template; null = skip)
 
-# 3. apply — validates everything first, then JSON-PUTs each block, then releases the claim
+# 4. apply — validates everything first, then JSON-PUTs each block, then releases the claim
 "$E" apply --worksheet="$W/ws.json" --enrichments="$W/enr.json"
 # or, to give the claim back without writing:
 "$E" release --worksheet="$W/ws.json"
@@ -77,6 +81,18 @@ recreate. The worksheet header carries the full tag taxonomy (for
 `tags_suggested` discipline) and the coverage counts; empty-body notes are
 excluded and listed under `needs_a_body`.
 
+**Read every item whole with `show`, never through your own cut.** A summary
+is judged from what you read and goes out stamped current, so a view cut
+short (`[:500]`, `head -c`, `cut -c`, a `sed` range) yields a wrong summary
+the server cannot tell from a right one. Added chunks and pieces come in body
+order, so on an appended note a cut of each chunk's head misses exactly the
+newest entries and shows everything that agrees with the old summary
+(vault-storage 0an, 2026-10-29: six of ten agents in one sweep cut their
+reads, and three summaries came out wrong, apodict's plan among them). `show
+--item=N` prints the item whole, its summary, links, and every chunk, piece,
+or line of body; past 24,000 characters it prints a page and names the
+`--from` of the next. Read every page before judging the item.
+
 **Delta items (`read: "delta"`, `--stale` only).** When the server has an
 enrichment baseline for a note and its body changed by at most the threshold
 since, the item carries `delta` instead of `body`: `added_chunks` (the text
@@ -100,6 +116,13 @@ day of appends to a 1.3 MB decisions log was 1.2% of its chunks (measured
   in place of an enrichment: `apply` confirms it for the body you read. A
   summary returned word for word as a new enrichment keeps the note on the
   stale queue; never reword an accurate summary only to clear the flag.
+  Before either, check each dated or positional claim of the summary (the
+  span's end, a "next", what heads an order, what is open) against the newest
+  added text, which is the last chunk's end on an appended note. Write a
+  revision from what you read; never patch the old summary by substituting
+  into its text, which keeps every claim the substitution does not touch:
+  apodict's plan went out "through D525" with a shipped arc still heading its
+  order (vault-storage 0an).
 - Keep `current_agent.related_proposed`: a delta item carries no
   `related_candidates`, since an append rarely moves a note's neighbours and
   the neighbour query is the slow part of a prepare.
@@ -267,14 +290,13 @@ prompt: |
   Read ~/.claude/skills/vault-enrich-all/SKILL.md. Using the enrich-batch
   harness exactly as its Workflow section shows: prepare (add --stale, or
   --refresh with --outline when asked, if requested; --records=$FILE when
-  given, else --limit=$LIMIT; --holder=$HOLDER when given), write the
-  enrichment content for every
+  given, else --limit=$LIMIT; --holder=$HOLDER when given) with --out
+  into your own `mktemp -d` (sibling agents share one scratchpad), read
+  every item whole with `show --item=N`, every page of it, never through
+  your own slicing, write the enrichment content for every
   worksheet item per § Generate enrichment fields (its quality bar and
   biases are binding; null = skip only for notes you cannot judge; an
   outline item per § Outline items), apply.
-  The harness prints the worksheet to stdout — don't redirect it to a fixed
-  scratchpad filename; if you must write it to a file, namespace the name
-  uniquely (sibling agents share one scratchpad).
   Return: the apply report and at most five lines on skips and failures.
 ```
 
