@@ -34,7 +34,12 @@
 // longest first: a pass takes those, one to an agent, and the next pass the rest.
 //
 // Every done report carries the lint's verdict, read fresh, each non-zero check with its samples,
-// so a sweep never reads converged over a failing lint (filed 2026-10-28).
+// so a sweep never reads converged over a failing lint (filed 2026-10-28). An advisory check
+// (`size_bound`, vault-storage question 176) is left out: the server counts it nowhere either.
+//
+// The notes of lessons and current views past their size bound (`size_bound`, vault-storage arc
+// 3b) are listed in the done report, never dispatched: lessons take /vault-reorg on the user's
+// word, which `reorg-batch measure` prices, and a current view's remedy waits on its design.
 //
 // Every enrichment agent gets a holder: its enrich-batch prepare claims its
 // notes under that name (vault-storage D150), so a parallel sweep or ingest
@@ -220,10 +225,26 @@ const lintVerdict = async () => {
   const lint = await api('GET', '/system/lint');
   const failing = Object.fromEntries(
     Object.entries(lint.checks ?? {})
-      .filter(([, check]) => check?.count > 0)
+      .filter(([, check]) => check?.count > 0 && !check.advisory)
       .map(([name, {count, samples}]) => [name, {count, samples}])
   );
   return {ok: lint.ok, total_issues: lint.total_issues, failing};
+};
+
+// a server that predates the kind has none pending, and its route refuses the kind by name
+const sizeBounds = async () => {
+  const summary = await api('GET', '/suggestions/summary');
+  if (!summary.by_kind?.size_bound) return [];
+  return (await pendingItems('size_bound')).map(({payload: p}) => ({
+    file_path: p.file_path,
+    role: p.role,
+    bytes: p.bytes,
+    bound: p.bound,
+    remedy:
+      p.role === 'lessons'
+        ? `/vault-reorg ${p.file_path}, on the user's word`
+        : "reported; a current view's remedy waits on its design"
+  }));
 };
 
 // Ids the last pass released back to pending, from the report the triage
@@ -427,7 +448,8 @@ if (command === 'begin') {
       action_set: actionSet(),
       counts,
       would_run: actionSet().filter(k => counts[k] > 0),
-      lint: await lintVerdict()
+      lint: await lintVerdict(),
+      size_bound: await sizeBounds()
     });
     process.exit(0);
   }
@@ -470,7 +492,10 @@ if (command === 'begin') {
     const fresh = await measure();
     result = (await plan(state, fresh.counts, fresh.lists)) ?? endOfRound(state, fresh.counts);
   }
-  if (result.status === 'done') result.lint = await lintVerdict();
+  if (result.status === 'done') {
+    result.lint = await lintVerdict();
+    result.size_bound = await sizeBounds();
+  }
   saveState(state);
   emit({elapsed_s: elapsedSeconds(state), ...result});
 } else {
@@ -510,7 +535,10 @@ if (command === 'begin') {
     if (!result) result = endOfRound(state, counts); // next round had nothing dispatchable
   }
   if (result.status === 'dispatch' && Object.keys(floored).length) result.skipped = floored;
-  if (result.status === 'done') result.lint = await lintVerdict();
+  if (result.status === 'done') {
+    result.lint = await lintVerdict();
+    result.size_bound = await sizeBounds();
+  }
   saveState(state);
   emit({elapsed_s: elapsedSeconds(state), ...result});
 }

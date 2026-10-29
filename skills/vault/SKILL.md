@@ -1552,11 +1552,18 @@ same stage run as parallel sub-agents):
   a suggestion is a request for a decision, and that one is made. Leaving
   it here is what gave the queue a permanent pending floor (measured
   2026-09-01: five pending, four of them logs).
-- A note past its size bound — `/vault-reorg` reorganizes it (2026-10-27,
-  Eugene: _"a big size should trigger a reorg"_), and
-  `reorg-batch measure` lists what is over. Not a sweep stage yet: the
-  server files no size suggestion, and a first reorganization costs
-  millions of agent tokens, so it runs on Eugene's word.
+- `suggestions.size_bound` — a note of lessons or a current view past its
+  size bound (vault-storage arc 3b): a write files it, and the server's
+  bundled scan settles it once the note is back under. `/vault-reorg`
+  reorganizes lessons (2026-10-27, Eugene: _"a big size should trigger a
+  reorg"_), and `reorg-batch measure` lists what is over with its price;
+  a first reorganization costs millions of agent tokens, so it runs on
+  Eugene's word. A current view's remedy waits on its design
+  (vault-storage question 177). The done report lists each pending one
+  under `size_bound` with its role, bytes, bound, and remedy: name them in
+  the summary and act on none. A record past its bound files nothing; it
+  closes into volumes once vault-storage's arc 4 ships, and lint lists it
+  under its advisory `size_bound` check.
 
 #### Ordering constraints
 
@@ -1731,7 +1738,10 @@ W=$(mktemp -d)
    is false, name every check in `failing` with its count and samples, and
    say the sweep does not drain it, since a converged sweep can leave a
    check that no stage covers (filed 2026-10-28: a sweep converged while
-   `oversized_summaries` read 1). `begin --dry-run` prints the same verdict.
+   `oversized_summaries` read 1). An advisory check (`size_bound`, the
+   notes past their size bound) counts toward neither `ok` nor `failing`;
+   the report's own `size_bound` list names the lessons and current views
+   among them. `begin --dry-run` prints the same verdict and list.
 
 A stuck kind isn't a failure — some suggestions legitimately need user
 input, and the sub-agent's `--auto` mode is conservative on ambiguity.

@@ -15,9 +15,9 @@ A reorganization keeps what a session needs and archives the rest:
 
 ## When to run
 
-- **`reorg-batch measure`** lists every live project note over C7's 50 KB and every folder piece over 20 KB. A note of lessons (a `learnings` note or a piece of one) gets a token estimate; any other note is marked "not lessons, not handled" (§ Scope). It is the size trigger until the server files one.
+- **`reorg-batch measure`** lists every live project note over C7's 50 KB and every folder piece over 20 KB. A note of lessons (a `learnings` note or a piece of one) gets a token estimate; any other note is marked "not lessons, not handled" (§ Scope).
 - **On request**, `/vault-reorg <path>`.
-- **Not from `/vault sweep` yet.** The server files no size suggestion today (the item on [[projects/vault-storage/queue]] § Bound the rolling notes proposes it). Once it does, the sweep surfaces the suggestion and this skill runs on Eugene's word, never by itself (§ Cost).
+- **From a `size_bound` suggestion.** The server files one when a write takes a note of lessons past its bound (vault-storage arc 3b), and `/vault sweep` lists it in its done report. This skill still runs on Eugene's word, never by itself (§ Cost); `measure` prices the note first.
 
 ## Scope
 
