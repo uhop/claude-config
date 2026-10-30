@@ -61,7 +61,11 @@ jq -r '
       (.store | if . == null then null
         elif .diverged then "store: \(.remote) has \(.behind) commit(s) the vault lacks, pushing stopped (\(.ahead) waiting)"
         elif .lastError then "store: \(.lastError)"
-        else null end)
+        else null end),
+      # the free space of the filesystem holding the vault data (vault-storage D541), said only when low
+      (.disk | if . and .low then
+        "disk: \(.free_bytes / 1073741824 * 10 | floor / 10) GB free of \(.total_bytes / 1073741824 | floor) GB under \(.path), low; a deploy needs 4 GB (/system/status)"
+      else null end)
     ] | join_present),
   # the calling key within seven days of its expiry (vault-storage D210); absent before 2026-10-12
   (.key // null | if . == null then empty else

@@ -18,6 +18,10 @@ pass=0 fail=0
 ok()  { ((++pass)); }
 bad() { ((++fail)); printf 'FAIL  %s\n' "$1"; }
 
+# The hook parses: the fail-open runs below exit before its jq program, and the checks after run that
+# program apart from the hook, so an apostrophe that ends its single quotes passes all of them (D541).
+bash -n "$HOOK" 2>/dev/null && ok || bad "the hook parses (bash -n)"
+
 # ── OFFLINE: fail-open ───────────────────────────────────────────────────
 out=$(cd / && env PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL= VAULT_API_TOKEN= bash "$HOOK" 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "no env must exit 0 silently (rc=$rc out=$out)"
@@ -125,6 +129,15 @@ out=$(jq -r "$prog" <<<"$(store '{"remote":"origin/main","ahead":1,"behind":0,"d
 [[ "$out" == "[vault] lint ok; store: git fetch failed: no route" ]] && ok || bad "store: a failure on the first line (out=$out)"
 out=$(jq -r "$prog" <<<"$(store '{"remote":"origin/main","ahead":0,"behind":0,"diverged":false,"lastError":null}')" 2>&1)
 [[ "$out" == "[vault] lint ok" ]] && ok || bad "store: a clean branch adds nothing (out=$out)"
+
+# The vault data's filesystem (vault-storage D541): said only when it is low.
+disk() { printf '{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"stalls":null,"store":null,"disk":%s,"latest_log":null,"project":null}' "$1"; }
+out=$(jq -r "$prog" <<<"$(disk '{"path":"/data/vault","free_bytes":483183820,"total_bytes":21474836480,"low":true}')" 2>&1)
+[[ "$out" == "[vault] lint ok; disk: 0.4 GB free of 20 GB under /data/vault, low; a deploy needs 4 GB (/system/status)" ]] && ok || bad "disk: low on the first line (out=$out)"
+out=$(jq -r "$prog" <<<"$(disk '{"path":"/data/vault","free_bytes":16106127360,"total_bytes":21474836480,"low":false}')" 2>&1)
+[[ "$out" == "[vault] lint ok" ]] && ok || bad "disk: room adds nothing (out=$out)"
+out=$(jq -r "$prog" <<<"$(disk null)" 2>&1)
+[[ "$out" == "[vault] lint ok" ]] && ok || bad "disk: a server without the field adds nothing (out=$out)"
 
 # ── LIVE: this repository has a stored GitHub baseline ───────────────────
 live_url=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}} live_key=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
