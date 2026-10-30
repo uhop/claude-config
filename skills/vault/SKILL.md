@@ -104,8 +104,11 @@ the lint lists. A patch without a summary over a summary that was
 already stale before your edit leaves the block stale, and the answer carries
 `agent_stale: true` (server from 2026-10-01, vault-storage D133): read that
 summary, and restate it as `summary` if it holds or leave it for the sweep.
-Skip it on a note with no `agent:` block (409
-`no_enrichment` unless the patch carries a summary). An older server refuses
+On a note without an `agent:` block, `agent: {}` acts as if left out and
+the write lands (server from 2026-10-29, vault-storage D545). An older
+server answers 409 `no_enrichment`, so send the write again without the
+patch. A patch naming fields there needs a summary (409
+`no_enrichment`). An older server refuses
 the field with a 400 for an unknown body field; drop it there. An adapter
 before 0.11.0 accepts `agent` and drops it without a word (it does not
 declare it, and only 0.11.0 refuses undeclared arguments), so the note stays
