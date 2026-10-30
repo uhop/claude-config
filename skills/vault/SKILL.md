@@ -884,6 +884,26 @@ Rules:
   goes in as a markdown link whose text says what it is; the per-tool notes
   under `projects/vault-storage/integrations/` say which of the vendor's
   tools reads it and what to record.
+- **A Backlog plan is re-derived by supersession, and the new plan carries
+  only what is open** (vault-storage D537, question 181, 2026-10-29). A
+  project that works its Backlog from a plan note under
+  `projects/<name>/plans/` re-clusters it at a cluster boundary, on a new
+  direction, or when the user asks, and replaces it with `vault_supersede`,
+  so every earlier order stays in the archive and links keep reaching the
+  current plan (the plan's own rules name the archive slot). The new plan
+  carries its rules for continuing and ordering, the rulings in force with
+  what would reopen each, the postponed items, the clusters and the arcs not
+  yet done, the open questions, and a state line for each live arc. It
+  leaves in the superseded plan the answered questions, every done arc's
+  account, and the state log, and names that plan once, beside the open
+  questions. A question whose answer still governs carries forward as a
+  ruling, one line with its number, and the question and its options stay
+  behind.
+  An arc is live until it is done: shipped, checked on the host where it
+  deploys, and its items archived. Numbers and labels continue from the old
+  plan, so question 181 or arc 3c names the same thing in both. Measured on
+  vault-storage's plan, 2026-10-29: 148 answered questions held 157 KB of
+  its 343, and the 2 open ones 3 KB.
 
 ## Commands
 
