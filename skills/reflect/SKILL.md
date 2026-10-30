@@ -191,6 +191,16 @@ Read all three to dedupe; write only to vault + claude-config.
    "none": a consequence or a review), and how the main agent answered. Read
    `addendum` as Eugene's turn in the reading pass.
 
+   **Reader agents are asked for, with an estimate.** When the reading pass
+   and the side notes are more than the main session reads, say how many
+   readers you would dispatch, the tokens (about 15K per side note read
+   against its transcript: 1.44M for 95 on 2026-10-30), and the wall time,
+   and ask before dispatching. Offer the cheaper path beside it: the main
+   session reads the side notes and turns that fired a cue or show a rule
+   broken, and lists the rest by title; or a Jev `rule` rank orders the
+   reading first. (The 2026-10-30 report, P8, from a side note on that run;
+   the same ask `/vault-reorg` makes for a dispatch of millions of tokens.)
+
    **Jev is on demand here, never a step** (Eugene, 2026-09-22: *"Let's run
    without Jev for now, keep it on demand. But you can suggest when to use
    it."*). The arm in `skills/reflect/jev-marker/` measured it on 902 turns
