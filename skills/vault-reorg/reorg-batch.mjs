@@ -11,6 +11,7 @@
 //   reorg-batch merge --dir=DIR
 //   reorg-batch build --dir=DIR --plan=FILE
 //   reorg-batch write --dir=DIR --plan=FILE [--holder=H] [--dry-run]
+//   reorg-batch rebase --dir=DIR
 //
 // `prepare` reads a flat rolling note (note mode: it becomes a folder of subject pieces) or a piece
 // of such a folder (piece mode: it is superseded in place by its live bullets), writes the shards,
@@ -39,9 +40,11 @@ import {
   buildPieces,
   mergeResults,
   shardRows,
+  shardText,
   splitFrontmatter,
   splitNote,
-  splitPiece
+  splitPiece,
+  tailRows
 } from './reorg-lib.mjs';
 
 if (!import.meta.main)
@@ -68,10 +71,11 @@ const usage = `Usage:
   reorg-batch prepare <path> [--out-dir=DIR] [--shard-kb=${SHARD_KB}] [--full] [--repo=DIR]
   reorg-batch merge --dir=DIR
   reorg-batch build --dir=DIR --plan=FILE
-  reorg-batch write --dir=DIR --plan=FILE [--holder=H] [--dry-run]`;
+  reorg-batch write --dir=DIR --plan=FILE [--holder=H] [--dry-run]
+  reorg-batch rebase --dir=DIR`;
 
 const [command, ...rest] = process.argv.slice(2);
-if (!['measure', 'prepare', 'merge', 'build', 'write'].includes(command))
+if (!['measure', 'prepare', 'merge', 'build', 'write', 'rebase'].includes(command))
   fail(command === '--help' || command === '-h' ? 0 : 2, usage);
 
 const FLAGS = {
@@ -79,7 +83,8 @@ const FLAGS = {
   prepare: ['--out-dir', '--shard-kb', '--full', '--repo'],
   merge: ['--dir'],
   build: ['--dir', '--plan'],
-  write: ['--dir', '--plan', '--holder', '--dry-run']
+  write: ['--dir', '--plan', '--holder', '--dry-run'],
+  rebase: ['--dir']
 };
 const opts = {};
 const positional = [];
@@ -100,12 +105,13 @@ if (problem) fail(2, problem);
 const encodePath = path => path.split('/').map(encodeURIComponent).join('/');
 
 /** One HTTP exchange; never throws on a status, so a caller can read a 404 as an answer. */
-const request = async (method, apiPath, body) => {
+const request = async (method, apiPath, body, headers = {}) => {
   const response = await fetch(`${base}${apiPath}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(body !== undefined ? {'Content-Type': 'application/json'} : {})
+      ...(body !== undefined ? {'Content-Type': 'application/json'} : {}),
+      ...headers
     },
     ...(body !== undefined ? {body: JSON.stringify(body)} : {})
   });
@@ -117,8 +123,8 @@ const request = async (method, apiPath, body) => {
   return {status: response.status, ok: response.ok, headers: response.headers, text, json};
 };
 
-const api = async (method, apiPath, body) => {
-  const answer = await request(method, apiPath, body);
+const api = async (method, apiPath, body, headers = {}) => {
+  const answer = await request(method, apiPath, body, headers);
   if (!answer.ok)
     throw new Error(`${method} ${apiPath}: ${answer.json?.error ?? answer.status}`, {
       cause: {status: answer.status, code: answer.json?.code ?? 'http_error', details: answer.json}
@@ -261,13 +267,21 @@ const prepare = async () => {
   );
   const unit = mode === 'piece' ? 'BULLET' : 'SECTION';
   for (const shard of shards)
-    writeFileSync(
-      join(dir, 'shards', `${shard.name}.md`),
-      shard.rows.map(r => `=== ${unit} ${r.n} (${r.date ?? 'undated'}) ===\n${r.text}\n`).join('\n')
-    );
+    writeFileSync(join(dir, 'shards', `${shard.name}.md`), shardText(shard.rows, unit));
   const bytes = split.rows.reduce((sum, r) => sum + r.bytes, 0);
   const repo = opts.repo ?? join(homedir(), 'Open', project);
-  const units = {path, project, mode, pass, repo, intro: split.intro ?? null, rows: split.rows};
+  // The note as planned, which `write` fences its supersede on (3e, vault-storage D546).
+  const units = {
+    path,
+    project,
+    mode,
+    pass,
+    repo,
+    intro: split.intro ?? null,
+    rows: split.rows,
+    etag: note.headers.get('etag'),
+    text: note.text
+  };
   writeFileSync(join(dir, 'units.json'), JSON.stringify(units));
   const ref = await snapshot(dir, project, p => p === path);
   const fill = {
@@ -538,14 +552,19 @@ const write = async () => {
   let written = 0;
   let archived = null;
   try {
-    const superseded = await api('POST', '/vault/supersede', {
-      old_path: units.path,
-      new_path: successor.path,
-      frontmatter: successor.frontmatter,
-      body: successor.body,
-      claim_token: claim.claim_token,
-      strict_tags: true
-    });
+    const superseded = await api(
+      'POST',
+      '/vault/supersede',
+      {
+        old_path: units.path,
+        new_path: successor.path,
+        frontmatter: successor.frontmatter,
+        body: successor.body,
+        claim_token: claim.claim_token,
+        strict_tags: true
+      },
+      units.etag ? {'If-Match': units.etag} : {}
+    );
     archived = superseded.old.path;
     console.log(`archived ${units.path} at ${archived}; ${superseded.new.path} written`);
     for (const p of rest) {
@@ -561,7 +580,9 @@ const write = async () => {
     await release();
     const next = archived
       ? `the old note is archived at ${archived}, so never re-run write (its path is gone): put each missing piece from ${join(dir, 'pieces')} with vault-put.mjs <path> --fm <name>.fm.json --body <name>.md, then confirm the folder summary and verify`
-      : 'nothing was superseded, so fix the cause and run write again';
+      : err.cause?.status === 412
+        ? `nothing was superseded: ${units.path} changed since prepare, so run rebase --dir=${dir} for what was added`
+        : 'nothing was superseded, so fix the cause and run write again';
     fail(
       1,
       `${err.message}\nwritten ${written} of ${rest.length} pieces; the claim is released; ${next}`
@@ -584,7 +605,67 @@ const write = async () => {
   console.log(JSON.stringify(await verify(folder, expected), null, 1));
 };
 
-const commands = {measure, prepare, merge, build, write};
+/**
+ * After write's supersede was refused because the note changed since prepare (3e, vault-storage
+ * D546): the units appended since go into a shard of their own for the same triage, and the note
+ * as read now becomes the one write fences on.
+ */
+const rebase = async () => {
+  const dir = opts.dir ?? fail(2, usage);
+  const units = readJson(join(dir, 'units.json'));
+  if (!units.etag || typeof units.text !== 'string')
+    fail(
+      3,
+      `${join(dir, 'units.json')} carries no tag, from a prepare before the fence: run prepare again`
+    );
+  const note = await request('GET', `/vault/${encodePath(units.path)}`);
+  if (!note.ok) fail(1, `GET ${units.path}: ${note.status}`);
+  const etag = note.headers.get('etag');
+  if (etag === units.etag) {
+    console.log(`${units.path} is as prepare read it: run write again`);
+    return;
+  }
+  let rows;
+  try {
+    rows = tailRows(units.mode, units.text, note.text, Math.max(0, ...units.rows.map(r => r.n)));
+  } catch (err) {
+    if (!(err instanceof RangeError)) throw err;
+    fail(3, `${units.path}: ${err.message}; run prepare again`);
+  }
+  const name = `tail-${readdirSync(join(dir, 'shards')).filter(f => /^tail-\d+\.md$/.test(f)).length + 1}`;
+  if (rows.length)
+    writeFileSync(
+      join(dir, 'shards', `${name}.md`),
+      shardText(rows, units.mode === 'piece' ? 'BULLET' : 'SECTION')
+    );
+  writeFileSync(
+    join(dir, 'units.json'),
+    JSON.stringify({...units, rows: [...units.rows, ...rows], etag, text: note.text})
+  );
+  console.log(
+    JSON.stringify(
+      {
+        path: units.path,
+        appended: rows.length,
+        ...(rows.length
+          ? {
+              shard: {
+                name,
+                units: rows.length,
+                range: `${rows[0].n}–${rows.at(-1).n}`,
+                out: join(dir, 'out', `${name}.json`)
+              },
+              next: 'triage the shard with brief.md into its out file, merge, place its kept items in the plan, then build and write'
+            }
+          : {next: 'nothing but whitespace was added: write again'})
+      },
+      null,
+      1
+    )
+  );
+};
+
+const commands = {measure, prepare, merge, build, write, rebase};
 try {
   await commands[command]();
 } catch (err) {

@@ -13,7 +13,9 @@ import {
   buildPieces,
   homeOf,
   settleOf,
-  archivePathOf
+  archivePathOf,
+  shardText,
+  tailRows
 } from './reorg-lib.mjs';
 
 const NOTE = `---
@@ -218,5 +220,55 @@ test('archivePathOf mirrors the server’s supersede-in-place archive slot', () 
   assert.equal(
     archivePathOf('projects/apodict/learnings.md', 2026),
     'projects/apodict/archive/2026/learnings.md'
+  );
+});
+
+test('tailRows: the sections appended since the plan, numbered after it (vault-storage D546)', () => {
+  const planned = '---\ntitle: x\nupdated: 2026-10-28\n---\nIntro.\n\n## A (2026-10-01)\n\nOne.\n';
+  const current =
+    '---\ntitle: x\nupdated: 2026-10-29\n---\nIntro.\n\n## A (2026-10-01)\n\nOne.\n\n## B (2026-10-29)\n\nTwo.\n\n## C\n\nThree.\n';
+  const rows = tailRows('note', planned, current, 7);
+  assert.deepEqual(
+    rows.map(r => [r.n, r.head, r.date, r.text]),
+    [
+      [8, 'B (2026-10-29)', '2026-10-29', '## B (2026-10-29)\n\nTwo.'],
+      [9, 'C', '2026-10-29', '## C\n\nThree.']
+    ],
+    'the frontmatter changed with the append and is no change of the body'
+  );
+  assert.deepEqual(tailRows('note', planned, planned, 7), [], 'nothing appended, no rows');
+  assert.throws(() => tailRows('note', planned, `${planned}More of A.\n`, 7), {
+    name: 'RangeError',
+    message: /continues the last section/
+  });
+  assert.throws(() => tailRows('note', planned, planned.replace('One.', 'Edited.'), 7), {
+    name: 'RangeError',
+    message: /changed in place/
+  });
+});
+
+test('tailRows: the bullets a piece gained, and a bullet continued refused', () => {
+  const planned = '---\ntitle: p\n---\n- **One.** a.\n- **Two.** b.\n';
+  const rows = tailRows('piece', planned, `${planned}- **Three.** c.\n  more of three.\n`, 2);
+  assert.deepEqual(
+    rows.map(r => [r.n, r.text]),
+    [[3, '- **Three.** c.\n  more of three.']]
+  );
+  assert.throws(() => tailRows('piece', planned, `${planned}  more of two.\n`, 2), {
+    name: 'RangeError',
+    message: /continues the last bullet/
+  });
+});
+
+test('shardText: each unit under its number and date, as prepare and rebase write them', () => {
+  assert.equal(
+    shardText(
+      [
+        {n: 4, date: '2026-10-29', text: '## X\nx'},
+        {n: 5, date: null, text: '## Y\ny'}
+      ],
+      'SECTION'
+    ),
+    '=== SECTION 4 (2026-10-29) ===\n## X\nx\n\n=== SECTION 5 (undated) ===\n## Y\ny\n'
   );
 });

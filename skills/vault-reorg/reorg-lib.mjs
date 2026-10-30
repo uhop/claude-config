@@ -116,6 +116,31 @@ export const shardRows = (rows, maxBytes) => {
   return shards;
 };
 
+/** A shard's file: each unit headed by its number and date, as the triage brief reads them. */
+export const shardText = (rows, unit) =>
+  rows.map(r => `=== ${unit} ${r.n} (${r.date ?? 'undated'}) ===\n${r.text}\n`).join('\n');
+
+/**
+ * The units a note gained by appends alone since `plannedText`, numbered after `last` (vault-storage
+ * 3e, D546): what a split planned before the appends still lacks. A RangeError when the note changed
+ * otherwise, or when an append continues the last section or bullet, which only a new prepare
+ * re-plans.
+ */
+export const tailRows = (mode, plannedText, currentText, last) => {
+  const planned = splitFrontmatter(plannedText).body.replace(/\s+$/, '');
+  const current = splitFrontmatter(currentText).body;
+  if (!current.startsWith(planned))
+    throw new RangeError('the note changed in place since prepare, not by appends alone');
+  const tail = current.slice(planned.length);
+  const split = mode === 'piece' ? splitPiece(tail) : splitNote(tail);
+  const opening = mode === 'piece' ? split.intro : (split.rows.find(r => r.n === 0)?.text ?? '');
+  if (opening.trim())
+    throw new RangeError(`an append continues the last ${mode === 'piece' ? 'bullet' : 'section'}`);
+  return split.rows
+    .filter(r => mode === 'piece' || r.n !== 0)
+    .map((r, i) => ({...r, n: last + i + 1}));
+};
+
 /** What is wrong with one shard's result, as messages; an empty list means it can be merged. */
 export const checkResult = (result, name) => {
   const problems = [];
