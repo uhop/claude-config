@@ -132,8 +132,10 @@ out=$(jq -r "$prog" <<<"$(store '{"remote":"origin/main","ahead":0,"behind":0,"d
 
 # The vault data's filesystem (vault-storage D541): said only when it is low.
 disk() { printf '{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"stalls":null,"store":null,"disk":%s,"latest_log":null,"project":null}' "$1"; }
+out=$(jq -r "$prog" <<<"$(disk '{"path":"/data/vault","free_bytes":483183820,"total_bytes":21474836480,"low":true,"build_room_bytes":6442450944}')" 2>&1)
+[[ "$out" == "[vault] lint ok; disk: 0.4 GB free of 20 GB under /data/vault, low; a deploy needs 6 GB (/system/status)" ]] && ok || bad "disk: low on the first line, the need as the server gives it (out=$out)"
 out=$(jq -r "$prog" <<<"$(disk '{"path":"/data/vault","free_bytes":483183820,"total_bytes":21474836480,"low":true}')" 2>&1)
-[[ "$out" == "[vault] lint ok; disk: 0.4 GB free of 20 GB under /data/vault, low; a deploy needs 4 GB (/system/status)" ]] && ok || bad "disk: low on the first line (out=$out)"
+[[ "$out" == "[vault] lint ok; disk: 0.4 GB free of 20 GB under /data/vault, low (/system/status)" ]] && ok || bad "disk: a server that names no need, none named (out=$out)"
 out=$(jq -r "$prog" <<<"$(disk '{"path":"/data/vault","free_bytes":16106127360,"total_bytes":21474836480,"low":false}')" 2>&1)
 [[ "$out" == "[vault] lint ok" ]] && ok || bad "disk: room adds nothing (out=$out)"
 out=$(jq -r "$prog" <<<"$(disk null)" 2>&1)
