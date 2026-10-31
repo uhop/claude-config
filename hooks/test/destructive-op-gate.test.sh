@@ -41,6 +41,32 @@ check DENY  'gh api repos/o/r/issues -f title=x'          # auto-POST via body f
 check ALLOW 'gh api repos/o/r/issues'
 check ALLOW 'gh api -X GET -f q=1 repos/o/r/x'            # GET with query params, not a write
 check ALLOW 'gh api -XGET repos/o/r/x'
+# ── gh api graphql: a query is a read; a mutation, or text the hook cannot read, is not (2026-10-30) ──
+gqldir=$(mktemp -d)
+trap 'rm -rf "$gqldir"' EXIT
+printf 'query { viewer { login } }\n' > "$gqldir/read.graphql"
+printf 'mutation { addStar(input: {starrableId: "x"}) { clientMutationId } }\n' > "$gqldir/write.graphql"
+check ALLOW "gh api graphql -f query='query { viewer { login } }'"
+check ALLOW "gh api graphql -f query='{ viewer { login } }'"                  # anonymous query
+check ALLOW "gh api graphql -F owner=uhop -f query='query(\$owner: String!) { user(login: \$owner) { name } }'"
+check ALLOW "gh api graphql --raw-field 'query=query { viewer { login } }'"
+check ALLOW "gh api graphql -f query='{ viewer { clientMutationId } }'"     # a word containing it is not the keyword
+check ALLOW "gh api graphql -f query='query { repository(owner:\"uhop\", name:\"stream-chain\") { discussions(first: 5) { totalCount } } }' > /tmp/out.json"
+check ALLOW "gh api graphql -F query=@$gqldir/read.graphql"
+check DENY  "gh api graphql -f query='mutation { addStar(input: {starrableId: \"x\"}) { clientMutationId } }'"
+check DENY  "gh api graphql -F query=@$gqldir/write.graphql"
+check DENY  "gh api graphql -F query=@$gqldir/missing.graphql"
+check DENY  'gh api graphql -F query=@read.graphql'                          # relative: the hook cannot tell which file
+check DENY  'gh api graphql -F query=@-'                                     # stdin
+check DENY  'gh api graphql --input body.json'
+check DENY  'gh api graphql -f query="$Q"'                                   # expansion can change the text
+check DENY  'gh api graphql -f query="$(cat q.graphql)"'
+check DENY  "gh api graphql -f query='{ a }' -f query='mutation { b }'"
+check DENY  'gh api graphql -f foo=bar'                                      # no query to read
+check DENY  'gh api graphql'
+check DENY  "gh api graphql -X GET -f query='mutation { b }'"               # GET does not exempt a mutation
+check DENY  "gh api graphql -X POST -f query='{ a }'"                       # an explicit write method stays denied
+check DENY  "gh api graphql -f query='{ a }' && gh api repos/o/r/issues -f title=x"
 # ── gh non-api + other branches: smoke that the fix didn't disturb them ──
 check ALLOW 'gh pr checkout 123'
 check DENY  'gh issue create --title x'

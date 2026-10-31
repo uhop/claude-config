@@ -11,7 +11,9 @@
 #   gh   — DENY operations that mutate GitHub-side state (issue/pr/release/
 #          gist/repo create·edit·merge·close·comment·delete·…, `gh api`
 #          with a non-GET method or body fields). ALLOW reads AND
-#          local-only writes (clone, pr checkout, run/release download).
+#          local-only writes (clone, pr checkout, run/release download),
+#          and `gh api graphql` whose every query is readable and names no
+#          `mutation` (2026-10-30).
 #          Driver: an agent once filed a public `gh issue create` when
 #          asked for an internal vault queue item. Internal plans don't go
 #          to public queues.
@@ -59,6 +61,94 @@ EOF
   exit 2
 }
 
+# True when the segment is `gh api graphql` and every `query` field is text
+# the hook can read (inline, or `-F query=@/absolute/path`) with no
+# `mutation` in it. GraphQL always POSTs, so its fields alone say nothing.
+# A `$` or backtick outside single quotes could change the text: not a read.
+graphql_reads_only() {
+  local lib
+  lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
+  [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]] || return 1
+  [[ "$(SEG="$1" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
+import os, re, sys
+sys.path.insert(0, sys.argv[1])
+from shell_segments import command_tokens
+
+FIELDS = {'-f', '--raw-field', '-F', '--field'}
+VALUE_OPTS = {'-H', '--header', '-q', '--jq', '-t', '--template', '--hostname',
+              '--cache', '-p', '--preview', '-X', '--method'}
+MUTATION = re.compile(r'\bmutation\b', re.I)
+
+def expands(seg):
+    q = None
+    for c in seg:
+        if q:
+            if c == q:
+                q = None
+            elif q == '"' and c in '$`':
+                return True
+        elif c in '\'"':
+            q = c
+        elif c in '$`':
+            return True
+    return False
+
+def query_text(opt, value):
+    if opt in ('-F', '--field') and value.startswith('@'):
+        path = os.path.expanduser(value[1:])
+        if not os.path.isabs(path):
+            return None
+        try:
+            with open(path, encoding='utf-8') as f:
+                return f.read()
+        except (OSError, UnicodeDecodeError):
+            return None
+    return value
+
+def reads_only(seg):
+    if expands(seg):
+        return False
+    toks = command_tokens(seg)
+    if not toks or os.path.basename(toks[0]) != 'gh':
+        return False
+    args, positional, queries, k = toks[1:], [], 0, 0
+    while k < len(args):
+        a = args[k]
+        k += 1
+        if a == '--input' or a.startswith('--input='):
+            return False
+        if a in FIELDS:
+            if k >= len(args):
+                return False
+            opt, val = a, args[k]
+            k += 1
+        elif a.startswith(('--raw-field=', '--field=')):
+            opt, val = a.split('=', 1)
+        elif a[:2] in ('-f', '-F'):
+            opt, val = a[:2], a[2:]
+        elif a in VALUE_OPTS:
+            k += 1
+            continue
+        elif a.startswith('-'):
+            continue
+        else:
+            positional.append(a)
+            continue
+        key, eq, value = val.partition('=')
+        if not eq:
+            return False
+        if key == 'query':
+            text = query_text(opt, value)
+            if text is None or MUTATION.search(text):
+                return False
+            queries += 1
+    return positional[:2] == ['api', 'graphql'] and queries > 0
+
+print('yes' if reads_only(os.environ.get('SEG', '')) else 'no')
+PY
+  )" == yes ]]
+}
+
 # Analyze ONE shell segment (no &&/||/;/| inside). Calls deny() (which
 # exits 2) on a reserved op; returns normally otherwise.
 analyze_segment() {
@@ -101,7 +191,11 @@ analyze_segment() {
       if [[ "$seg" =~ (-X|--method)[[:space:]=]*(POST|PUT|PATCH|DELETE|post|put|patch|delete) ]]; then
         deny "gh api write (non-GET method)" "Mutating the GitHub API is reserved."
       fi
-      if [[ $is_get -eq 0 && "$seg" =~ (^|[[:space:]])(-f|-F|--field|--raw-field|--input)([[:space:]]|=) ]]; then
+      if [[ "$ghsub" == "graphql" ]]; then
+        graphql_reads_only "$seg" ||
+          deny "gh api graphql (not a verified read)" \
+               "A GraphQL call passes only when every query is inline or in a file named by an absolute path, has no \`mutation\`, and no \`\$\` or backtick outside single quotes can change it."
+      elif [[ $is_get -eq 0 && "$seg" =~ (^|[[:space:]])(-f|-F|--field|--raw-field|--input)([[:space:]]|=) ]]; then
         deny "gh api write (body fields imply POST)" "gh api auto-POSTs when fields are present — reserved."
       fi
     else
