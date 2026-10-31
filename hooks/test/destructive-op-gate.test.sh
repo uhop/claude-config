@@ -41,22 +41,21 @@ check DENY  'gh api repos/o/r/issues -f title=x'          # auto-POST via body f
 check ALLOW 'gh api repos/o/r/issues'
 check ALLOW 'gh api -X GET -f q=1 repos/o/r/x'            # GET with query params, not a write
 check ALLOW 'gh api -XGET repos/o/r/x'
-# ── gh api graphql: a query is a read; a mutation, or text the hook cannot read, is not (2026-10-30) ──
-gqldir=$(mktemp -d)
-trap 'rm -rf "$gqldir"' EXIT
-printf 'query { viewer { login } }\n' > "$gqldir/read.graphql"
-printf 'mutation { addStar(input: {starrableId: "x"}) { clientMutationId } }\n' > "$gqldir/write.graphql"
+# ── gh api graphql: an inline query is a read; a mutation, or text the hook cannot read, is not (2026-10-30) ──
 check ALLOW "gh api graphql -f query='query { viewer { login } }'"
 check ALLOW "gh api graphql -f query='{ viewer { login } }'"                  # anonymous query
 check ALLOW "gh api graphql -F owner=uhop -f query='query(\$owner: String!) { user(login: \$owner) { name } }'"
 check ALLOW "gh api graphql --raw-field 'query=query { viewer { login } }'"
 check ALLOW "gh api graphql -f query='{ viewer { clientMutationId } }'"     # a word containing it is not the keyword
 check ALLOW "gh api graphql -f query='query { repository(owner:\"uhop\", name:\"stream-chain\") { discussions(first: 5) { totalCount } } }' > /tmp/out.json"
-check ALLOW "gh api graphql -F query=@$gqldir/read.graphql"
 check DENY  "gh api graphql -f query='mutation { addStar(input: {starrableId: \"x\"}) { clientMutationId } }'"
-check DENY  "gh api graphql -F query=@$gqldir/write.graphql"
-check DENY  "gh api graphql -F query=@$gqldir/missing.graphql"
-check DENY  'gh api graphql -F query=@read.graphql'                          # relative: the hook cannot tell which file
+gqlfile=$(mktemp)
+trap 'rm -f "$gqlfile"' EXIT
+printf 'query { viewer { login } }\n' > "$gqlfile"                          # a read, as the hook would find it
+check DENY  "gh api graphql -F query=@$gqlfile"                             # a file can change before the call reads it
+check DENY  "printf 'mutation { b }' > $gqlfile && gh api graphql -F query=@$gqlfile"   # even by the same command
+check DENY  "gh api graphql --field query=@$gqlfile"
+check DENY  'gh api graphql -F query=@read.graphql'
 check DENY  'gh api graphql -F query=@-'                                     # stdin
 check DENY  'gh api graphql --input body.json'
 check DENY  'gh api graphql -f query="$Q"'                                   # expansion can change the text
@@ -67,6 +66,29 @@ check DENY  'gh api graphql'
 check DENY  "gh api graphql -X GET -f query='mutation { b }'"               # GET does not exempt a mutation
 check DENY  "gh api graphql -X POST -f query='{ a }'"                       # an explicit write method stays denied
 check DENY  "gh api graphql -f query='{ a }' && gh api repos/o/r/issues -f title=x"
+check ALLOW 'git commit -m "Allowed read-only gh api graphql queries."'     # words in a message, not a gh call (broke in ca3f3a5)
+# ── gh and aws nested in another command: the whitespace tokens never saw them (2026-10-30) ──
+check DENY  '(gh issue create --title x)'
+check DENY  'cd /tmp && (gh pr merge 1)'
+check DENY  'bash -c "gh issue create --title x"'
+check DENY  "bash -c 'gh api repos/o/r/issues -f title=x'"
+check DENY  'echo $(gh issue create --title x)'
+check DENY  'echo `gh issue create --title x`'
+check DENY  "eval 'gh release create 1.0.0'"
+check DENY  "sh -c 'cd /tmp && gh pr merge 1'"
+check DENY  "bash -c \"sh -c 'gh issue close 1'\""                          # two shells deep
+check DENY  $'bash <<EOF\ngh issue create --title x\nEOF'
+check DENY  "sh -c 'aws s3 rm s3://b/k'"
+check DENY  '(aws ec2 terminate-instances --instance-ids i-1)'
+check DENY  "bash -c \"gh api graphql -f query='{ viewer { login } }'\""    # nested: its shell may expand the text first
+check DENY  "bash -c 'gh api graphql -f query=\"\$Q\"'"
+check ALLOW '(gh issue list)'
+check ALLOW 'bash -c "gh pr view 1"'
+check ALLOW 'echo $(gh api repos/o/r/issues)'
+check ALLOW "sh -c 'aws s3 ls s3://b'"
+check ALLOW "(gh api graphql -f query='{ viewer { login } }')"              # a top-level subshell is no nesting
+check ALLOW 'echo "gh issue create"'                                        # a string, not a command
+check ALLOW 'grep -rn "gh pr merge" .'
 # ── gh non-api + other branches: smoke that the fix didn't disturb them ──
 check ALLOW 'gh pr checkout 123'
 check DENY  'gh issue create --title x'

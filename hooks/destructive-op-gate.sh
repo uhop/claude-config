@@ -12,7 +12,7 @@
 #          gist/repo create·edit·merge·close·comment·delete·…, `gh api`
 #          with a non-GET method or body fields). ALLOW reads AND
 #          local-only writes (clone, pr checkout, run/release download),
-#          and `gh api graphql` whose every query is readable and names no
+#          and `gh api graphql` whose every query is inline and names no
 #          `mutation` (2026-10-30).
 #          Driver: an agent once filed a public `gh issue create` when
 #          asked for an internal vault queue item. Internal plans don't go
@@ -28,6 +28,9 @@
 # Compound commands (`a && gh issue create`, `x | aws s3 rm …`, `;`-chains,
 # newlines) are split into segments and each segment is analyzed — a
 # mutating verb anywhere in the chain is caught, not just the leading one.
+# A command nested in a subshell `( … )`, a `bash -c` argument, a `$(…)` or
+# backtick substitution, or a heredoc fed to a shell is found by the shared
+# parser and analyzed the same way (2026-10-30).
 #
 # push / tag / npm publish live in settings.json's absolute deny, which
 # matches a literal prefix: `git -C <dir> push` passes it (2026-09-30). So
@@ -61,15 +64,19 @@ EOF
   exit 2
 }
 
-# True when the segment is `gh api graphql` and every `query` field is text
-# the hook can read (inline, or `-F query=@/absolute/path`) with no
-# `mutation` in it. GraphQL always POSTs, so its fields alone say nothing.
-# A `$` or backtick outside single quotes could change the text: not a read.
-graphql_reads_only() {
-  local lib
+# Prints yes when the segment is `gh api graphql` and every `query` field is
+# inline text with no `mutation` in it: GraphQL always POSTs, so its fields
+# alone say nothing. Prints other when the segment's command is not `gh` (the
+# words sat in a quoted string), and no otherwise. Not a read: a query file,
+# which can change between this check and the run, even by the same command;
+# a `$` or backtick outside single quotes; a call nested in another command,
+# whose shell may expand it first.
+graphql_verdict() {
+  if (( nested_seg )); then echo no; return; fi
+  local lib v
   lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
-  [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]] || return 1
-  [[ "$(SEG="$1" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
+  [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]] || { echo no; return; }
+  v=$(SEG="$1" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
 import os, re, sys
 sys.path.insert(0, sys.argv[1])
 from shell_segments import command_tokens
@@ -93,33 +100,23 @@ def expands(seg):
             return True
     return False
 
-def query_text(opt, value):
-    if opt in ('-F', '--field') and value.startswith('@'):
-        path = os.path.expanduser(value[1:])
-        if not os.path.isabs(path):
-            return None
-        try:
-            with open(path, encoding='utf-8') as f:
-                return f.read()
-        except (OSError, UnicodeDecodeError):
-            return None
-    return value
-
-def reads_only(seg):
-    if expands(seg):
-        return False
+def verdict(seg):
     toks = command_tokens(seg)
-    if not toks or os.path.basename(toks[0]) != 'gh':
-        return False
+    if not toks:
+        return 'no'
+    if os.path.basename(toks[0]) != 'gh':
+        return 'other'
+    if expands(seg):
+        return 'no'
     args, positional, queries, k = toks[1:], [], 0, 0
     while k < len(args):
         a = args[k]
         k += 1
         if a == '--input' or a.startswith('--input='):
-            return False
+            return 'no'
         if a in FIELDS:
             if k >= len(args):
-                return False
+                return 'no'
             opt, val = a, args[k]
             k += 1
         elif a.startswith(('--raw-field=', '--field=')):
@@ -136,17 +133,17 @@ def reads_only(seg):
             continue
         key, eq, value = val.partition('=')
         if not eq:
-            return False
+            return 'no'
         if key == 'query':
-            text = query_text(opt, value)
-            if text is None or MUTATION.search(text):
-                return False
+            if (opt in ('-F', '--field') and value.startswith('@')) or MUTATION.search(value):
+                return 'no'
             queries += 1
-    return positional[:2] == ['api', 'graphql'] and queries > 0
+    return 'yes' if positional[:2] == ['api', 'graphql'] and queries > 0 else 'no'
 
-print('yes' if reads_only(os.environ.get('SEG', '')) else 'no')
+print(verdict(os.environ.get('SEG', '')))
 PY
-  )" == yes ]]
+  )
+  echo "${v:-no}"
 }
 
 # Analyze ONE shell segment (no &&/||/;/| inside). Calls deny() (which
@@ -191,11 +188,12 @@ analyze_segment() {
       if [[ "$seg" =~ (-X|--method)[[:space:]=]*(POST|PUT|PATCH|DELETE|post|put|patch|delete) ]]; then
         deny "gh api write (non-GET method)" "Mutating the GitHub API is reserved."
       fi
-      if [[ "$ghsub" == "graphql" ]]; then
-        graphql_reads_only "$seg" ||
-          deny "gh api graphql (not a verified read)" \
-               "A GraphQL call passes only when every query is inline or in a file named by an absolute path, has no \`mutation\`, and no \`\$\` or backtick outside single quotes can change it."
-      elif [[ $is_get -eq 0 && "$seg" =~ (^|[[:space:]])(-f|-F|--field|--raw-field|--input)([[:space:]]|=) ]]; then
+      local gq=other
+      [[ "$ghsub" == "graphql" ]] && gq=$(graphql_verdict "$seg")
+      if [[ "$gq" == no ]]; then
+        deny "gh api graphql (not a verified read)" \
+             "A GraphQL call passes only when every query is inline and has no \`mutation\`, no \`\$\` or backtick outside single quotes can change it, and no other command wraps it."
+      elif [[ "$gq" == other && $is_get -eq 0 && "$seg" =~ (^|[[:space:]])(-f|-F|--field|--raw-field|--input)([[:space:]]|=) ]]; then
         deny "gh api write (body fields imply POST)" "gh api auto-POSTs when fields are present — reserved."
       fi
     else
@@ -254,15 +252,60 @@ analyze_segment() {
 # Split into segments on shell operators (&& || ; | & and newlines) and
 # analyze each. Pipe/&& boundaries become spaces' worth of separators; we
 # replace operator runs with newlines, then iterate lines.
+nested_seg=0
 seglist=$(printf '%s' "$cmd" | sed -E 's/\|\||&&|;|\||&/\n/g')
 while IFS= read -r seg; do
   [[ -z "${seg// /}" ]] && continue
   analyze_segment "$seg"
 done <<< "$seglist"
 
+# The whitespace tokens above never see `gh` in `(gh …)` or `bash -c "gh …"`.
+# Each record is "<nested>\t<segment>", NUL-terminated; nested is 1 for a
+# command inside another, 0 for a top-level segment with its `(`/`{` removed.
 word='(^|[^[:alnum:]_-])'
+lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
+if [[ "$cmd" =~ ${word}(gh|aws)([^[:alnum:]_-]|$) && -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
+  while IFS=$'\t' read -r -d '' nested_seg seg; do
+    [[ -z "${seg// /}" ]] && continue
+    analyze_segment "$seg"
+  done < <(CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
+import os, sys
+sys.path.insert(0, sys.argv[1])
+from shell_segments import strip_heredocs, segments, command_tokens, substitutions, SHELLS
+
+def leaves(cmd, nested, depth=0):
+    if depth > 3:
+        return []
+    out = []
+    text, bodies = strip_heredocs(cmd)
+    for prefix, body, quoted in bodies:
+        toks = command_tokens(prefix)
+        if toks and os.path.basename(toks[0]) in SHELLS:
+            out += leaves(body, 1, depth + 1)
+        if not quoted:
+            for s in substitutions(body):
+                out += leaves(s, 1, depth + 1)
+    for s in substitutions(text):
+        out += leaves(s, 1, depth + 1)
+    for seg in segments(text):
+        bare = seg.strip().lstrip('({').rstrip(')}').strip()
+        if bare:
+            out.append((nested, bare))
+        toks = command_tokens(seg)
+        if toks and os.path.basename(toks[0]) in SHELLS:
+            for a in toks[1:]:
+                if not a.startswith('-'):
+                    out += leaves(a, 1, depth + 1)
+    return out
+
+for nested, seg in leaves(os.environ.get('CMD', ''), 0):
+    sys.stdout.write(f'{nested}\t{seg}\0')
+PY
+  )
+  nested_seg=0
+fi
+
 if [[ "$cmd" =~ ${word}(git|npm)([^[:alnum:]_-]|$) && "$cmd" =~ ${word}(push|tag|clean|publish)([^[:alnum:]_-]|$) ]]; then
-  lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
   found=
   if [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
     found=$(CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
