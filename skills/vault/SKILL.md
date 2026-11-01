@@ -37,7 +37,7 @@ in the same row.
 | Body edits — append, replace-a-string | **`vault_append` / `vault_replace`** | `vault-put --append/--replace` |
 | One `## Heading` section — read it, or replace its content leaving every other byte alone | **`vault_read_section` / `vault_replace_section`** (adapter ≥ 0.7.0; server ≥ 2026-09-06) | `vault-curl '/vault/<path>?section=<heading line>'` + `POST /vault/edit` with `{path, op: "replace-section", heading, body}` |
 | One span — a section by its heading's leading text (a heading cited without its date) or under a parent, one queue item by its bold title, or one table row by its first cell — read whole or cut to its tail or head, or a `replace` whose `from` need be unique only inside it | **`vault_read_span`**, and **`vault_replace`** with `within` (and `count`, the number it asserts), `prefix` on `vault_replace_section` and the item tools (adapter ≥ 0.18.0; server ≥ 2026-10-26, vault-storage 4h) | `vault-curl '/vault/<path>?item=<title>&section=<heading>&tail=<bytes>'` (or `section` with `prefix=true`, or `row`) + `POST /vault/edit` with `{path, op: "replace", from, to, within: {item: "<title>"}}` |
-| A note's tail or head with no span — the newest entries of a rolling note, the last decision's number | **`vault_read_span`** with only `tail` or `max_bytes` (adapter ≥ 0.19.0; server ≥ 2026-10-28, vault-storage D514): the body, frontmatter left out, no `hash`; a composed folder note is a 409 `composed_view` naming its pieces, since their order is not its newest (D515). Any cut keeps whole lines while they fill half of it and otherwise fills the rest from the line past them | `vault-curl '/vault/<path>?tail=<bytes>'` |
+| A note's tail or head with no span — the newest entries of a rolling note, the last decision's number in a decisions note still whole (§ A split note for one split) | **`vault_read_span`** with only `tail` or `max_bytes` (adapter ≥ 0.19.0; server ≥ 2026-10-28, vault-storage D514): the body, frontmatter left out, no `hash`; a composed folder note is a 409 `composed_view` naming its pieces, since their order is not its newest (D515). Any cut keeps whole lines while they fill half of it and otherwise fills the rest from the line past them | `vault-curl '/vault/<path>?tail=<bytes>'` |
 | One queue item — remove it, insert it, or move it between documents with a trail after its title | **`vault_remove_item` / `vault_insert_item` / `vault_move_item`** (adapter ≥ 0.7.0; server ≥ 2026-09-06, D35) | `POST /vault/edit` with `{op: "remove-item" \| "insert-item", …}` + `POST /vault/move-item` |
 | One frontmatter array member (`related:`, `agent.tags_suggested`) | **`vault_patch_fm`** | `PATCH /sections/{record_id}/fm` via `vault-curl` |
 | One `tags:` member — the server refuses `/tags` in an FM patch (400 `protected_field`, since tags are taxonomy-validated) | **`vault_tag_add` / `vault_tag_remove`** (adapter ≥ 0.9.0) | `vault-curl /sections/{record_id}/tags -X POST` with `{"tag": "<tag>"}`, and `vault-curl /sections/{record_id}/tags/<tag> -X DELETE` |
@@ -71,12 +71,26 @@ item, or row from the composed view (server from 2026-11-01,
 vault-storage D577). Text appended before a first heading and the item
 tools on the path are a 409 `composed_view` naming the folder: find the
 piece with `vault_list_pieces({file_prefix: "<folder>/"})` and edit it.
-The server refuses a record (decisions, a queue archive), `queue.md`,
+The server refuses a queue archive, `sessions.md`, `queue.md`,
 and `state.md`, which tools read by their path. `vault_join` undoes a
 split (D574): the archived note returns to the path with its
 `record_id` and the folder's current text, sections appended since
 included, and the folder's notes are deleted; a subfolder, such as a
 compaction's `archive/`, stays where it is (D577).
+
+**A decisions note splits into one note per decision** (vault-storage 11c-1,
+server from 2026-11-01), `projects/<name>/decisions/<heading's slug>.md`,
+with no topics and without the note's tags. Nothing a session does at the
+path changes: `vault_append` of one `## D<n>. Title (date)` section with
+`agent: {}` files the next item, `vault_replace` and `vault_replace_section`
+reach the item holding their text, and a span read of `## D45` with `prefix`
+reads it. Two things do change. A tail read of the path is a 409
+`composed_view`, so the next number comes from the newest item:
+`vault_query({folder: "projects/<name>/decisions", sort: "sequence_key",
+order: "desc", limit: 1})`, or its `vault-curl /notes/query` form, and its
+title. An append with no `##` heading is a 409 too, so a one-line record goes
+in as a section of its own. `vault_list_pieces({file_prefix:
+"projects/<name>/decisions/d45-"})` finds an item's path.
 
 **Split by topic** (vault-storage D576): pass `topics` to `vault_split`,
 each `{name, title?, sections}` with `sections` the headings of whole
@@ -1664,7 +1678,7 @@ same stage run as parallel sub-agents):
   sweep splits nothing by itself (question 178). The done report lists
   each pending one under `size_bound` with its role, bytes, bound, and
   remedy: name them in the summary and act on none. A record past its
-  bound files nothing; decisions and queue archives become one item per
+  bound files nothing; queue archives become one item per
   file at vault-storage's 11c, and lint lists them under its advisory
   `size_bound` check.
 

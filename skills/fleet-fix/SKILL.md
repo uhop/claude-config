@@ -81,10 +81,10 @@ would drift from the bundle the first time the bundle changes.
    shipping"), scaled to what was touched: config/docs-only fixes → lint;
    source changes → the full gate (lint + type checks + tests on every
    runtime the project claims).
-7. **Record the audit** in `projects/<name>/decisions.md` — one bullet:
-   date, compliant/fixed/skipped-with-reason, user-side residue. Use the
-   vault's JSON write path with `If-Match` and refresh the note's `agent:`
-   block in the same PUT. Update the bundle note's adoption snapshots where
+7. **Record the audit** in `projects/<name>/decisions.md` — one `##` section:
+   date, compliant/fixed/skipped-with-reason, user-side residue. Use
+   `vault_append` with `agent: {}`, since the note may be a folder of one
+   note per decision, where a whole-document PUT is refused. Update the bundle note's adoption snapshots where
    its checklist carries them for a slice you touched.
 8. **Report** in four buckets: fixed, user-side (yours), documented overrides
    honored, cleared non-findings. Leave all changes in the working tree.

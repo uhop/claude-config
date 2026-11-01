@@ -169,11 +169,11 @@ const allRecords = async prefix =>
   );
 
 // What brings a note that is not lessons under its bound (vault-storage D573).
-const RECORDS = new Set(['decisions', 'queue-archive', 'sessions']);
+const RECORDS = new Set(['queue-archive', 'sessions']);
 const BY_PATH = new Set(['queue', 'state']);
 const remedyOf = path => {
   const stem = basename(path, '.md');
-  if (RECORDS.has(stem)) return 'record: 11c, per item';
+  if (RECORDS.has(stem)) return 'record: 11c-2, per item';
   if (BY_PATH.has(stem)) return 'read by path, not split';
   return 'vault_split';
 };
