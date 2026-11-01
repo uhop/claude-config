@@ -437,9 +437,10 @@ a **role** (`to: "repo:<normalized-remote-url>"`), never a session, so it
 survives its requester and is picked up by whoever holds that repo's lease,
 including an agent that starts tomorrow. Handoffs are durable across server
 restarts (the server keeps a spool of self-describing files); resolved ones
-archive as a JSON line each into the project's data file
-`projects/<project>/data/handoffs/<YYYY-MM>.jsonl` (server from vault-storage
-10f; before it, `projects/<project>/handoff-archive.md`). Same no-op rule as
+archive into a data file each, `projects/<project>/data/handoffs/<id>.json`,
+which `vault_data_read` reads by the id once `vault_handoff_get` no longer
+finds it (server from vault-storage 10f; before it, the project's
+`handoff-archive.md`). Same no-op rule as
 leases: a single-agent session that owns its cwd repo never files one.
 
 - **Filing one** (you are not the owner): work in a disposable worktree,
