@@ -22,7 +22,7 @@ A reorganization keeps what a session needs and archives the rest:
 ## Scope
 
 - **Notes of lessons:** `learnings.md` and notes like it, where each bullet is a reusable lesson. That is what the brief's classes judge.
-- **Not handled: records.** A decision log, a queue archive, or a handoff archive is a record of what happened. Its live part is the rulings in force, and judging that needs other classes (in force, superseded by a later decision, history). Name such a note in the report when `measure` lists it; do not run this skill on it.
+- **Not handled: records.** A decision log or a queue archive is a record of what happened. Its live part is the rulings in force, and judging that needs other classes (in force, superseded by a later decision, history). Name such a note in the report when `measure` lists it; do not run this skill on it.
 - **Two modes**, which `prepare` picks itself: **note mode** turns a flat note into a folder; **piece mode** re-triages one piece of such a folder past its bound and supersedes it in place. Piece mode is written and unit-tested but has not run on a real piece yet: read its output closely the first time.
 
 ## Cost — ask before dispatching
