@@ -1,6 +1,6 @@
 ---
 name: vault-reorg
-description: "Reorganize a vault rolling note of lessons that passed its size bound: read-only triage agents classify every bullet against the places a session reads, the live and half-saved lessons become a folder of subject pieces (the current view), and the whole old note is superseded into the archive with its record id kept. Also re-triages one folder piece past its bound. Mechanical work (measuring sizes, cutting shards, the brief, the reference snapshot, merging the agents' results, building and writing the pieces, the claim, the supersede, verification) runs through the bundled `reorg-batch.mjs`; the skill is the judgment layer: the dispatch, the plan, and the summaries. Use when the user says /vault-reorg <path>, when `reorg-batch measure` lists a note over its bound, or when a note's size comes up. Asks before dispatching, since a first reorganization costs millions of agent tokens."
+description: "Reorganize a vault rolling note of lessons that passed its size bound: read-only triage agents classify every bullet against the places a session reads, the live and half-saved lessons become a folder of subject pieces (the current view), and the whole old note is superseded into the archive with its record id kept. Also re-triages one folder piece past its bound. Mechanical work (measuring sizes, cutting shards, the brief, the reference snapshot, merging the agents' results, building and writing the pieces, the claim, the supersede, verification) runs through the bundled `reorg-batch.mjs`; the skill is the judgment layer: the dispatch, the plan, and the summaries. Use when the user says /vault-reorg <path> or asks to curate a note's lessons. A note over its size bound is split losslessly with the vault's `vault_split` instead, at no model cost. Asks before dispatching, since a first reorganization costs millions of agent tokens."
 user_invocable: true
 ---
 
@@ -15,11 +15,13 @@ A reorganization keeps what a session needs and archives the rest:
 
 ## When to run
 
-- **`reorg-batch measure`** lists every live project note over C7's 50 KB and every folder piece over 20 KB. A note of lessons (a `learnings` note or a piece of one) gets a token estimate; any other note is marked "not lessons, not handled" (§ Scope).
+- **`reorg-batch measure`** lists every live project note over C7's 50 KB and every folder piece over 20 KB. A note of lessons (a `learnings` note or a piece of one) gets a token estimate; a record is marked for vault-storage's 11c, `queue.md` and `state.md` as read by their path, and any other note as one `vault_split` handles (§ Scope).
 - **On request**, `/vault-reorg <path>`.
-- **From a `size_bound` suggestion.** The server files one when a write takes a note of lessons past its bound (vault-storage arc 3b), and `/vault sweep` lists it in its done report. This skill still runs on Eugene's word, never by itself (§ Cost); `measure` prices the note first.
+- **From a `size_bound` suggestion**, only when Eugene picks a curation over the split. The server files one when a write takes a note past its bound (vault-storage arc 3b), and `/vault sweep` lists it in its done report; `vault_split` is its default remedy (§ Scope). This skill runs on Eugene's word, never by itself (§ Cost); `measure` prices the note first.
 
 ## Scope
+
+This skill is a triage, not a splitter: it drops the lessons that are dead or saved elsewhere, so it is lossy by design and judged per bullet, at millions of tokens. **A note past its bound is split losslessly with `vault_split`** (vault-storage D573): a piece per `##` section, no model cost, the note archived whole. A lessons note can take either; the split keeps every lesson, and the reorganization curates them. Run this skill when the lessons need curating, on Eugene's word, never to bring a note under its bound.
 
 - **Notes of lessons:** `learnings.md` and notes like it, where each bullet is a reusable lesson. That is what the brief's classes judge.
 - **Not handled: records.** A decision log or a queue archive is a record of what happened. Its live part is the rulings in force, and judging that needs other classes (in force, superseded by a later decision, history). Name such a note in the report when `measure` lists it; do not run this skill on it.

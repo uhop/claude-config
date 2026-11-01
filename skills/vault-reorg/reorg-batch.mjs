@@ -168,6 +168,16 @@ const allRecords = async prefix =>
     r => !r.archived_at && !r.file_path.includes('/archive/')
   );
 
+// What brings a note that is not lessons under its bound (vault-storage D573).
+const RECORDS = new Set(['decisions', 'queue-archive', 'sessions']);
+const BY_PATH = new Set(['queue', 'state']);
+const remedyOf = path => {
+  const stem = basename(path, '.md');
+  if (RECORDS.has(stem)) return 'record: 11c, per item';
+  if (BY_PATH.has(stem)) return 'read by path, not split';
+  return 'vault_split';
+};
+
 const measure = async () => {
   const noteLimit = Number(opts['note-kb'] ?? NOTE_KB) * 1024;
   const pieceLimit = Number(opts['piece-kb'] ?? PIECE_KB) * 1024;
@@ -203,7 +213,7 @@ const measure = async () => {
     `${records.length} live notes checked; ${over.length} over the bound (notes ${kb(noteLimit)} KB, folder pieces ${kb(pieceLimit)} KB)`
   );
   for (const o of over) {
-    const what = o.lessons ? `~${(o.tokens / 1e6).toFixed(1)}M tokens` : 'not lessons, not handled';
+    const what = o.lessons ? `~${(o.tokens / 1e6).toFixed(1)}M tokens` : remedyOf(o.path);
     console.log(
       `${String(o.kb).padStart(6)} KB  ${o.kind.padEnd(5)}  ${what.padEnd(24)}  ${o.path}`
     );

@@ -44,6 +44,7 @@ in the same row.
 | The nearest existing tags for proposed names or a draft's text, before minting (§ Note format) | **`vault_tag_nearest`** (adapter ≥ 0.12.0; server ≥ 2026-09-28, vault-storage D82) | `vault-curl /tags/nearest -X POST -H 'Content-Type: application/json' --data-binary '{"tags": ["<name>", …]}'` |
 | Whole-document create or rewrite | **`vault_write_file`** (`expected_etag` when the read might be stale; `strict_tags: true` when the note carries `tags:`, `strict_edges: true` when it carries `edges:`, both adapter ≥ 0.12.0, § Note format) | `vault-put --fm/--body` |
 | Replace a note, archiving the old one | **`vault_supersede`** | `POST /vault/supersede` via `vault-curl` |
+| Split a note past its size bound into a folder of pieces, one per `##` section, the note archived with its `record_id` (§ A split note below) | **`vault_split`** (adapter after 0.19.0; server ≥ 2026-11-01, vault-storage D573) | `vault-curl /vault/split -X POST -H 'Content-Type: application/json' --data-binary '{"path": "<path>"}'` |
 | Restore a note to one of its versions; content not yet committed is committed first, so it stays a version | **`vault_restore`** (adapter ≥ 0.13.0; server ≥ 2026-09-30, vault-storage D115) | `vault-curl /vault/restore -X POST -H 'Content-Type: application/json' --data-binary '{"path": "<path>", "sha": "<sha>"}'`, with `from_path` when a rename came between |
 | Rename preserving `record_id` | **`vault_move`** | `POST /vault/move` |
 | Search-before-write | **`vault_propose`** | `POST /vault/propose` |
@@ -54,6 +55,19 @@ in the same row.
 | Handoff artifact — the git patch being handed over | **`vault_handoff_put_artifact`** (adapter ≥ 0.6.0); **read it to a file**, not into context: `vault-curl /handoffs/{id}/artifact -s > work.patch` | `vault-curl /handoffs/{id}/artifact -X PUT --data-binary @work.patch` |
 | A data file — opaque text under `projects/<project>/data/` (never `.md`), kept apart from the notes and never parsed, indexed, or searched: logs, dated runs, tables | **`vault_data_read`** (one file, `include_etag` for its etag, or the files under `prefix`; on Postgres `versions` lists the texts a replace or a delete overwrote, kept 30 days, and `version` reads one, which a replace writes back to undo the overwrite) / **`vault_data_write`** (`op` `replace`, `append`, or `delete`, `expected_etag` sent as `If-Match`) (the adapter release after 0.19.0; server ≥ 2026-10-30, vault-storage D547, 10c; the versions from 2026-10-31, 10k) | `vault-curl '/data?prefix=<p>'`, `vault-curl /data/<path>` (the text, its `ETag`), `'/data/<path>?versions=1'` and `'?version=<id>'`, and `-X PUT` / `-X POST` (append) / `-X DELETE` on `/data/<path>` with the text as the body and `-H 'If-Match: <etag>'` to fence |
 | `/commit`, snapshots, `cleanup-tag-aliases`, `release-embedder`, `folder-listing`, individual `find-*` scans, `summary-checked` (enrich-batch's confirmation, D289) | **`vault-curl`** | — deliberately not exposed on MCP |
+
+**A split note** (vault-storage D573): `vault_split` cuts a note at its
+`##` headings into the folder its stem names, a piece per section with
+the text before the first heading in `_lead.md`, and archives the note
+with its `record_id`. The path still reads whole, a wikilink to it
+resolves to the folder's `_about.md`, and `vault_append` to the path
+files each `## ` section of its text as a new piece after the last, so a
+new feedback rule or lesson appended as a section lands as before. Text
+before a first heading, and `vault_replace`, `vault_replace_section`, and
+the item tools on the path, are a 409 `composed_view` naming the folder:
+find the piece with `vault_list_pieces({file_prefix: "<folder>/"})` and
+edit it. The server refuses a record (decisions, a queue archive),
+`queue.md`, and `state.md`, which tools read by their path.
 
 **Scripts cannot call MCP tools.** MCP is an agent-level surface, so
 `enrich-batch.mjs`, `related-batch.mjs`, `vault-triage.mjs`,
@@ -1014,7 +1028,7 @@ Extract learnings from the current project/session.
    missing — stay on curl for this call:
    `vault-curl "/system/resume-bundle?project=<name>&logs=0&project_bodies=feedback,learnings,decisions,stack,queue" -X POST -s`.
 3. Analyze recent work: git log, changed files, decisions made
-4. Create or update `projects/{name}/learnings.md`, `decisions.md`, `stack.md`. A learnings note kept as a folder (`projects/{name}/learnings/`, its `_about.md` opening "Atomized from") takes a new lesson as one bullet in its subject's piece, never an append to `learnings.md`, which the server refuses on a composed view; the `_about.md` states the folder's size policy, so read it first (blog's since its import, apodict's since its 2026-10-27 reorganization). A note past its size bound is reorganized by `/vault-reorg`.
+4. Create or update `projects/{name}/learnings.md`, `decisions.md`, `stack.md`. A learnings note kept as a folder (`projects/{name}/learnings/`, its `_about.md` opening "Atomized from") follows its `_about.md`, so read it first: a folder `/vault-reorg` made (apodict's since its 2026-10-27 reorganization) takes a new lesson as one bullet in its subject's piece, and a folder `vault_split` made takes a new lesson appended to `learnings.md` as a `## ` section, which becomes a piece of its own (§ A split note). A note past its size bound is split losslessly with `vault_split`, and `/vault-reorg`, which drops dead lessons and costs millions of tokens, runs only on Eugene's word.
 5. Extract cross-project patterns into `topics/` notes (e.g., "api-rate-limiting", "docker-networking"). Propose-then-write: before creating, check neighbours with `POST /vault/propose` (search-before-write); if an existing note already covers the concept, extend it, and if the new write would *replace* it wholesale, use `POST /vault/supersede` rather than minting a near-duplicate. When creating a new topic note here, enrich at capture per the `/vault ingest` step 5 procedure — write the `agent:` block in the same PUT, with `complexity` one of `prose` | `code-heavy` | `tabular` | `mixed` | `hub` | `log-entry`, never a judgment word.
 6. **Promote this session's new durable local memories into the vault.** During the session the agent's auto-memory writes land in *per-machine* local memory (`~/.claude/projects/<hash>/memory/`), which is not fleet-shared. For each `feedback_*.md` / `project_*.md` written or materially updated this session, route it by the `projects/agent-workflow/decisions` D1 table — feedback rules → `projects/<name>/feedback.md`, project facts / deferred options → `decisions.md` / `queue.md` Backlog — **deduped and propose-then-confirm**, never a blind copy. Most candidates are already captured elsewhere: verify against `decisions.md` / `learnings.md` / global `CLAUDE.md` / existing `topics/` first (per `topics/project-feedback-md-convention`). The vault is the durable source of truth; where a local memory is promoted, leave a thin local pointer rather than a duplicate fact (double-writing the same rule to both stores reintroduces drift). This makes the local→vault migration continuous so per-machine memories stop accumulating. This is the **write path** that pairs with `/vault resume`'s read of `feedback.md`.
 
@@ -1615,12 +1629,15 @@ same stage run as parallel sub-agents):
   reorganizes lessons (2026-10-27, Eugene: _"a big size should trigger a
   reorg"_), and `reorg-batch measure` lists what is over with its price;
   a first reorganization costs millions of agent tokens, so it runs on
-  Eugene's word. A current view's remedy waits on its design
-  (vault-storage question 177). The done report lists each pending one
-  under `size_bound` with its role, bytes, bound, and remedy: name them in
-  the summary and act on none. A record past its bound files nothing; it
-  closes into volumes once vault-storage's arc 4 ships, and lint lists it
-  under its advisory `size_bound` check.
+  Eugene's word. Any of them, a current view or lessons, splits
+  losslessly with `vault_split` (vault-storage D573, § A split note), at
+  no model cost; until a pilot on `blog/api-series-plan` measures it, the
+  sweep splits nothing by itself (question 178). The done report lists
+  each pending one under `size_bound` with its role, bytes, bound, and
+  remedy: name them in the summary and act on none. A record past its
+  bound files nothing; decisions and queue archives become one item per
+  file at vault-storage's 11c, and lint lists them under its advisory
+  `size_bound` check.
 
 #### Ordering constraints
 
