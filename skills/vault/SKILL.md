@@ -63,15 +63,19 @@ the text before the first heading in `_lead.md`, and archives the note
 with its `record_id`. The path still reads whole, a wikilink to it
 resolves to the folder's `_about.md`, and `vault_append` to the path
 files each `## ` section of its text as a new piece after the last, so a
-new feedback rule or lesson appended as a section lands as before. Text
-before a first heading, and `vault_replace`, `vault_replace_section`, and
-the item tools on the path, are a 409 `composed_view` naming the folder:
-find the piece with `vault_list_pieces({file_prefix: "<folder>/"})` and
-edit it. The server refuses a record (decisions, a queue archive),
-`queue.md`, and `state.md`, which tools read by their path.
-`vault_join` undoes a split (D574): the archived note returns to the
-path with its `record_id` and the folder's current text, sections
-appended since included, and the folder's notes are deleted.
+new feedback rule or lesson appended as a section lands as before.
+`vault_replace` and `vault_replace_section` on the path reach the piece
+holding their text or section, and `vault_read_span` reads a section,
+item, or row from the composed view (server from 2026-11-01,
+vault-storage D577). Text appended before a first heading and the item
+tools on the path are a 409 `composed_view` naming the folder: find the
+piece with `vault_list_pieces({file_prefix: "<folder>/"})` and edit it.
+The server refuses a record (decisions, a queue archive), `queue.md`,
+and `state.md`, which tools read by their path. `vault_join` undoes a
+split (D574): the archived note returns to the path with its
+`record_id` and the folder's current text, sections appended since
+included, and the folder's notes are deleted; a subfolder, such as a
+compaction's `archive/`, stays where it is (D577).
 
 **Split by topic** (vault-storage D576): pass `topics` to `vault_split`,
 each `{name, title?, sections}` with `sections` the headings of whole
@@ -80,7 +84,10 @@ section. Read the note's headings first (a `vault_read_file`, or the
 pieces of a split folder), group sections a session would read together,
 and keep each topic under about 20 KB; every section must be claimed
 exactly once, a repeated heading taking the next occurrence, or the
-server answers 400 `invalid_topics` naming the headings left over. To
+server answers 400 `invalid_topics` naming the headings left over; name
+a section by its number from 0 in place of its heading where like
+headings repeat ("What shipped"), so each lands in the topic meant
+(D577). To
 regroup a note already split one piece per section, `vault_join` it and
 split it again with `topics`. A topic piece is marked `grouped: true`
 and carries its sections under their own headings. **In a grouped
