@@ -756,7 +756,7 @@ projects/          # per-project knowledge (subfolder per project)
     queue.md       # outstanding work
     state.md       # baseline snapshot for vault-check-drift
 queries/           # filed Q&A research outputs
-logs/              # session logs
+logs/              # session logs until vault-storage 10e-2, expiring at 90 days; since, projects/<name>/data/sessions/
 _index.md          # archived 2026-04-29 — kept for inbound wikilinks; do not update
 ```
 
@@ -1071,36 +1071,40 @@ On findings, decide (the linter won't):
 
 ### /vault log {description}
 
-Save a session log.
+Save a session log: its text in a data file of its own, and a `log` line in
+the project's month file of session records that names it (vault-storage
+10e-2, question 225). The server pairs the line with the session's `end` line,
+which the SessionEnd hook appends, by the holder id, and the resume bundle
+lists the line among the logs with the body's path as `data_path`.
 
-1. Create `logs/YYYY-MM-DD-{project}-{description}.md` with `project: <name>` in
-   its frontmatter: the resume bundle returns a project's own logs by that key
-   (server ≥ 2026-09-29, vault-storage D104), and reads it from the file name
-   when the key is absent and the name after the date starts with a project
-   folder's name.
-2. Record: what was done, decisions made, pending items, key files touched
-3. Add wikilinks to relevant topic/project notes (outbound-only rule: links
-   *from* a log die with it; durable notes referencing this log must cite its
-   backticked path, never `[[logs/...]]`)
-4. **Enrich at capture.** Write the `agent:` block in the **same** PUT that
-   creates the log — born-enriched, so the log is searchable-sharp while it's
-   hot (the `agent.summary` gets its own vector at embed time), with no later
-   backfill. Logs are append-only, so the block never re-stales. Use the JSON
-   write path (`{frontmatter: {agent: {...}}, body: "..."}`); set
-   `complexity: log-entry` (the enum is `prose` | `code-heavy` | `tabular` |
-   `mixed` | `hub` | `log-entry`; `moderate` is a 400); set
-   `derived_from_hash: "auto"` — the server
-   replaces the sentinel with the hash of the body it writes and stamps
-   `derived_at` too (2026-07-09; on an older server compute `sha256(body)`
-   locally). Tags per § Note format: `vault_tag_nearest` on the names,
-   then `strict_tags: true` on the write; relations in `edges:` with
-   `strict_edges: true`.
-   Field shape + quality guidance:
-   `~/.claude/skills/vault-enrich-all/SKILL.md`. **Don't backfill *old* logs** —
-   enrichment value is largest at capture: a log is already self-describing
-   (dated title + sections), so a retroactive summary adds little, and logs are
-   deleted at 90d. Born-enrich the new one; leave the old ones.
-5. **Refresh the drift baseline.** Run
+1. **Write the body** to
+   `projects/<project>/data/sessions/logs/YYYY-MM-DD-<session-prefix>-{description}.markdown`,
+   `<session-prefix>` the first eight characters of the session id, so two
+   sessions never share a file. Record what was done, decisions made, pending
+   items, and key files touched, citing notes by their backticked paths: a data
+   file is never parsed, so its links are not read, and a durable note cites
+   this body's path the same way. Write it with `vault_data_write` (`op:
+   "replace"`), or, until the adapter's next publish carries that tool,
+   `vault-curl /data/<path> -X PUT -H 'Content-Type: text/plain; charset=utf-8'
+   --data-binary @<file>` from a file in a `mktemp -d` folder.
+2. **Then append the line** to `projects/<project>/data/sessions/<YYYY-MM>.jsonl`,
+   the month of now, one JSON object ending with a newline, built with
+   `jq -cn` so its quoting holds:
+   `{"kind": "log", "at": "<now, ISO 8601 UTC>", "holder": "<holder>", "title": "<project>: <what the session did> (<YYYY-MM-DD>)", "summary": "<two to four sentences: what was done and what is open>", "body": "<the body's path>"}`.
+   `holder` is this session's own as the session-start `[vault] lease:` line
+   names it, `<hostname -s>/<session-prefix>`, the expression the SessionEnd
+   hook builds its `end` line's holder with; a different one pairs with no
+   session, and the session reads as unlogged. Append with `vault_data_write`
+   (`op: "append"`) or `vault-curl /data/<path> -X POST -H 'Content-Type:
+   text/plain; charset=utf-8' --data-binary @<file>`; a POST creates the
+   month's file on its first line. The body goes first, so a log cut short
+   leaves a body no line names, never a line naming no body. The `summary` is
+   what the next resume reads in place of the body, as a log note's
+   `agent.summary` was: no `agent:` block, tags, or edges, since a data file is
+   never indexed.
+3. Log notes under `logs/` are no longer written; the ones there expire at 90
+   days (§ /vault lint's retention).
+4. **Refresh the drift baseline.** Run
    `~/.claude/skills/vault-check-drift/check-drift.sh --update` from the project
    directory so the next `/vault resume` starts from a clean baseline (the
    session's commits / tags / `npm publish` are typically done by the time
@@ -1161,11 +1165,16 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      owed. An older server sends no `owed`: apply the same kinds to the
      blocks yourself.
      - `log` — a session ended without a wrap. Write its log first, from
-       the bullet's commits and notes, the drift check, the queue and
+       its record's commits and notes, the drift check, the queue and
        decisions as they stand, and, on the host that ran it, the transcript
-       (`~/.claude/projects/<cwd with / as ->/<session id>.jsonl`); then
-       replace `log: none` in the bullet `target` names with the log's path
-       (`vault_replace` on the sessions note), so it is not written twice.
+       (`~/.claude/projects/<cwd with / as ->/<session id>.jsonl`), as
+       `/vault log` writes one: the body file, then a `log` line whose
+       `holder` is `target.holder`, so it pairs with that session and is not
+       written twice. Append the line to the month file `target.path` names
+       (`projects/<name>/data/sessions/<YYYY-MM>.jsonl`), or, when
+       `target.path` is the sessions note (`projects/<name>/sessions.md`,
+       until the server takes it in), to the month file of now: a line pairs
+       with a note's session by holder too.
      - `handoff` — another agent waits on this session: read the request
        with `vault_handoff_get` before acting (§ Agent coordination —
        handoffs). `rework` — your own submission came back: surface it.
@@ -1233,9 +1242,11 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      lines; `project.logs` is the project's own latest logs in the same
      shape and number, since the fleet's newest can all belong to other
      projects — read those first. Skim the summaries; fetch a full body
-     (`vault_read_file`) when a fleet log's summary is missing or
-     `summary_stale` (`owed` names the project's own), or when the session
-     directly continues that log's work.
+     when a fleet log's summary is missing or `summary_stale` (`owed` names
+     the project's own), or when the session directly continues that log's
+     work: a `log` line's entry (`file_path: null`) names its body in
+     `data_path`, read with `vault_data_read` or `vault-curl /data/<path>`
+     (vault-storage 10e-2), and a log note's is read with `vault_read_file`.
    - `project` — `feedback.md` normally arrives with its full body:
      surface its rules near the top of the resume output (this is the
      read path for fleet-shared project feedback — the vault is
@@ -1287,8 +1298,12 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      and `contradicts` edges pointing into the project's files, each
      `{file, type, by: {record_id, file_path, title}, note, created}`:
      surface each before relaying that file. `sessions: {recent, unlogged}`
-     (D105) is the project's last sessions from `projects/<name>/sessions.md`,
-     one bullet per session end, appended by the SessionEnd hook.
+     (D105, vault-storage 10e-1) is the project's last sessions, from the
+     month files `projects/<name>/data/sessions/<YYYY-MM>.jsonl`, an `end`
+     line per session from the SessionEnd hook and a `log` line per log,
+     paired by holder, and from `projects/<name>/sessions.md` until the server
+     takes that note in; each record names its `file`, and its `log` is the
+     body file a `log` line names (10e-2), a log note's path, or `n/a`.
      `changes` (D117) is what changed since the end of the latest session
      that took a turn, named in `since: {ended, holder}`: `notes`, the
      project's notes written since, the ones whose content changed first,
@@ -1396,8 +1411,8 @@ nothing the session produced gets lost.
    from the session's primary subject if the user didn't supply it). Step 4 of
    `/vault log` refreshes the drift baseline as its closing action — no
    separate `check-drift --update` invocation needed here.
-3. Report a short summary of what was saved: project notes touched, log file
-   path, baseline refreshed.
+3. Report a short summary of what was saved: project notes touched, the log's
+   body path and month file, baseline refreshed.
 
 Use this when ending a session that produced shipped work, decisions, or
 cross-project learnings worth preserving. Skip when a session ends with
