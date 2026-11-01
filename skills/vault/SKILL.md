@@ -1094,7 +1094,9 @@ lists the line among the logs with the body's path as `data_path`.
    `holder` is this session's own as the session-start `[vault] lease:` line
    names it, `<hostname -s>/<session-prefix>`, the expression the SessionEnd
    hook builds its `end` line's holder with; a different one pairs with no
-   session, and the session reads as unlogged. Append with `vault_data_write`
+   session, and the session reads as unlogged. The line names no `ended`: the
+   server pairs it with its holder's first `end` after it, so a session resumed
+   after its wrap, which keeps its holder, owes a log for the work after. Append with `vault_data_write`
    (`op: "append"`) or `vault-curl /data/<path> -X POST -H 'Content-Type:
    text/plain; charset=utf-8' --data-binary @<file>`; a POST creates the
    month's file on its first line. The body goes first, so a log cut short
@@ -1169,8 +1171,9 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
        decisions as they stand, and, on the host that ran it, the transcript
        (`~/.claude/projects/<cwd with / as ->/<session id>.jsonl`), as
        `/vault log` writes one: the body file, then a `log` line whose
-       `holder` is `target.holder`, so it pairs with that session and is not
-       written twice. Append the line to the month file `target.path` names
+       `holder` is `target.holder` and whose `ended` is `target.ended`, so it
+       pairs with that end alone, a resumed session's other ends included, and
+       is not written twice. Append the line to the month file `target.path` names
        (`projects/<name>/data/sessions/<YYYY-MM>.jsonl`), or, when
        `target.path` is the sessions note (`projects/<name>/sessions.md`,
        until the server takes it in), to the month file of now: a line pairs

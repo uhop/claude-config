@@ -204,11 +204,11 @@ stored views render.
    "$S" commit "$WORK/github.json"
    ```
 
-   `commit` also prepends the run to the fleet digest `projects/agent-workflow/fleet-status.md`
-   whenever it carried events, and always for a fleet run: one section per run — the brief, then
-   a `json` block of the events — the last 30 kept. That block is what the stored views read
-   back, so the events a resume consumed are still there for the next fleet look. Add
-   `--dry-run` to see the writes without making them.
+   `commit` also appends the run, whenever it carried events and always for a fleet run, as one
+   JSON line of its events to the month's data file
+   `projects/agent-workflow/data/fleet-runs/<YYYY-MM>.jsonl` (vault-storage 10g-1). That line is
+   what the stored views read back, so the events a resume consumed are still there for the next
+   fleet look. Add `--dry-run` to see the writes without making them.
 
 ## The dashboard in chat
 
@@ -305,12 +305,14 @@ Fleet-shared by construction: Eugene works from seven hosts, and a resume on one
 what it saw not-new to the next sweep anywhere. That is the intended meaning of a shared
 baseline.
 
-The fleet digest `projects/agent-workflow/fleet-status.md` is the second store, written by
-`commit` for every run that carried events (and every fleet run): one section per run, newest
-first, the last 30 kept — the brief, then a `json` block
+The stored runs are the second store, written by `commit` for every run that carried events
+(and every fleet run): one JSON line per run in the data file of the month it was collected in,
+`projects/agent-workflow/data/fleet-runs/<YYYY-MM>.jsonl`, each
 `{collected_at, mode, gh_user, totals, repos: [{repo, project, first_run, since, events, summary, errors}]}`,
-events only, no snapshots. `show --fleet` and `show --repo` merge the blocks in the window into
-one brief; sections written before 2026-08-29 have no block and are skipped. A baseline answers
+events only, no snapshots, and every run kept (vault-storage 10g-1; the digest note
+`projects/agent-workflow/fleet-status.md` kept the last 30, and the server takes its runs into
+the month files at a start). `show --fleet` and `show --repo` merge the runs in the window into
+one brief. A baseline answers
 "what is the state", the digest answers "what moved since when" — which is what lets collection
 run as a section of the manual daily playbook without consuming what a later look needs. That
 section lives in one host's `~/.config/playbash/local/daily.sh`, which `playbash-daily` sources

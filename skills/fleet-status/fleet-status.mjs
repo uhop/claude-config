@@ -34,7 +34,10 @@
 // Brief and stored runs (2026-08-29): `--brief` is the executive view — one line
 // per repository with movement, action-worthy events only, counters folded into
 // a tail line. `commit` records every run that carries events (any mode; a fleet
-// run always) as a json block in the fleet digest, so `show --fleet` and
+// run always) as a JSON line in the month's data file
+// `projects/agent-workflow/data/fleet-runs/<YYYY-MM>.jsonl` (vault-storage 10g-1;
+// before it, a json block in the digest note `projects/agent-workflow/fleet-status.md`,
+// which the server takes into the month files), so `show --fleet` and
 // `show --repo` answer "what moved since WHEN" from the vault alone, and
 // collection can run as a section of the manual daily playbook (one host, since
 // 2026-09-05; never on a schedule, by ruling) without consuming the events a
@@ -1980,10 +1983,10 @@ const commitRepo = async (entry, {github}) => {
   return 'replaced block by block';
 };
 
-// FLEET_STATUS_DIGEST_PATH: the test seam — point a commit at a scratch note.
-const DIGEST_PATH =
-  process.env.FLEET_STATUS_DIGEST_PATH || 'projects/agent-workflow/fleet-status.md';
-const DIGEST_RUNS_KEPT = 30;
+// FLEET_STATUS_RUNS_FOLDER: the test seam — point a commit at a scratch folder.
+const RUNS_FOLDER =
+  process.env.FLEET_STATUS_RUNS_FOLDER || 'projects/agent-workflow/data/fleet-runs/';
+const RUN_FILE_RE = /\/\d{4}-\d{2}\.jsonl$/;
 
 const eventLine = e => {
   const who = e.author ? ` by ${e.author}${e.bot ? ' (bot)' : ''}` : '';
@@ -2019,9 +2022,9 @@ const eventLine = e => {
   }
 };
 
-// One run of the digest note: the brief, then a json block of the run's events
-// (snapshots stay in state.md) for `show --fleet` / `show --repo` to read back.
-// A packages-only project enters the record only when it moved.
+// One stored run: the run's events (snapshots stay in state.md) for `show --fleet`
+// and `show --repo` to read back. A packages-only project enters the record only
+// when it moved.
 const runRecord = digest => ({
   collected_at: digest.collected_at,
   mode: digest.mode,
@@ -2046,45 +2049,23 @@ const runRecord = digest => ({
     )
 });
 
-const writeDigest = async digest => {
-  const stamp = digest.collected_at.replace(/\.\d+Z$/, 'Z');
-  const lines = [
-    `## ${stamp}`,
-    '',
-    `Mode: ${digest.mode}; repositories: ${digest.totals.repos}; events: ${digest.totals.events}; first-run baselines: ${digest.totals.first_run}; errors: ${digest.totals.errors}.`,
-    '',
-    renderBrief(digest, {header: false}),
-    '',
-    '```json',
-    JSON.stringify(runRecord(digest), null, 2),
-    '```'
-  ];
-  const runText = lines.join('\n') + '\n';
-  if (dryRun) console.log(runText);
-
-  const intro = `Fleet-wide GitHub digest written by the \`fleet-status\` skill — one section per run that carried\nevents (any mode; a fleet run always), newest first, the last ${DIGEST_RUNS_KEPT} kept. A section is the brief\nfollowed by a \`json\` block of the run's events, which \`fleet-status.mjs show --fleet\` and \`show --repo\`\nread back as "movement since WHEN". Review items are filed on each project's own \`queue.md\`.\n\n`;
-  const doc = await vaultGet(DIGEST_PATH);
-  let runs = [];
-  if (doc) {
-    const bodyStart = doc.text.indexOf('\n---\n', 4);
-    const body = bodyStart < 0 ? doc.text : doc.text.slice(bodyStart + 5);
-    runs = body
-      .split(/\n(?=## )/)
-      .map(s => s.trim())
-      .filter(s => s.startsWith('## '))
-      .map(s => s + '\n');
+// The run appended to the file of the month it was collected in, one JSON line;
+// a POST creates the month's file on its first line.
+const appendRun = async digest => {
+  const runPath = `${RUNS_FOLDER}${digest.collected_at.slice(0, 7)}.jsonl`;
+  const line = `${JSON.stringify(runRecord(digest))}\n`;
+  if (dryRun) {
+    console.log(`DRY RUN — would POST /data/${runPath} (${line.length} bytes)`);
+    return runPath;
   }
-  runs = [runText, ...runs].slice(0, DIGEST_RUNS_KEPT);
-  await vaultPut(
-    DIGEST_PATH,
-    {
-      title: 'Fleet status — GitHub digest',
-      type: 'state',
-      tags: ['state', 'github', 'fleet-status']
-    },
-    intro + runs.join('\n'),
-    doc?.etag ?? undefined
-  );
+  const r = await vaultFetch(`/data/${runPath}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'text/plain; charset=utf-8'},
+    body: line
+  });
+  if (!r.ok)
+    throw new Error(`POST /data/${runPath}: ${r.status} ${(await r.text()).slice(0, 300)}`);
+  return runPath;
 };
 
 const commit = async () => {
@@ -2112,8 +2093,7 @@ const commit = async () => {
     );
   }
   if ((digest.mode === 'fleet' && !digest.packages_only) || digest.totals?.events > 0) {
-    await writeDigest(digest);
-    console.log(`digest: ${DIGEST_PATH}`);
+    console.log(`run: ${await appendRun(digest)}`);
   }
   console.log(`committed ${written} of ${digest.repos?.length ?? 0} repositories`);
 };
@@ -2541,18 +2521,24 @@ const parseWhen = text => {
   return new Date(t).toISOString();
 };
 
-// The json blocks of the digest note, newest first; prose-only sections (before
-// 2026-08-29) are skipped.
+// The stored runs from their month files, newest first; a line that is not a
+// run is skipped.
 const readRuns = async () => {
-  const doc = await vaultGet(DIGEST_PATH);
-  if (!doc) return [];
+  const listed = await vaultFetch(`/data?prefix=${encodeURIComponent(RUNS_FOLDER)}`);
+  if (!listed.ok)
+    throw new Error(`GET /data?prefix=${RUNS_FOLDER}: ${listed.status} ${listed.statusText}`);
   const runs = [];
-  for (const section of doc.text.split(/\n(?=## )/)) {
-    const m = /```json\n([\s\S]*?)\n```/.exec(section);
-    if (!m) continue;
-    try {
-      runs.push(JSON.parse(m[1]));
-    } catch {}
+  for (const {path: file} of (await listed.json()).items ?? []) {
+    if (!RUN_FILE_RE.test(file)) continue;
+    const r = await vaultFetch(`/data/${file}`);
+    if (!r.ok) throw new Error(`GET /data/${file}: ${r.status} ${r.statusText}`);
+    for (const line of (await r.text()).split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const run = JSON.parse(line);
+        if (typeof run?.collected_at === 'string') runs.push(run);
+      } catch {}
+    }
   }
   return runs.sort(byDesc(r => r.collected_at));
 };
@@ -2765,7 +2751,7 @@ const show = async () => {
     const {digest, runs, cutoff} = await storedMovement(null, 7);
     if (!runs.length) {
       console.log(
-        `no stored runs${cutoff ? ` since ${short(cutoff)}` : ''} in ${DIGEST_PATH} — run collect --fleet, then commit`
+        `no stored runs${cutoff ? ` since ${short(cutoff)}` : ''} in ${RUNS_FOLDER} — run collect --fleet, then commit`
       );
       return;
     }
