@@ -815,6 +815,11 @@ Rules:
   (`` `logs/2026-05-19-…` ``) instead; the linter strips inline-code spans, so
   citations never dangle. Outbound links *from* a log are fine — they die with
   the log. (Ruled 2026-07-31.)
+- A data file, or a folder of them, is linked by its full path,
+  `[[projects/<name>/data/stalls/2026-10.jsonl]]` or
+  `[[projects/<name>/data/stalls]]`: the note page links it to its data page,
+  and the lints count it resolved while it is there (vault-storage 10h-2). A
+  log's body file expires at 90 days, so cite it as a backticked path.
 - 1 concept per topic note (atomicity)
 - Minimum 2 wikilinks per note (dense linking)
 - Every note starts with a 1-2 sentence summary paragraph
@@ -1090,8 +1095,13 @@ lists the line among the logs with the body's path as `data_path`.
 2. **Then append the line** to `projects/<project>/data/sessions/<YYYY-MM>.jsonl`,
    the month of now, one JSON object ending with a newline, built with
    `jq -cn` so its quoting holds:
-   `{"kind": "log", "at": "<now, ISO 8601 UTC>", "holder": "<holder>", "title": "<project>: <what the session did> (<YYYY-MM-DD>)", "summary": "<two to four sentences: what was done and what is open>", "body": "<the body's path>"}`.
-   `holder` is this session's own as the session-start `[vault] lease:` line
+   `{"kind": "log", "at": "<now>", "holder": "<holder>", "title": "<project>: <what the session did> (<YYYY-MM-DD>)", "summary": "<two to four sentences: what was done and what is open>", "body": "<the body's path>"}`.
+   `at` comes from the machine's clock, never a time you write yourself:
+   `jq -cn --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" …`, the clock and format
+   the SessionEnd hook stamps `ended` with, since the server pairs a wrap's
+   line with its holder's first end at or after `at`, and a guessed time past
+   the end pairs with none, so the session reads as unlogged and the next
+   resume writes its log again. `holder` is this session's own as the session-start `[vault] lease:` line
    names it, `<hostname -s>/<session-prefix>`, the expression the SessionEnd
    hook builds its `end` line's holder with; a different one pairs with no
    session, and the session reads as unlogged. The line names no `ended`: the

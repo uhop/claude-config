@@ -159,9 +159,21 @@ for (const r of all) {
   if (!byBase.has(b)) byBase.set(b, []);
   byBase.get(b).push(n);
 }
+// A link to a data file, or a folder of them, under a project's `data/` resolves
+// to its page (vault-storage 10h-2): every file and the folders above it, to the
+// project's `data`. A server without data files answers no list; none resolve then.
+const dataSet = new Set();
+try {
+  for (const {path: p} of api('/data?prefix=projects/').items ?? []) {
+    dataSet.add(p);
+    const parts = p.split('/');
+    for (let i = 3; i < parts.length; ++i) dataSet.add(parts.slice(0, i).join('/'));
+  }
+} catch {}
 // Path-qualified targets resolve by path; bare names by basename (shortest-path
 // resolution, also the policy's stated behaviour).
-const resolves = t => (t.includes('/') ? pathSet.has(t) : byBase.has(t));
+const resolves = t =>
+  t.includes('/') ? pathSet.has(t) || dataSet.has(t.replace(/\/+$/, '')) : byBase.has(t);
 
 // inbound link graph (body links only) — feeds project-isolation + query currency
 const inbound = new Map();
