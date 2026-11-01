@@ -73,6 +73,23 @@ edit it. The server refuses a record (decisions, a queue archive),
 path with its `record_id` and the folder's current text, sections
 appended since included, and the folder's notes are deleted.
 
+**Split by topic** (vault-storage D576): pass `topics` to `vault_split`,
+each `{name, title?, sections}` with `sections` the headings of whole
+`##` sections, so a folder holds a few topic pieces in place of one per
+section. Read the note's headings first (a `vault_read_file`, or the
+pieces of a split folder), group sections a session would read together,
+and keep each topic under about 20 KB; every section must be claimed
+exactly once, a repeated heading taking the next occurrence, or the
+server answers 400 `invalid_topics` naming the headings left over. To
+regroup a note already split one piece per section, `vault_join` it and
+split it again with `topics`. A topic piece is marked `grouped: true`
+and carries its sections under their own headings. **In a grouped
+folder, append a new section to the topic piece it belongs to**
+(`vault_append` to that piece's path; `vault_list_pieces` lists the
+topics), so the folder stays a few topics; an append to the note's path
+still lands, as a piece of its own; gathering such pieces into their
+topics is a sweep step still planned (vault-storage's plan, 3g's rest).
+
 **Scripts cannot call MCP tools.** MCP is an agent-level surface, so
 `enrich-batch.mjs`, `related-batch.mjs`, `vault-triage.mjs`,
 `compact-batch.mjs`, `vault-sweep.mjs`, and `vault-put.mjs` stay on
