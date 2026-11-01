@@ -120,16 +120,16 @@ jq -r '
 ' <<<"$resp" 2>/dev/null || exit 0
 
 # GitHub line from the stored baseline, never from GitHub itself (2026-09-05):
-# `projects/<name>/state.md` § GitHub holds the last fleet-status snapshot,
-# written by the manual daily or by a `/vault resume`. One line — open
-# items, published advisories without a CVE, open alerts, the last CI
-# conclusion, and how old the collection is — so a stale baseline reads as
-# stale rather than as quiet. No block, no line; any failure, no line.
+# the data file `projects/<name>/data/github.json` holds the last fleet-status
+# snapshot (vault-storage 10g-2), written by the manual daily or by a
+# `/vault resume`. One line — open items, published advisories without a CVE,
+# open alerts, the last CI conclusion, and how old the collection is — so a
+# stale baseline reads as stale rather than as quiet. No file, no line; any
+# failure, no line.
 if [[ $project =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
-  state=$(curl -sf --connect-timeout 1 --max-time 2 \
+  block=$(curl -sf --connect-timeout 1 --max-time 2 \
     -H "Authorization: Bearer $PROGRAM_CLERK_KEY" \
-    "$PROGRAM_CLERK_URL/vault/projects/$project/state.md") || state=""
-  block=$(awk '/^## GitHub/{f=1} f && /^```json/{g=1; next} g && /^```/{exit} g' <<<"$state")
+    "$PROGRAM_CLERK_URL/data/projects/$project/data/github.json") || block=""
   if [[ -n "$block" ]]; then
     jq -r '
       def count(f): [f] | length;

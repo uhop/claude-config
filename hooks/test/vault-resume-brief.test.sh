@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Tests for ../vault-resume-brief.sh (SessionStart): the digest lines plus the
-# GitHub line read from the stored baseline (projects/<name>/state.md § GitHub,
-# 2026-09-05). The OFFLINE half asserts fail-open (no env, unreachable server →
+# GitHub line read from the stored baseline (projects/<name>/data/github.json,
+# vault-storage 10g-2; state.md § GitHub from 2026-09-05). The OFFLINE half asserts fail-open (no env, unreachable server →
 # exit 0, no output). The LIVE half runs the hook from this repository, which
-# has a stored GitHub block, and from a throwaway non-repo directory, which must
+# has a stored GitHub baseline, and from a throwaway non-repo directory, which must
 # get no project line and no GitHub line. Skipped, not failed, without the env.
 #
 # Exit non-zero on any failure. No framework: the repo has none.

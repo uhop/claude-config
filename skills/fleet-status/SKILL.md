@@ -97,10 +97,10 @@ WORK=$(mktemp -d)
 - `--fleet` enumerates `gh repo list` for the authenticated account (`--owner` to override):
   public, not archived, not a fork; 51 repositories on 2026-08-28. The project name is the
   repository name; 15 of the 51 had no `projects/<name>/` folder that day, and the first
-  `commit` creates their `state.md`. Then it adds every repository a project's `trackers:` names,
-  under that project, whatever its owner or visibility (one vault read per project). `state.md`
-  holds one GitHub baseline, so a declaration whose project already collects another repository
-  is left out with a line on stderr.
+  `commit` writes their baseline files. Then it adds every repository a project's `trackers:`
+  names, under that project, whatever its owner or visibility (one vault read per project). A
+  project holds one GitHub baseline, so a declaration whose project already collects another
+  repository is left out with a line on stderr.
 - A stored baseline of another repository (the project moved) counts as none: the run is a first
   run, and its entry carries `replaced_baseline` with the old repository.
 - `--show` prints the full text view after collecting: one block per repository — stars, forks,
@@ -124,8 +124,8 @@ WORK=$(mktemp -d)
 - The dotfiles shim `fleet-status` (`private_dot_local/bin/executable_fleet-status`) runs the
   same script from any shell on a host with claude-config installed.
 - `--no-packages` skips the packages pass; `--packages-only` skips the GitHub reads (the private
-  gate still runs for `--cwd` and `--repo`) and its commit writes only `## Packages`, never
-  `## GitHub`, so it refreshes the npm view without consuming GitHub events. `--npm-user LOGIN`
+  gate still runs for `--cwd` and `--repo`) and its commit writes only `packages.json`, never
+  `github.json`, so it refreshes the npm view without consuming GitHub events. `--npm-user LOGIN`
   names the npm account when the graph cannot. `show --fleet --table --packages` prints the
   standing npm numbers per published package, heaviest first, with the week's shares of the
   latest major and the latest version; the major's cell is empty when it holds every download.
@@ -288,18 +288,18 @@ does the placement through the server's `insert-item` op (server ≥ 2026-09-06)
 
 ## Baseline storage
 
-The baseline lives beside the drift check's, in `projects/<name>/state.md`, as a `## GitHub`
-section holding one fenced `json` block (the collected snapshot: metadata counts, advisories,
-open and recently updated items, discussions, fork logins, releases, alert counts, the last CI
-run, and `collected_at`), followed by a `## Packages` section with the packages snapshot
+The baselines are two data files per project (vault-storage 10g-2, question 228):
+`projects/<name>/data/github.json`, the collected snapshot (metadata counts, advisories, open and
+recently updated items, discussions, fork logins, releases, alert counts, the last CI run, and
+`collected_at`), and `projects/<name>/data/packages.json`, the packages snapshot
 (`{collected_at, graph, packages: [{name, repo, published, npm, fleet}]}`, arrays of scalars on
-one line). Both close the document, in that order, so `commit` rewrites them together in one
-asserted `POST /vault/edit` replace (one write, one re-embed), appends them to a `state.md` that
-lacks them, or creates the document with the drift check's frontmatter; a document with
-anything else among them falls back to one edit per block. `check-drift.sh --update` preserves
-both when it rewrites its own block (`## GitHub` since 2026-08-28, `## Packages` since
-2026-09-14) — an older copy of that script on another host drops them, and the cost is that the
-next collection there reads as a first run and the dependents history restarts.
+one line). `commit` replaces each whole with `PUT /data/{path}`, and leaves one whose text would
+not change. Before that server they were the `## GitHub` and `## Packages` sections of
+`projects/<name>/state.md`; the server takes a section into its file at a start, when the file is
+missing or older by `collected_at`, and cuts both from the note. A copy of this script that still
+reads `state.md` finds no baseline there and reads every repository as a first run, so update
+claude-config on a host before collecting from it. `check-drift.sh --update` keeps any such
+section it finds until then.
 
 Fleet-shared by construction: Eugene works from seven hosts, and a resume on one host makes
 what it saw not-new to the next sweep anywhere. That is the intended meaning of a shared
@@ -367,8 +367,8 @@ snapshot items and discussions store the same two fields.
 - Reading 51 repositories costs a few hundred REST calls plus one GraphQL call per repository
   with discussions (nine on 2026-08-28) — well inside the 5,000-per-hour limit, and `--star-logins`
   adds one call per 100 stars.
-- The digest page and every `state.md` carry `type: state`, so the enrichment and review sweeps
-  leave them alone.
+- Every `state.md` carries `type: state`, so the enrichment and review sweeps leave it alone; the
+  baselines and runs are data files, which no sweep reads.
 - The packages pass reads with plain GETs, at most two requests at a time to `api.npmjs.org`,
   their starts 250 ms apart: that host limits bursts and sends no rate-limit headers (two
   back-to-back streams drew 429s after about 19 calls, 2026-09-14). Downloads go in bulk — up

@@ -4,7 +4,7 @@
 // (agent-workflow queue item `/fleet-status`, filed 2026-08-28). The script does
 // every mechanical step — enumeration, the `gh api` reads (REST plus the fixed
 // discussions GraphQL query), the diff against the per-project baseline kept in
-// the vault's `projects/<name>/state.md` under `## GitHub`, the baseline write,
+// the vault's data file `projects/<name>/data/github.json`, the baseline write,
 // the fleet digest, and the queue-item upsert — and prints JSON. The agent reads
 // the events and does only the judgment: pre-reviews and what deserves attention.
 //
@@ -56,7 +56,7 @@
 // project through its repository URL — the last week's downloads, 52 weekly
 // totals, the top versions, deps.dev dependents with a history the baseline
 // keeps, an all-time total, and the package's place in dotfiles' `fleet-deps`
-// graph. It lands in state.md under `## Packages`, beside `## GitHub`; the only
+// graph. It lands in `projects/<name>/data/packages.json`, beside `github.json`; the only
 // event is a dependents count that moved. npm, the registry, and deps.dev are
 // read with plain GETs.
 //
@@ -374,44 +374,6 @@ const vaultPut = async (docPath, frontmatter, body, etag) => {
   return {status: r.status, etag: r.headers.get('etag')};
 };
 
-// The sections of state.md this script owns: a heading, one fenced json block.
-// check-drift writes its own baseline first, so these two always close the
-// document, in this order.
-const GITHUB_HEADING = '## GitHub';
-const PACKAGES_HEADING = '## Packages';
-const MANAGED_HEADINGS = [GITHUB_HEADING, PACKAGES_HEADING];
-
-const findBlock = (text, heading) => {
-  const at = text.indexOf(`\n${heading}\n`);
-  if (at < 0) return null;
-  const rest = text.slice(at + 1),
-    next = rest.indexOf('\n## ');
-  const m = /```json\n([\s\S]*?)\n```/.exec(next < 0 ? rest : rest.slice(0, next));
-  if (!m) return {heading: true, block: null, json: null};
-  let json = null;
-  try {
-    json = JSON.parse(m[1]);
-  } catch {}
-  return {heading: true, block: m[0], json};
-};
-
-// The managed sections as one span from the first of their headings to the end,
-// so a commit rewrites both in a single asserted replace. `sections` is null
-// when that span holds anything else, and the commit falls back to block edits.
-const managedTail = text => {
-  const ats = MANAGED_HEADINGS.map(h => text.indexOf(`\n${h}\n`)).filter(i => i >= 0);
-  if (!ats.length) return null;
-  const tail = text.slice(Math.min(...ats) + 1);
-  const sections = new Map();
-  for (const part of tail.split(/\n(?=## )/)) {
-    const heading = part.slice(0, part.indexOf('\n'));
-    if (!MANAGED_HEADINGS.includes(heading) || sections.has(heading))
-      return {text: tail, sections: null};
-    sections.set(heading, part.replace(/\s*$/, '\n'));
-  }
-  return {text: tail, sections};
-};
-
 // Arrays of scalars on one line: a weekly series or a history point stays one
 // line instead of one line per number. Names, dates, and versions never hold
 // brackets, so the pattern cannot split a string.
@@ -421,22 +383,50 @@ const compactJson = value =>
     (_, inner) => `[${inner.split(/,\n\s+/).join(', ')}]`
   );
 
-const githubSection = snapshot =>
-  `${GITHUB_HEADING}\n\nAuto-maintained by the \`fleet-status\` skill (\`/fleet-status\`, \`/vault resume\`); the\nbaseline the next GitHub collection diffs against. Refresh: \`fleet-status.mjs commit\`.\n\n\`\`\`json\n${JSON.stringify(snapshot, null, 2)}\n\`\`\`\n`;
+// A project's baselines as data files (vault-storage 10g-2, question 228): the GitHub
+// snapshot and the npm one, each written whole by `commit`; before that server, the
+// `## GitHub` and `## Packages` blocks of its `state.md`, which the server takes in.
+const githubDataPath = project => `projects/${project}/data/github.json`;
+const packagesDataPath = project => `projects/${project}/data/packages.json`;
+const baselineFolder = project => `projects/${project}/data/`;
 
-const packagesSection = snapshot =>
-  `${PACKAGES_HEADING}\n\nAuto-maintained by the \`fleet-status\` skill: npm stats for the packages this project publishes\nand their place in the \`fleet-deps\` graph. Refresh: \`fleet-status.mjs commit\`.\n\n\`\`\`json\n${compactJson(snapshot)}\n\`\`\`\n`;
+const dataGet = async dataPath => {
+  const r = await vaultFetch(`/data/${dataPath}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`GET /data/${dataPath}: ${r.status} ${r.statusText}`);
+  return r.text();
+};
 
-const stateDocPath = project => `projects/${project}/state.md`;
+const dataPut = async (dataPath, text) => {
+  if (dryRun) {
+    console.log(`DRY RUN — would PUT /data/${dataPath} (${text.length} bytes)`);
+    return;
+  }
+  const r = await vaultFetch(`/data/${dataPath}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'text/plain; charset=utf-8'},
+    body: text
+  });
+  if (!r.ok)
+    throw new Error(`PUT /data/${dataPath}: ${r.status} ${(await r.text()).slice(0, 300)}`);
+};
+
+const parseObject = text => {
+  if (text === null) return null;
+  try {
+    const value = JSON.parse(text);
+    return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
+};
 
 const readBaseline = async project => {
-  const doc = await vaultGet(stateDocPath(project));
-  if (!doc) return {doc: null, baseline: null, packages: null};
-  return {
-    doc,
-    baseline: findBlock(doc.text, GITHUB_HEADING)?.json ?? null,
-    packages: findBlock(doc.text, PACKAGES_HEADING)?.json ?? null
-  };
+  const [github, packages] = await Promise.all([
+    dataGet(githubDataPath(project)),
+    dataGet(packagesDataPath(project))
+  ]);
+  return {baseline: parseObject(github), packages: parseObject(packages)};
 };
 
 const sameRepo = (a, b) => a?.toLowerCase() === b?.toLowerCase();
@@ -1582,7 +1572,7 @@ const diffPackages = (b, s, repo) => {
 };
 
 // The packages pass: every package in the fleet graph or published by the npm
-// account, grouped by project. `baselines` carries the `## Packages` blocks the
+// account, grouped by project. `baselines` carries the `packages.json` baselines the
 // GitHub pass already read; the rest are read here.
 const collectPackages = async ({mode, targets, ghUser, jobs, baselines}) => {
   const errors = [];
@@ -1775,7 +1765,7 @@ const collect = async () => {
   const ghUser = (await ghApi('user')).login;
   if (mode === 'fleet') {
     targets = listFleet(opts.owner ?? ghUser);
-    // state.md holds one GitHub baseline per project, so a declaration whose
+    // A project holds one GitHub baseline, so a declaration whose
     // project already collects a repository is reported and left out.
     for (const t of await trackedRepos()) {
       const listed = targets.find(x => sameRepo(`${x.owner}/${x.name}`, t.repo));
@@ -1934,53 +1924,20 @@ const collect = async () => {
   if (!opts.show && !opts.brief && !opts.out) console.log(out);
 };
 
-// Both managed sections in one write: every write re-embeds the document.
+// Each baseline written whole to its data file; one whose text would not change is left.
 const commitRepo = async (entry, {github}) => {
   const {project} = entry;
-  const docPath = stateDocPath(project);
-  const fresh = new Map();
-  if (github) fresh.set(GITHUB_HEADING, githubSection(entry.snapshot));
-  if (entry.packages) fresh.set(PACKAGES_HEADING, packagesSection(entry.packages));
-  const ordered = source =>
-    MANAGED_HEADINGS.map(h => source(h))
-      .filter(Boolean)
-      .join('\n');
-  const doc = await vaultGet(docPath);
-  if (!doc) {
-    // Same frontmatter check-drift writes, so its --update keeps treating the
-    // document as its own; it preserves these sections (patched 2026-08-28, 2026-09-14).
-    const body = `Auto-maintained by the \`vault-check-drift\` and \`fleet-status\` skills. Refresh: run\n\`/vault check --update\` from the project directory, or re-run \`/vault resume\`.\n\n${ordered(h => fresh.get(h))}`;
-    await vaultPut(
-      docPath,
-      {title: `${project} — state snapshot`, type: 'state', tags: ['state', 'snapshot', project]},
-      body
-    );
-    return 'created';
+  const writes = [];
+  if (github)
+    writes.push([githubDataPath(project), `${JSON.stringify(entry.snapshot, null, 2)}\n`]);
+  if (entry.packages) writes.push([packagesDataPath(project), `${compactJson(entry.packages)}\n`]);
+  let changed = 0;
+  for (const [dataPath, text] of writes) {
+    if ((await dataGet(dataPath)) === text) continue;
+    await dataPut(dataPath, text);
+    ++changed;
   }
-  const tail = managedTail(doc.text);
-  if (!tail) {
-    await vaultEdit(docPath, {op: 'append', text: `\n${ordered(h => fresh.get(h))}`});
-    return 'sections added';
-  }
-  const trim = s => s.replace(/\s+$/, '');
-  if (tail.sections) {
-    const next = ordered(h => fresh.get(h) ?? tail.sections.get(h));
-    if (trim(next) === trim(tail.text)) return 'unchanged';
-    await vaultEdit(docPath, {op: 'replace', from: trim(tail.text), to: trim(next)});
-    return 'replaced';
-  }
-  // Something else sits among the managed sections: edit each block on its own.
-  for (const [heading, section] of fresh) {
-    const found = findBlock(doc.text, heading);
-    if (found?.block)
-      await vaultEdit(docPath, {
-        op: 'replace',
-        from: found.block,
-        to: /```json\n[\s\S]*?\n```/.exec(section)[0]
-      });
-    else await vaultEdit(docPath, {op: 'append', text: `\n${section}`});
-  }
-  return 'replaced block by block';
+  return changed === 0 ? 'unchanged' : 'written';
 };
 
 // FLEET_STATUS_RUNS_FOLDER: the test seam — point a commit at a scratch folder.
@@ -2022,7 +1979,7 @@ const eventLine = e => {
   }
 };
 
-// One stored run: the run's events (snapshots stay in state.md) for `show --fleet`
+// One stored run: the run's events (snapshots stay in the baselines) for `show --fleet`
 // and `show --repo` to read back. A packages-only project enters the record only
 // when it moved.
 const runRecord = digest => ({
@@ -2089,7 +2046,7 @@ const commit = async () => {
     const result = await commitRepo(entry, {github});
     ++written;
     console.log(
-      `${entry.repo}: ${[github && 'GitHub', entry.packages && 'packages'].filter(Boolean).join(' + ')} baseline ${result} in ${stateDocPath(entry.project)}`
+      `${entry.repo}: ${[github && 'GitHub', entry.packages && 'packages'].filter(Boolean).join(' + ')} baseline ${result} in ${baselineFolder(entry.project)}`
     );
   }
   if ((digest.mode === 'fleet' && !digest.packages_only) || digest.totals?.events > 0) {
@@ -2784,7 +2741,7 @@ const show = async () => {
   const {baseline, packages} = await readBaseline(project);
   if (!baseline && !packages) {
     console.log(
-      `${repo ?? project}: no stored baseline in ${stateDocPath(project)} — run collect, then commit`
+      `${repo ?? project}: no stored baseline in ${baselineFolder(project)} — run collect, then commit`
     );
     return;
   }

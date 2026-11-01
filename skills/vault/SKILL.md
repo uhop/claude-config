@@ -622,7 +622,7 @@ rather than a preference:
   `sed` + `--replace-file` cut above is the fallback on a server before that
   date, not the recipe.
 - **A whole section is a server-side span, not a retyped block.** `## Active`,
-  the `## GitHub` block in `state.md`, a decisions entry: read it with
+  a decisions entry: read it with
   `vault_read_section({path, heading: "## Active"})` and rewrite it with
   `vault_replace_section({path, heading, body})` (vault-storage D30,
   2026-09-06 — the heading is matched as a whole line, exactly once, with
@@ -881,7 +881,7 @@ Rules:
   vault by its URL** (vault-storage D97, 2026-09-29). In a note under
   `projects/<name>/`, `#233` is issue or pull request 233 of the project's
   GitHub repository: the `github` entry of its `trackers:`, else the
-  repository its `state.md` names. `owner/repo#233` names another repository,
+  repository its stored baseline `projects/<name>/data/github.json` names. `owner/repo#233` names another repository,
   from any note. A key such as `ENG-123` is a Linear or Jira ticket when the
   project's `trackers:` declares that key with a `url`. The note page links
   each one, with the ticket's title as the link text when the stored GitHub
@@ -1132,12 +1132,13 @@ vault-storage D402): a session in that project picks them up at its resume;
 the handoffs returned for rework over a day ago, by filer, and in the
 project's line the count of its own returned handoffs (vault-storage D403) —
 plus, since 2026-09-05, one
-`[vault] github <repo>:` line read from the project's stored `state.md`
-§ GitHub block (open items, advisories without a CVE, open alerts, CI, and how
-old the collection is), never from GitHub itself. The digest is a *trigger*,
+`[vault] github <repo>:` line read from the project's stored baseline,
+`projects/<name>/data/github.json` since vault-storage 10g-2 (open items,
+advisories without a CVE, open alerts, CI, and how old the collection is),
+never from GitHub itself. The digest is a *trigger*,
 never a substitute: it carries no bodies, so feedback rules, logs, and the
 drift check still come from this workflow. On a pre-brief server (404) the
-hook injects nothing, silently; a project with no stored GitHub block gets no
+hook injects nothing, silently; a project with no stored GitHub baseline gets no
 GitHub line. A key the server refuses (401: expired or recalled) is the one
 failure the hook names, in a single line pointing at `/ui/keys.html`, since
 its silence is how an agent would otherwise lose its vault context unnoticed.
@@ -1398,8 +1399,9 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
    notes, update those notes to match (or at minimum flag the divergence in
    the summary).
 6. After syncing, run `check-drift --update` so the baseline captures the
-   refreshed view and the next resume starts from a clean slate. It
-   preserves the `## GitHub` section step 3 committed (since 2026-08-28).
+   refreshed view and the next resume starts from a clean slate. Step 3's
+   GitHub baseline is a data file of its own (vault-storage 10g-2), which the
+   drift check never touches.
 
 ### /vault wrap [optional log slug]
 
