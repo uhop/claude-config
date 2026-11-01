@@ -50,7 +50,7 @@ if [[ -f "$root/.claude/vault-project" ]]; then
 else
   project=$(basename "$root")
 fi
-[[ $project =~ ^[a-z0-9][a-z0-9-]*$ ]] || exit 0
+[[ $project =~ ^[a-z0-9][a-z0-9.-]*$ ]] || exit 0
 
 me="$(hostname -s)/${session_id:0:8}"
 ended=$(date -u +%Y-%m-%dT%H:%M:%SZ)

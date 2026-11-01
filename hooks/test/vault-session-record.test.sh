@@ -83,6 +83,14 @@ jq -e '.ended | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
 jq -e '.commits | length == 2 and all(test("^[0-9a-f]+$"))' <<<"$body" >/dev/null && ok || bad "both commits: $body"
 jq -e 'has("log") | not' <<<"$body" >/dev/null && ok || bad "no log named, since the wrap's line pairs by holder: $body"
 
+# ── a project named after a repository with dots in its name ──────────────
+dotted="$work/uhop.github.com"
+mkdir -p "$dotted" && git -C "$dotted" init -q && git -C "$dotted" commit -q --allow-empty -m first
+printf '{"session_id":"deadbeef-0001","cwd":"%s","transcript_path":"%s","reason":"exit"}' "$dotted" "$transcript" |
+  env PROGRAM_CLERK_URL="$url" PROGRAM_CLERK_KEY=x bash "$HOOK" >/dev/null 2>&1
+[[ $(tail -1 "$work/requests.jsonl" | jq -r '.url') == "/data/projects/uhop.github.com/data/sessions/$month.jsonl" ]] && ok ||
+  bad "a dotted project name is a project: $(tail -1 "$work/requests.jsonl")"
+
 kill "$server" 2>/dev/null
 rm -rf "$work"
 

@@ -32,7 +32,7 @@ curl -sf --connect-timeout 1 --max-time 1 -X POST -o /dev/null \
   -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$PROGRAM_CLERK_URL/maintenance/warm-embedder" || true
 
 url="$PROGRAM_CLERK_URL/system/resume-brief"
-[[ $project =~ ^[a-z0-9][a-z0-9-]*$ ]] && url="$url?project=$project"
+[[ $project =~ ^[a-z0-9][a-z0-9.-]*$ ]] && url="$url?project=$project"
 
 resp=$(curl -s --connect-timeout 1 --max-time 2 -w '\n%{http_code}' \
   -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$url") || exit 0
@@ -126,7 +126,7 @@ jq -r '
 # open alerts, the last CI conclusion, and how old the collection is — so a
 # stale baseline reads as stale rather than as quiet. No file, no line; any
 # failure, no line.
-if [[ $project =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+if [[ $project =~ ^[a-z0-9][a-z0-9.-]*$ ]]; then
   block=$(curl -sf --connect-timeout 1 --max-time 2 \
     -H "Authorization: Bearer $PROGRAM_CLERK_KEY" \
     "$PROGRAM_CLERK_URL/data/projects/$project/data/github.json") || block=""
