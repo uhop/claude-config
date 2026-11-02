@@ -45,7 +45,8 @@ export const uniqueName = (slug, taken) => {
   return name;
 };
 
-const STRUCTURE_RE = /^(?:##\s+(?:inbox|active|backlog|watching)\s*|###\s+priority\s+[-+]?\d+\s*|\(empty\)\s*)$/i;
+const STRUCTURE_RE =
+  /^(?:##\s+(?:inbox|active|backlog|watching)\s*|###\s+priority\s+[-+]?\d+\s*|\(empty\)\s*)$/i;
 
 /**
  * What a queue note's text holds outside its items: each item runs from its `source_line` (1-based,
@@ -78,7 +79,14 @@ export const remainderOf = (text, sourceLines) => {
 };
 
 /** An open item's frontmatter: the fields a reader wants, the optional ones only when set. */
-export const openFields = ({title, section, sequence, priority = 0, source = null, blockedBy = []}) => ({
+export const openFields = ({
+  title,
+  section,
+  sequence,
+  priority = 0,
+  source = null,
+  blockedBy = []
+}) => ({
   title,
   type: 'queue-item',
   status: 'active',
@@ -116,11 +124,16 @@ const expectJson = async (r, what) => {
 
 const folderOf = project => `projects/${project}/queue`;
 
-/** Whether the project's queue is a folder of item notes yet. */
+/**
+ * Whether the project's queue is a folder of item notes yet. The path decides, since an older split
+ * folder with its own `_about.md` can sit beside a real `queue.md`, which then takes the path.
+ */
 export const isConverted = async (project, call = client()) => {
-  const r = await call('GET', `/vault/${folderOf(project)}/_about.md`);
-  await r.text();
-  return r.ok;
+  const {items} = await expectJson(
+    await call('POST', '/resolve', {json: {wikilinks: [`projects/${project}/queue.md`]}}),
+    `resolve the queue of ${project}`
+  );
+  return items[0].file_path === `${folderOf(project)}/_about.md`;
 };
 
 const queryAll = async (call, folder, match) => {
@@ -249,7 +262,11 @@ export const archiveItem = async (project, ref, {reason, trail}, call = client()
   const name = reason[0].toUpperCase() + reason.slice(1);
   await expectJson(
     await call('POST', '/vault/edit', {
-      json: {path: note.path, op: 'append', text: `**${name}** ${date}.${trail ? ` ${trail}` : ''}\n`}
+      json: {
+        path: note.path,
+        op: 'append',
+        text: `**${name}** ${date}.${trail ? ` ${trail}` : ''}\n`
+      }
     }),
     `trail on ${note.path}`
   );
@@ -331,6 +348,12 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
   }
   const etag = read.headers.get('etag');
   const text = await read.text();
+  const older = (await openNotes(call, project)).filter(n => n.frontmatter.section == null);
+  if (older.length > 0) {
+    throw new Error(
+      `${older.length} older note(s) in ${folder}/ beside a real queue.md: merge them first`
+    );
+  }
   const {items: open} = await expectJson(
     await call('GET', `/queue/projects/${encodeURIComponent(project)}`),
     'open items'
@@ -379,7 +402,10 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
   if (dryRun) return {...plan, dryRun: true, lead: lead.slice(0, 400)};
 
   const record = await expectJson(
-    await call('GET', `/sections?file_path=${encodeURIComponent(queuePath)}&fields=record_id,file_path`),
+    await call(
+      'GET',
+      `/sections?file_path=${encodeURIComponent(queuePath)}&fields=record_id,file_path`
+    ),
     'the queue note'
   );
   const {frontmatter} = await expectJson(
@@ -409,7 +435,9 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
   }
   const wroteClosed = await queryAll(call, `${folder}/archive`);
   if (!titlesMatch(wroteClosed, closed)) {
-    throw new Error(`${wroteClosed.length} archived notes read back against ${closed.length} planned`);
+    throw new Error(
+      `${wroteClosed.length} archived notes read back against ${closed.length} planned`
+    );
   }
   const carried = Object.fromEntries(
     CARRIED.filter(k => frontmatter[k] !== undefined).map(k => [k, frontmatter[k]])
@@ -433,7 +461,7 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
   const queueTo = await archiveSlot(call, project, 'queue');
   await expectJson(
     await call('POST', '/vault/move', {json: {from: queuePath, to: queueTo}}),
-    'the queue note\'s move'
+    "the queue note's move"
   );
   let archivedTo = null;
   const hadArchive = await call('GET', `/vault/${archivePath}`);
@@ -442,7 +470,7 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
     archivedTo = await archiveSlot(call, project, 'queue-archive');
     await expectJson(
       await call('POST', '/vault/move', {json: {from: archivePath, to: archivedTo}}),
-      'the archive note\'s move'
+      "the archive note's move"
     );
   }
   return {...plan, queueTo, archivedTo};

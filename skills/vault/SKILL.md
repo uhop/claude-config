@@ -1261,7 +1261,7 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      say in the resume what you did with it; an empty list means nothing is
      owed. An older server sends no `owed`: apply the same kinds to the
      blocks yourself. **A converted queue is invisible to `owed`** (§ A queue
-     kept one item to a note): when `projects/<name>/queue/_about.md` exists,
+     kept one item to a note): when `project.files.queue.composed` is true,
      run `queue-items.mjs owed <name> --since <changes.since.ended>`, act on its
      `triage` and `place` the same way, read each `upstream` item's ticket,
      archiving a closed one, and take the items' sections from
