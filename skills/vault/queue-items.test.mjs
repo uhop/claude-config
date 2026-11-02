@@ -7,6 +7,7 @@ import {
   archiveItem,
   convertQueue,
   isConverted,
+  listFleet,
   missingWords,
   openFields,
   owedItems,
@@ -345,4 +346,55 @@ test('owed places a Backlog item filed since, and no item the conversion itself 
 
 test('the script runs by its path, as the vault skill calls it', () => {
   assert.ok(statSync(new URL('./queue-items.mjs', import.meta.url)).mode & 0o100);
+});
+
+test('fleet lists every project, of either shape, most urgent first', async () => {
+  const item = (title, section, priority, sequence_key) => ({
+    path: `projects/new/queue/${title}.md`,
+    record_id: title,
+    frontmatter: {title, section, sequence_key, ...(priority ? {priority} : {})}
+  });
+  const call = async (method, url, {json} = {}) => {
+    if (url === '/vault/projects/')
+      return Response.json({files: ['new/', 'old/', 'none/', 'a-file.md']});
+    if (url === '/resolve') {
+      assert.deepEqual(json.wikilinks, [
+        'projects/new/queue.md',
+        'projects/old/queue.md',
+        'projects/none/queue.md'
+      ]);
+      return Response.json({
+        items: [
+          {file_path: 'projects/new/queue/_about.md'},
+          {file_path: 'projects/old/queue.md'},
+          {file_path: null}
+        ]
+      });
+    }
+    if (url === '/notes/query') {
+      assert.equal(json.folder, 'projects/new/queue');
+      return Response.json({
+        items: [
+          {path: 'projects/new/queue/_about.md', frontmatter: {}},
+          item('later', 'backlog', 2, 1),
+          item('now', 'active', 0, 2),
+          item('first', 'backlog', -1, 3)
+        ]
+      });
+    }
+    assert.equal(url, '/queue/projects/old');
+    return Response.json({
+      items: [{title: 'old one', section: 'backlog', priority: 0, source: null, blocked_by: []}]
+    });
+  };
+  const titles = items => items.map(i => `${i.project} ${i.title}`);
+  assert.deepEqual(titles(await listFleet({}, call)), [
+    'new now',
+    'new first',
+    'old old one',
+    'new later'
+  ]);
+  assert.deepEqual(titles(await listFleet({section: 'active'}, call)), ['new now']);
+  assert.deepEqual(titles(await listFleet({priority: 2}, call)), ['new later']);
+  assert.deepEqual(titles(await listFleet({limit: 1}, call)), ['new now']);
 });

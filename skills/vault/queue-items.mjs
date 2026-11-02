@@ -7,6 +7,7 @@
 // and `queue-archive.md` keep working. `list` reads both shapes while the fleet is mixed.
 //
 //   queue-items.mjs list <project> [--section S] [--json]
+//   queue-items.mjs fleet [--section S] [--priority N] [--limit N] [--json]
 //   queue-items.mjs file <project> --title T [--section S] [--priority N] [--source S]
 //                        [--blocked-by B] (--body B | --body-file F)
 //   queue-items.mjs move <project> <title or slug> --section S [--priority N]
@@ -201,25 +202,56 @@ const shaped = n => ({
   path: n.path
 });
 
+const serverItems = async (call, project) => {
+  const {items} = await expectJson(
+    await call('GET', `/queue/projects/${encodeURIComponent(project)}`),
+    `queue of ${project}`
+  );
+  return items.map(i => ({
+    title: i.title,
+    section: i.section,
+    priority: i.priority,
+    source: i.source,
+    blocked_by: i.blocked_by,
+    path: null
+  }));
+};
+
 /** The project's open items in order, from either shape. */
 export const listItems = async (project, {section} = {}, call = client()) => {
   if (await isConverted(project, call)) {
     return (await openNotes(call, project, section ? {section} : undefined)).map(shaped);
   }
-  const {items} = await expectJson(
-    await call('GET', `/queue/projects/${encodeURIComponent(project)}`),
-    `queue of ${project}`
+  return (await serverItems(call, project)).filter(i => !section || i.section === section);
+};
+
+/** Every project's open items, of either shape, by section, then priority; the server's views see only the old shape. */
+export const listFleet = async ({section, priority, limit} = {}, call = client()) => {
+  const {files} = await expectJson(await call('GET', '/vault/projects/'), 'the projects');
+  const names = files.filter(f => f.endsWith('/')).map(f => f.slice(0, -1));
+  const {items: resolved} = await expectJson(
+    await call('POST', '/resolve', {json: {wikilinks: names.map(n => `projects/${n}/queue.md`)}}),
+    'the queues'
   );
-  return items
-    .filter(i => !section || i.section === section)
-    .map(i => ({
-      title: i.title,
-      section: i.section,
-      priority: i.priority,
-      source: i.source,
-      blocked_by: i.blocked_by,
-      path: null
-    }));
+  const all = [];
+  for (const [i, project] of names.entries()) {
+    const path = resolved[i].file_path;
+    if (path === null) continue;
+    const items =
+      path === `${folderOf(project)}/_about.md`
+        ? (await openNotes(call, project)).map(shaped)
+        : await serverItems(call, project);
+    all.push(...items.map(item => ({project, ...item})));
+  }
+  const order = i =>
+    i.section === 'active' ? 0 : i.section === 'inbox' ? 1 : SECTIONS.indexOf(i.section);
+  const picked = all
+    .filter(
+      i =>
+        (!section || i.section === section) && (priority === undefined || i.priority === priority)
+    )
+    .sort((a, b) => order(a) - order(b) || a.priority - b.priority);
+  return limit === undefined ? picked : picked.slice(0, limit);
 };
 
 const findNote = async (call, project, ref) => {
@@ -591,11 +623,23 @@ const parseArgs = argv => {
 const main = async () => {
   const opts = parseArgs(process.argv.slice(2));
   const [command, project, ref] = opts._;
-  if (!command || !project) {
-    throw new Error('usage: queue-items.mjs list|file|move|archive|owed|convert <project> …');
+  if (!command || (!project && command !== 'fleet')) {
+    throw new Error(
+      'usage: queue-items.mjs list|file|move|archive|owed|convert <project> …, or fleet'
+    );
   }
   const priority = opts.priority === undefined ? undefined : Number(opts.priority);
   const show = value => console.log(JSON.stringify(value, null, 2));
+  if (command === 'fleet') {
+    const limit = opts.limit === undefined ? undefined : Number(opts.limit);
+    const items = await listFleet({section: opts.section, priority, limit});
+    if (opts.json) return show(items);
+    for (const i of items) {
+      console.log(`${i.project}\t${i.section ?? '(no section)'}\t${i.priority}\t${i.title}`);
+    }
+    console.log(`${items.length} items`);
+    return undefined;
+  }
   switch (command) {
     case 'list': {
       const items = await listItems(project, {section: opts.section});

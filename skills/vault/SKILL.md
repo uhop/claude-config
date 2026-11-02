@@ -103,11 +103,13 @@ composed text, the resume bundle's `queue` body included, shows each item as a
 heading with no section, so Watching reads like Backlog: `list` says which is
 which. The server's item tools and `vault_queue_*` do not see it: the item
 tools answer a 409 `composed_view` naming the folder, so a write cannot misfile,
-and the views read empty, so **use the script for either shape**:
+and the views read empty, with no error, so across projects they show almost
+nothing. **Use the script for either shape**:
 
 ```bash
 Q=~/.claude/skills/vault/queue-items.mjs
 "$Q" list <name> [--section backlog] [--json]     # both shapes
+"$Q" fleet [--section active] [--priority 0] [--limit 20] [--json]   # every project, both shapes
 "$Q" file <name> --title T [--section backlog] [--source S] --body-file F   # replaces by title or source
 "$Q" move <name> "<title or slug>" --section active
 "$Q" archive <name> "<title or slug>" --reason shipped --trail "D123, abc1234."
@@ -336,7 +338,7 @@ Registered as `mcp__vault__<name>`; fetch schemas with
 | Pending suggestions by kind | `vault_suggestions_summary` |
 | Record listing with filters | `vault_list_pieces` |
 | Graph | `vault_backlinks`, `vault_neighborhood`, `vault_similar` |
-| Queue slices | `vault_queue_by_project`, `vault_queue_top`, `vault_queue_by_priority`, `vault_queue_by_section`, `vault_queue_project_archive` |
+| Queue slices, on a project not converted | `vault_queue_by_project`, `vault_queue_top`, `vault_queue_by_priority`, `vault_queue_by_section`, `vault_queue_project_archive`; a converted project reads empty in them, so use `queue-items.mjs` (§ A queue kept one item to a note) |
 | Tags | `vault_list_tags`, `vault_tag_info`, `vault_records_by_tag` |
 | Repo leases (who holds a repo; event transcript) | `vault_lease_list`, `vault_lease_events` (§ Agent coordination) |
 | Handoffs (inbox for a role; one item; transcript) | `vault_handoff_list`, `vault_handoff_get`, `vault_handoff_events` (§ Agent coordination) |
@@ -860,11 +862,11 @@ MCP server surfaced that `mcpServers` had never been a recognized
 | Find a note about X | `vault_search(X, mode=semantic)` |
 | What links to / from X? | `vault_backlinks(X)` / `vault_neighborhood(X)` |
 | Tag taxonomy | `vault_list_tags`, `vault_records_by_tag` |
-| Top items across the fleet | `vault_queue_top(limit=N)` |
-| One project's open queue | `vault_queue_by_project(name)` |
-| One project's archive | `vault_queue_project_archive(name)` |
-| Everything at priority N (Backlog) | `vault_queue_by_priority(n)` |
-| Fleet-wide Active / Watching | `vault_queue_by_section(section)` |
+| Top items across the fleet | `queue-items.mjs fleet --limit N` |
+| One project's open queue | `queue-items.mjs list <name>`; `vault_queue_by_project(name)` only on a project not converted |
+| One project's archive | `vault_read_file` on its `queue-archive.md`; `vault_queue_project_archive(name)` only on a project not converted |
+| Everything at priority N (Backlog) | `queue-items.mjs fleet --section backlog --priority N` |
+| Fleet-wide Active / Watching | `queue-items.mjs fleet --section <section>` |
 
 Queue endpoints are backed by `queue_items`, a derivative every import keeps in
 sync with each project's `queue.md` and `queue-archive.md`: an API write's
@@ -1450,7 +1452,7 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      its kind, number, and title, as `show` prints them ("new PR #229
      Preserve replacer context…", "new comment on issue #226"). File a
      one-line item for each attention-worthy thread no open item mirrors
-     yet (`vault_queue_by_project` gives each item's `source`):
+     yet (`queue-items.mjs list <name> --json` gives each item's `source`):
      `fleet-status.mjs file … --source …` with a body of the event line,
      its URL, and `Last seen:`. A thread an open item already mirrors is
      listed and its item left alone, since `file` would replace the item's
