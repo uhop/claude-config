@@ -2,12 +2,14 @@
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {statSync} from 'node:fs';
 import {
   archiveItem,
   convertQueue,
   isConverted,
   missingWords,
   openFields,
+  owedItems,
   remainderOf,
   slugOf,
   uniqueName
@@ -163,6 +165,7 @@ const fakeVault = ({queue, archive, open, closed = []}) => {
   const real = new Map([['projects/p/queue.md', queue]]);
   if (archive !== undefined) real.set('projects/p/queue-archive.md', archive);
   const moved = [];
+  const old = {};
   const call = async (method, url, {json} = {}) => {
     if (method === 'GET' && url === '/queue/projects/p') return Response.json({items: open});
     if (method === 'GET' && url === '/queue/projects/p/archive') {
@@ -185,7 +188,8 @@ const fakeVault = ({queue, archive, open, closed = []}) => {
       });
     }
     if (method === 'PATCH') {
-      const note = notes.get(url.match(/^\/sections\/(.+)\/fm$/)[1]);
+      const id = url.match(/^\/sections\/(.+)\/fm$/)[1];
+      const note = notes.get(id) ?? (old[id] ??= {frontmatter: {}});
       for (const {op, path, value} of json.ops) {
         if (op === 'set') note.frontmatter[path.slice(1)] = value;
         else delete note.frontmatter[path.slice(1)];
@@ -213,9 +217,14 @@ const fakeVault = ({queue, archive, open, closed = []}) => {
     if (real.has(path)) {
       return new Response(real.get(path), {headers: {etag: `"${path}"`}});
     }
+    if (notes.has(path.replace(/\.md$/, '/_about.md'))) {
+      return new Response('composed', {
+        headers: {etag: '"composed"', 'x-program-clerk-composed': 'true'}
+      });
+    }
     return new Response('', {status: 404});
   };
-  return {call, notes, moved};
+  return {call, notes, moved, old};
 };
 
 test('convert keeps closed items, and the text outside them, in queue-archive/', async () => {
@@ -246,12 +255,28 @@ test('convert keeps closed items, and the text outside them, in queue-archive/',
     vault.moved.map(m => m.from),
     ['projects/p/queue.md', 'projects/p/queue-archive.md']
   );
+  assert.equal(vault.old['projects/p/queue.md'].frontmatter.status, 'superseded');
+  assert.equal(vault.old['projects/p/queue-archive.md'].frontmatter.status, 'superseded');
 });
 
 test('convert gives a project with no archive note its folder note all the same', async () => {
   const vault = fakeVault({
     queue: '- **One.** Text.\n',
     open: [{title: 'One.', section: 'backlog', source_line: 1, body: 'Text.', blocked_by: []}]
+  });
+  const result = await convertQueue('p', {}, vault.call);
+  assert.equal(result.archivedTo, null);
+  assert.equal(vault.notes.get('projects/p/queue-archive/_about.md').frontmatter.tags[1], 'queue');
+});
+
+test('convert runs again over its own folder note where no archive note ever was', async () => {
+  const vault = fakeVault({
+    queue: '- **One.** Text.\n',
+    open: [{title: 'One.', section: 'backlog', source_line: 1, body: 'Text.', blocked_by: []}]
+  });
+  vault.notes.set('projects/p/queue-archive/_about.md', {
+    frontmatter: {},
+    body: 'From a first run.\n'
   });
   const result = await convertQueue('p', {}, vault.call);
   assert.equal(result.archivedTo, null);
@@ -285,4 +310,39 @@ test('archive closes an item last in queue-archive/', async () => {
   assert.equal(closed.frontmatter.status, 'archived');
   assert.equal(closed.frontmatter.section, undefined);
   assert.match(closed.body, /\*\*Shipped\*\* \d{4}-\d{2}-\d{2}\. D1\.\n$/);
+});
+
+test('owed places a Backlog item filed since, and no item the conversion itself wrote', async () => {
+  const vault = fakeVault({queue: '', open: []});
+  const item = (section, created) => ({
+    frontmatter: {title: `${section} ${created}`, section, created},
+    body: 'Text.\n'
+  });
+  vault.notes.set('projects/p/queue/_about.md', {
+    frontmatter: {created: '2026-11-01'},
+    body: 'A.\n'
+  });
+  vault.notes.set('projects/p/queue/moved.md', item('backlog', '2026-11-01'));
+  vault.notes.set('projects/p/queue/old.md', item('backlog', '2026-11-02'));
+  vault.notes.set('projects/p/queue/new.md', item('backlog', '2026-11-20'));
+  vault.notes.set('projects/p/queue/watch.md', item('watching', '2026-11-20'));
+  vault.notes.set('projects/p/queue/in.md', item('inbox', '2026-11-02'));
+  const owed = await owedItems('p', '2026-11-10T12:00:00Z', vault.call);
+  assert.deepEqual(
+    owed.map(i => [i.kind, i.title]),
+    [
+      ['triage', 'inbox 2026-11-02'],
+      ['place', 'backlog 2026-11-20']
+    ]
+  );
+  const early = await owedItems('p', '2026-10-01T00:00:00Z', vault.call);
+  assert.deepEqual(
+    early.filter(i => i.kind === 'place').map(i => i.title),
+    ['backlog 2026-11-02', 'backlog 2026-11-20'],
+    'a session before the conversion is owed only what was filed after it'
+  );
+});
+
+test('the script runs by its path, as the vault skill calls it', () => {
+  assert.ok(statSync(new URL('./queue-items.mjs', import.meta.url)).mode & 0o100);
 });

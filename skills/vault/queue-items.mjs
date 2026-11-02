@@ -327,38 +327,49 @@ export const archiveItem = async (project, ref, {reason, trail}, call = client()
 
 /**
  * What a resume owes for a converted queue, which the server's `owed` cannot see: Inbox items to
- * triage, items that entered the Backlog since `since`, and items mirroring a ticket, to read
- * upstream.
+ * triage, items filed into the Backlog on or after `since`'s day and after the conversion's, and
+ * items mirroring a ticket, to read upstream.
  */
 export const owedItems = async (project, since, call = client()) => {
-  const notes = (await openNotes(call, project)).map(shaped);
-  const changes = await expectJson(
-    await call(
-      'GET',
-      `/projects/${encodeURIComponent(project)}/changes?since=${encodeURIComponent(since)}`
-    ),
-    `changes of ${project}`
-  );
-  const created = new Set((changes.notes ?? []).filter(n => n.changed?.created).map(n => n.path));
+  const all = await queryAll(call, folderOf(project));
+  const notes = all.filter(n => !SPECIAL.has(n.path.slice(n.path.lastIndexOf('/') + 1)));
+  const converted = String(all.find(n => n.path.endsWith('/_about.md'))?.frontmatter.created ?? '');
+  const day = since.slice(0, 10);
+  const filedSince = n => {
+    const created = String(n.frontmatter.created ?? '');
+    return created >= day && created > converted;
+  };
+  const owed = (kind, picked) => picked.map(n => ({kind, ...shaped(n)}));
   return [
-    ...notes.filter(i => i.section === 'inbox').map(i => ({kind: 'triage', ...i})),
-    ...notes
-      .filter(i => i.section === 'backlog' && created.has(i.path))
-      .map(i => ({kind: 'place', ...i})),
-    ...notes.filter(i => i.source).map(i => ({kind: 'upstream', ...i}))
+    ...owed(
+      'triage',
+      notes.filter(n => n.frontmatter.section === 'inbox')
+    ),
+    ...owed(
+      'place',
+      notes.filter(n => n.frontmatter.section === 'backlog' && filedSince(n))
+    ),
+    ...owed(
+      'upstream',
+      notes.filter(n => n.frontmatter.source)
+    )
   ];
 };
 
 const CARRIED = ['title', 'tags', 'related', 'edges', 'trackers', 'key'];
 
-const carriedFields = async (call, path) => {
+const recordIdOf = async (call, path) => {
   const record = await expectJson(
     await call('GET', `/sections?file_path=${encodeURIComponent(path)}&fields=record_id,file_path`),
     `the record of ${path}`
   );
+  return record.items[0].record_id;
+};
+
+const carriedFields = async (call, recordId) => {
   const {frontmatter} = await expectJson(
-    await call('GET', `/sections/${record.items[0].record_id}/fm?exclude=body`),
-    `the frontmatter of ${path}`
+    await call('GET', `/sections/${recordId}/fm?exclude=body`),
+    `the frontmatter of ${recordId}`
   );
   return Object.fromEntries(
     CARRIED.filter(k => frontmatter[k] !== undefined).map(k => [k, frontmatter[k]])
@@ -378,11 +389,14 @@ const archiveSlot = async (call, project, name) => {
   return r.status === 404 ? plain : `${dir}/${name}-${today()}.md`;
 };
 
-// A note's text, or none where it has no note.
+// A note's text, or none where it has no note: a composed path answers from a folder, and this
+// script's own folder note starts one where no archive note ever was.
 const readNote = async (call, path) => {
   const r = await call('GET', `/vault/${path}`);
   const text = await r.text();
-  if (r.status === 404) return {text: '', etag: null, exists: false};
+  if (r.status === 404 || r.headers.has('x-program-clerk-composed')) {
+    return {text: '', etag: null, exists: false};
+  }
   if (!r.ok) throw new Error(`read ${path}: ${r.status} ${text.slice(0, 300)}`);
   return {text, etag: r.headers.get('etag'), exists: true};
 };
@@ -396,8 +410,8 @@ const titlesMatch = (notes, items) => {
 /**
  * Moves a project's queue and archive to item notes from the server's own parse: every item written,
  * every word of the old notes accounted for, counts and titles compared, and only then the old notes
- * moved to the archive with their record ids. A failure before the move leaves the queue as it was,
- * and a run again writes the same paths.
+ * moved to the archive with their record ids and marked `superseded`, as a split marks its note. A
+ * failure before the move leaves the queue as it was, and a run again writes the same paths.
  */
 export const convertQueue = async (project, {dryRun = false} = {}, call = client()) => {
   const queuePath = `projects/${project}/queue.md`;
@@ -486,10 +500,13 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
     );
   }
 
-  const carried = await carriedFields(call, queuePath);
-  const closedCarried = archive.exists
-    ? await carriedFields(call, archivePath)
-    : {title: `${project} — Queue Archive`, tags: [project, 'queue', 'archive']};
+  const queueId = await recordIdOf(call, queuePath);
+  const archiveId = archive.exists ? await recordIdOf(call, archivePath) : null;
+  const carried = await carriedFields(call, queueId);
+  const closedCarried =
+    archiveId === null
+      ? {title: `${project} — Queue Archive`, tags: [project, 'queue', 'archive']}
+      : await carriedFields(call, archiveId);
   for (const {path, frontmatter: fm, body} of [...writes, ...closedWrites]) {
     await expectJson(
       await call('PUT', `/vault/${path}`, {json: {frontmatter: fm, body}}),
@@ -547,6 +564,7 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
     await call('POST', '/vault/move', {json: {from: queuePath, to: queueTo}}),
     "the queue note's move"
   );
+  await patchScalars(call, queueId, {status: 'superseded'});
   let archivedTo = null;
   if (archive.exists) {
     archivedTo = await archiveSlot(call, project, 'queue-archive');
@@ -554,6 +572,7 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
       await call('POST', '/vault/move', {json: {from: archivePath, to: archivedTo}}),
       "the archive note's move"
     );
+    await patchScalars(call, archiveId, {status: 'superseded'});
   }
   return {...plan, queueTo, archivedTo};
 };
