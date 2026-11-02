@@ -66,7 +66,7 @@ import {execFile, execFileSync} from 'node:child_process';
 import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import {fileItem as fileQueueItem, isConverted} from '../vault/queue-items.mjs';
+import {fileItem as fileQueueItem} from '../vault/queue-items.mjs';
 import {vaultSettings} from '../vault/vault-settings.mjs';
 
 if (!import.meta.main)
@@ -329,51 +329,6 @@ const vaultFetch = (route, init = {}) =>
     ...init,
     headers: {Authorization: `Bearer ${TOKEN}`, ...(init.headers ?? {})}
   });
-
-const vaultGet = async docPath => {
-  const r = await vaultFetch(`/vault/${docPath}`);
-  if (r.status === 404) return null;
-  if (!r.ok) throw new Error(`GET ${docPath}: ${r.status} ${r.statusText}`);
-  return {text: await r.text(), etag: r.headers.get('etag')};
-};
-
-const vaultEdit = async (docPath, op) => {
-  if (dryRun) {
-    console.log(
-      `DRY RUN — would POST /vault/edit ${docPath} ${op.op} (${JSON.stringify(op).length} bytes)`
-    );
-    return {dry_run: true};
-  }
-  const r = await vaultFetch('/vault/edit', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({path: docPath, ...op})
-  });
-  const text = await r.text();
-  if (r.status === 405)
-    throw new Error(
-      `POST /vault/edit is not available on this vault server (405) — server ≥ 2026-07-24 needed`
-    );
-  if (!r.ok)
-    throw new Error(`POST /vault/edit ${docPath} (${op.op}): ${r.status} ${text.slice(0, 300)}`);
-  return JSON.parse(text);
-};
-
-const vaultPut = async (docPath, frontmatter, body, etag) => {
-  if (dryRun) {
-    console.log(
-      `DRY RUN — would PUT ${docPath} (${body.length} bytes${etag ? `, If-Match ${etag}` : ''})`
-    );
-    return {dry_run: true};
-  }
-  const r = await vaultFetch(`/vault/${docPath}`, {
-    method: 'PUT',
-    headers: {'Content-Type': 'application/json', ...(etag ? {'If-Match': etag} : {})},
-    body: JSON.stringify({frontmatter, body})
-  });
-  if (!r.ok) throw new Error(`PUT ${docPath}: ${r.status} ${(await r.text()).slice(0, 300)}`);
-  return {status: r.status, etag: r.headers.get('etag')};
-};
 
 // Arrays of scalars on one line: a weekly series or a history point stays one
 // line instead of one line per number. Names, dates, and versions never hold
@@ -2056,13 +2011,10 @@ const commit = async () => {
   console.log(`committed ${written} of ${digest.repos?.length ?? 0} repositories`);
 };
 
-// Upsert one review item under `## Active` of a project's queue: same title →
-// the block is replaced in place (the 2026-08-28 ruling: update, never
-// duplicate); otherwise it is inserted at the top of Active, where a server
-// from 2026-09-29 (vault-storage D107) replaces the open item that carries
-// the same `source:` marker, so a renamed thread updates its item; a missing
-// queue is created in the convention's shape.
-const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Files one review item in the Active section of a project's queue. The same
+// title or the same `source` replaces the open item where it stands (the
+// 2026-08-28 ruling: update, never duplicate), so a renamed thread updates its
+// item; a project with no queue gets one.
 const SOURCE_RE = /^[a-z][a-z0-9-]* \S+$/;
 
 const fileItem = async () => {
@@ -2090,53 +2042,17 @@ const fileItem = async () => {
     .replace(/\s+/g, ' ')
     .trim();
   const heading = /[.!?]$/.test(clean) ? clean : `${clean}.`;
-  // every column-0 bullet is its own queue item (topics/project-queue-convention)
-  const continuation = body
-    .split('\n')
-    .map((line, i) => (i === 0 || !line.trim() ? line : `  ${line}`))
-    .join('\n');
-  const docPath = `projects/${project}/queue.md`;
-  const doc = (await isConverted(project)) ? null : await vaultGet(docPath);
-  if (!doc) {
-    if (dryRun) {
-      console.log(`DRY RUN — would file "${heading}" as an item note of ${project}`);
-      return;
-    }
-    const filed = await fileQueueItem(project, {
-      title: heading,
-      section: section.toLowerCase(),
-      source: source ?? null,
-      body
-    });
-    console.log(`${filed.path}: item ${filed.replaced ? 'updated in place' : 'filed'}`);
+  if (dryRun) {
+    console.log(`DRY RUN — would file "${heading}" as an item note of ${project}`);
     return;
   }
-  const itemText = `- **${heading}** ${continuation}${source ? `\n  - source: ${source}` : ''}`;
-  const text = doc.text;
-  const existing = new RegExp(
-    `(?<=^|\\n)- \\*\\*${escapeRe(heading)}\\*\\*[\\s\\S]*?(?=\\n- \\*\\*|\\n## |$)`
-  ).exec(text);
-  if (existing) {
-    // Trim the trailing newline the lazy match swallows, so the blank line
-    // before the next item or heading survives the replacement.
-    await vaultEdit(docPath, {op: 'replace', from: existing[0].replace(/\s+$/, ''), to: itemText});
-    console.log(`${docPath}: item updated in place`);
-    return;
-  }
-  // insert-item: replaces an (empty) placeholder, creates a missing section
-  // before the first H2 (server ≥ 2026-09-06), which is where an Inbox belongs
-  const result = await vaultEdit(docPath, {
-    op: 'insert-item',
-    section: `## ${section}`,
-    item: itemText,
-    position: 'start',
-    create_section: true
+  const filed = await fileQueueItem(project, {
+    title: heading,
+    section: section.toLowerCase(),
+    source: source ?? null,
+    body
   });
-  console.log(
-    result.replaced
-      ? `${docPath}: item updated by its source (was "${result.replaced.title}")`
-      : `${docPath}: item inserted at the top of ${section}`
-  );
+  console.log(`${filed.path}: item ${filed.replaced ? 'updated in place' : 'filed'}`);
 };
 
 // ─── Show ────────────────────────────────────────────────────────────────────

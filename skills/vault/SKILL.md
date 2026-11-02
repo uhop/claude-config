@@ -38,7 +38,7 @@ in the same row.
 | One `## Heading` section — read it, or replace its content leaving every other byte alone | **`vault_read_section` / `vault_replace_section`** (adapter ≥ 0.7.0; server ≥ 2026-09-06) | `vault-curl '/vault/<path>?section=<heading line>'` + `POST /vault/edit` with `{path, op: "replace-section", heading, body}` |
 | One span — a section by its heading's leading text (a heading cited without its date) or under a parent, one queue item by its bold title, or one table row by its first cell — read whole or cut to its tail or head, or a `replace` whose `from` need be unique only inside it | **`vault_read_span`**, and **`vault_replace`** with `within` (and `count`, the number it asserts), `prefix` on `vault_replace_section` and the item tools (adapter ≥ 0.18.0; server ≥ 2026-10-26, vault-storage 4h) | `vault-curl '/vault/<path>?item=<title>&section=<heading>&tail=<bytes>'` (or `section` with `prefix=true`, or `row`) + `POST /vault/edit` with `{path, op: "replace", from, to, within: {item: "<title>"}}` |
 | A note's tail or head with no span — the newest entries of a rolling note, the last decision's number in a decisions note still whole (§ A split note for one split) | **`vault_read_span`** with only `tail` or `max_bytes` (adapter ≥ 0.19.0; server ≥ 2026-10-28, vault-storage D514): the body, frontmatter left out, no `hash`; a composed folder note is a 409 `composed_view` naming its pieces, since their order is not its newest (D515). Any cut keeps whole lines while they fill half of it and otherwise fills the rest from the line past them | `vault-curl '/vault/<path>?tail=<bytes>'` |
-| One queue item on a queue not converted, or an item in any other note — remove it, insert it, or move it between documents with a trail after its title | **`vault_remove_item` / `vault_insert_item` / `vault_move_item`** (adapter ≥ 0.7.0; server ≥ 2026-09-06, D35) | `POST /vault/edit` with `{op: "remove-item" \| "insert-item", …}` + `POST /vault/move-item` |
+| An item in a note that is no queue (§ A queue kept one item to a note) — remove it, insert it, or move it between documents with a trail after its title | **`vault_remove_item` / `vault_insert_item` / `vault_move_item`** (adapter ≥ 0.7.0; server ≥ 2026-09-06, D35) | `POST /vault/edit` with `{op: "remove-item" \| "insert-item", …}` + `POST /vault/move-item` |
 | One frontmatter array member (`related:`, `agent.tags_suggested`) | **`vault_patch_fm`** | `PATCH /sections/{record_id}/fm` via `vault-curl` |
 | One `tags:` member — the server refuses `/tags` in an FM patch (400 `protected_field`, since tags are taxonomy-validated) | **`vault_tag_add` / `vault_tag_remove`** (adapter ≥ 0.9.0) | `vault-curl /sections/{record_id}/tags -X POST` with `{"tag": "<tag>"}`, and `vault-curl /sections/{record_id}/tags/<tag> -X DELETE` |
 | The nearest existing tags for proposed names or a draft's text, before minting (§ Note format) | **`vault_tag_nearest`** (adapter ≥ 0.12.0; server ≥ 2026-09-28, vault-storage D82) | `vault-curl /tags/nearest -X POST -H 'Content-Type: application/json' --data-binary '{"tags": ["<name>", …]}'` |
@@ -71,8 +71,8 @@ item, or row from the composed view (server from 2026-11-01,
 vault-storage D577). Text appended before a first heading and the item
 tools on the path are a 409 `composed_view` naming the folder: find the
 piece with `vault_list_pieces({file_prefix: "<folder>/"})` and edit it.
-The server refuses a queue archive, `sessions.md`, `queue.md`,
-and `state.md`, which tools read by their path. `vault_join` undoes a
+The server refuses a record other than decisions (a queue archive,
+`sessions.md`) and `state.md`, which tools read by their path. `vault_join` undoes a
 split (D574): the archived note returns to the path with its
 `record_id` and the folder's current text, sections appended since
 included, and the folder's notes are deleted; a subfolder, such as a
@@ -92,8 +92,8 @@ title. An append with no `##` heading is a 409 too, so a one-line record goes
 in as a section of its own. `vault_list_pieces({file_prefix:
 "projects/<name>/decisions/d45-"})` finds an item's path.
 
-**A queue kept one item to a note** (vault-storage 11d-1): a converted
-project has `projects/<name>/queue/<slug>.md` per open item, with `section`
+**A queue kept one item to a note** (vault-storage 11d-1, 11d-2): a project
+has `projects/<name>/queue/<slug>.md` per open item, with `section`
 (`inbox`, `active`, `backlog`, `watching`), `sequence_key`, and `filed`, the day
 it entered the queue, and `priority`, `source`, and `blocked_by` when set; closed items are in `queue-archive/`,
 `status: archived`, with `closed_at` and `close_reason`. Its `queue.md` and
@@ -101,25 +101,21 @@ it entered the queue, and `priority`, `source`, and `blocked_by` when set; close
 working, and `queue/_about.md` holds `trackers:`. That
 composed text, the resume bundle's `queue` body included, shows each item as a
 heading with no section, so Watching reads like Backlog: `list` says which is
-which. The server's item tools and `vault_queue_*` do not see it: the item
-tools answer a 409 `composed_view` naming the folder, so a write cannot misfile,
-and the views read empty, with no error, so across projects they show almost
-nothing. **Use the script for either shape**:
+which. The server keeps no list of a queue's items and knows nothing of its
+sections: its item tools answer a 409 `composed_view` naming the folder, so a
+write cannot misfile. **Use the script**:
 
 ```bash
 Q=~/.claude/skills/vault/queue-items.mjs
-"$Q" list <name> [--section backlog] [--json]     # both shapes
-"$Q" fleet [--section active] [--priority 0] [--limit 20] [--json]   # every project, both shapes
+"$Q" list <name> [--section backlog] [--json]
+"$Q" fleet [--section active] [--priority 0] [--limit 20] [--json]   # every project
 "$Q" file <name> --title T [--section backlog] [--source S] --body-file F   # replaces by title or source
 "$Q" move <name> "<title or slug>" --section active
 "$Q" archive <name> "<title or slug>" --reason shipped --trail "D123, abc1234."
 "$Q" owed <name> --since <the last session's end>
-"$Q" convert <name> [--dry-run]                   # a queue and its archive; safe to run again
 ```
 
-`file` starts a queue for a project with none. On a project still kept as one
-note, `file` is an error until `convert` runs, and `vault_insert_item`,
-`vault_move_item`, and `vault_remove_item` stay right there.
+`file` starts a queue for a project with none.
 Edit an item's prose with `vault_replace` on its own path, with no `agent`
 patch: an item carries no summary.
 
@@ -339,7 +335,7 @@ Registered as `mcp__vault__<name>`; fetch schemas with
 | Pending suggestions by kind | `vault_suggestions_summary` |
 | Record listing with filters | `vault_list_pieces` |
 | Graph | `vault_backlinks`, `vault_neighborhood`, `vault_similar` |
-| Queue slices, on a project not converted | `vault_queue_by_project`, `vault_queue_top`, `vault_queue_by_priority`, `vault_queue_by_section`, `vault_queue_project_archive`; a converted project reads empty in them, so use `queue-items.mjs` (§ A queue kept one item to a note) |
+| Queue slices | `queue-items.mjs` (§ A queue kept one item to a note), or `vault_query` on `projects/<name>/queue` |
 | Tags | `vault_list_tags`, `vault_tag_info`, `vault_records_by_tag` |
 | Repo leases (who holds a repo; event transcript) | `vault_lease_list`, `vault_lease_events` (§ Agent coordination) |
 | Handoffs (inbox for a role; one item; transcript) | `vault_handoff_list`, `vault_handoff_get`, `vault_handoff_events` (§ Agent coordination) |
@@ -692,7 +688,7 @@ rather than a preference:
   costs a round-trip and lands in a file regardless — which is where the curl
   put it directly. The exact cutoff is unmeasured; the observed points
   (2026-08-04) are `vault_read_file` on `schedule.md` at 52 KB,
-  `vault_resume_bundle` at 79 KB and `vault_queue_by_project` at 145 KB, all
+  `vault_resume_bundle` at 79 KB and a queue slice at 145 KB, all
   three overflowed and had to be `jq`-ed off disk.
 - **Verbatim relocation must be mechanical.** A queue kept as item notes
   moves whole notes; in any other note, moving an item means reproducing multi-KB paragraphs exactly.
@@ -865,21 +861,12 @@ MCP server surfaced that `mcpServers` had never been a recognized
 | What links to / from X? | `vault_backlinks(X)` / `vault_neighborhood(X)` |
 | Tag taxonomy | `vault_list_tags`, `vault_records_by_tag` |
 | Top items across the fleet | `queue-items.mjs fleet --limit N` |
-| One project's open queue | `queue-items.mjs list <name>`; `vault_queue_by_project(name)` only on a project not converted |
-| One project's archive | `vault_read_file` on its `queue-archive.md`; `vault_queue_project_archive(name)` only on a project not converted |
+| One project's open queue | `queue-items.mjs list <name>` |
+| One project's archive | `vault_read_file` on its `queue-archive.md` |
 | Everything at priority N (Backlog) | `queue-items.mjs fleet --section backlog --priority N` |
 | Fleet-wide Active / Watching | `queue-items.mjs fleet --section <section>` |
 
-The server's queue endpoints, which see only a queue kept as one note, are
-backed by `queue_items`, a derivative every import keeps in sync with each such
-project's `queue.md` and `queue-archive.md`: an API write's
-slice is current when the response returns, and a pull is covered by the
-incremental reindex (server ≥ 2026-09-19, vault-storage D61; before that only
-the watcher derived slices, so a pull needed `vault_queue_reindex`). Markdown
-stays source of truth — see [[topics/project-queue-convention]] for the shape
-and [[projects/vault-storage/design/queue-items-table]] for schema + identity
-model. `vault_queue_reindex` remains the recovery sweep when the queue lint
-reports a stale slice.
+For the shape, see [[topics/project-queue-convention]].
 
 ## Note format
 
@@ -1125,9 +1112,9 @@ via `/sections` and reports seven categories — `FRONTMATTER` (required keys, d
 sanity), `BODY` (empty/`null` bodies; newline-collapsed bodies), `WIKILINKS`
 (broken body targets), `DENSITY` (topic notes < 2 outbound; isolated project
 notes), `CURRENCY` (per-type retention), `DUPLICATES`
-(near-identical folders / titles), `QUEUE` (queue.md items under non-schema
-H2s, completion markers in open titles, unbolded items, glued headings, the
-served count against the markdown; 2026-09-06) — against the thresholds in
+(near-identical folders / titles), `QUEUE` (item notes with an
+unknown section or the wrong type, completion markers in open titles, a real
+`queue.md`) — against the thresholds in
 `topics/vault-hygiene-policy.md`. Exit `0` clean, `1` on findings. Read-only:
 it reports, never fixes. Full docs + flags + v1 limitations:
 `~/.claude/skills/vault-lint/SKILL.md`.
@@ -1138,12 +1125,7 @@ it reports, never fixes. Full docs + flags + v1 limitations:
 ```
 
 Do not confuse it with the server-side **integrity** lint, which is a different
-tool (embeddings / orphans / temporal anomalies / tag aliases — *not* hygiene,
-with one deliberate exception: since 2026-09-06 it also carries
-`queue_hygiene`, the QUEUE category's rules run server-side over every
-`queue.md` so the SessionStart brief can print a project's findings —
-vault-storage D25; `GET /queue/lint[?project=]` is that check uncapped, and
-what `/vault-lint --category=queue` reads on a server ≥ 2026-09-07).
+tool (embeddings / orphans / temporal anomalies / tag aliases — *not* hygiene).
 Call `vault_lint` for it; the curl form below is the fallback. `vault_lint`
 does return the `coverage.enrichment` block (`by_type` breakdown +
 `unenriched_records` worklist) that `/vault sweep` reads — verified
@@ -1266,12 +1248,11 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      tool call takes, and `why` is the evidence. **Act on each entry**, and
      say in the resume what you did with it; an empty list means nothing is
      owed. An older server sends no `owed`: apply the same kinds to the
-     blocks yourself. **A converted queue is invisible to `owed`** (§ A queue
-     kept one item to a note): when `project.files.queue.composed` is true,
-     run `queue-items.mjs owed <name> --since <changes.since.ended>`, act on its
-     `triage` and `place` the same way, read each `upstream` item's ticket,
-     archiving a closed one, and take the items' sections from
-     `queue-items.mjs list <name>`, since the `queue` body shows none.
+     blocks yourself. **A queue's part comes from the script**, since the server
+     keeps no list of a queue's items (§ A queue kept one item to a note): run
+     `queue-items.mjs owed <name> --since <changes.since.ended>`, act on its
+     `triage`, `place`, and `upstream` as below, and take the items' sections
+     from `queue-items.mjs list <name>`, since the `queue` body shows none.
      - `log` — a session ended without a wrap. Write its log first, from
        its record's commits and notes, the drift check, the queue and
        decisions as they stand, and, on the host that ran it, the transcript
@@ -1287,18 +1268,19 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      - `handoff` — another agent waits on this session: read the request
        with `vault_handoff_get` before acting (§ Agent coordination —
        handoffs). `rework` — your own submission came back: surface it.
-     - `archive` — the item's ticket is closed or merged upstream: close it
+     - `upstream` (the script) — the item mirrors a ticket: read the ticket,
+       and when it is closed or merged upstream, close the item
        with `queue-items.mjs archive`, `--reason shipped` when the work was
        yours and `--reason parked` with a trail saying it closed upstream
        otherwise.
-     - `triage` — an Inbox item a secondary tracker took in: read it with
+     - `triage` (the script) — an Inbox item a secondary tracker took in: read it with
        its `source` and accept it (`queue-items.mjs move … --section backlog`
        or `active`) or reject it (`queue-items.mjs archive … --reason
        rejected`, with a trail saying why). Say what you decided;
        leave an item you cannot judge and name it.
-     - `place` — the item entered the Backlog since the last session, or
-       during it where the project keeps a plan under `plans/` (server ≥
-       2026-10-28, vault-storage D525, D527), since a wrap files what
+     - `place` (the script) — the item entered the Backlog since the last session, or
+       during it where the project keeps a plan under `plans/` (vault-storage
+       D525, D527), since a wrap files what
        arrives after it: place it by the project's plan, or say that the
        plan already places it. In a project with no plan, filing the item
        in its Backlog section placed it: confirm the section.
@@ -1311,9 +1293,8 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      - `file-stalls` — the server does not file its loop stalls, so this
        resume files what is not filed yet, since the server is shared: find
        the newest `Loop stalls recorded through <at>.` title among
-       vault-storage's open and archived items (`vault_queue_by_project`
-       and `vault_queue_project_archive` with `project: "vault-storage"`;
-       on a converted queue the open one is `queue/loop-stalls.md`, the rest
+       vault-storage's open and archived items (the open one is
+       `queue/loop-stalls.md`, the rest
        in `queue-archive/`), which marks where filing stopped; read every stall record since it
        with `vault-curl '/system/events?log=stalls&since=<that at>&limit=1000' -f`,
        following `next` while it is not null and leaving out the record at
@@ -1344,8 +1325,9 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      line; null when none, and then stay quiet. With `filedBy: "server"`
      (D264) the server files them itself, so add `filedThrough` and file
      nothing; otherwise `owed` carries `file-stalls`.
-   - `workflow` — `active` is the agent-workflow Active section: surface
-     verbatim under a `Workflow:` heading when non-null. If
+   - `workflow` — surface the agent-workflow Active items
+     (`queue-items.mjs list agent-workflow --section active`) under a
+     `Workflow:` heading when there are any. If
      `clarify_pending > 0`, one line like
      `Clarify queue: N pending (/clarify to drain)`. Nulls mean the
      surface isn't scaffolded — omit silently.
@@ -1419,8 +1401,8 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      that took a turn, named in `since: {ended, holder}`: `notes`, the
      project's notes written since, the ones whose content changed first,
      each with `changed` (vault-storage 1g), `{created: true}` or
-     `{body, agent, frontmatter}`, null when the server cannot say; and
-     `queue: {entered, edited}`. It shows what happened between sessions:
+     `{body, agent, frontmatter}`, null when the server cannot say, a queue
+     item among them as a note under `queue/`. It shows what happened between sessions:
      edits in the UI, a sweep, another project's agent. A note whose writes
      only restated its `agent:` block or set frontmatter keys needs no read:
      say what was restated or which keys. `null` means no session record
@@ -1493,9 +1475,9 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
    something that should be acted upon immediately."*)
 4. **Fallback (pre-bundle server).** A 404 / missing-tool error from the
    bundle means an older server — run the individual reads instead:
-   `vault_lint`, `vault_suggestions_summary`, the two agent-workflow file
-   reads (`projects/agent-workflow/queue.md` § Active, `clarify-queue.md`
-   pending count), the 3 most recent `logs/` entries, and the project's
+   `vault_lint`, `vault_suggestions_summary`, the two agent-workflow
+   reads (`queue-items.mjs list agent-workflow --section active`,
+   `clarify-queue.md` pending count), the 3 most recent `logs/` entries, and the project's
    notes including `feedback.md` — all via `vault_read_file` /
    `vault_list_pieces`. The incremental reindex is `vault_incremental_reindex`
    on adapter 0.1.0+; on an older one it stays

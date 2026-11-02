@@ -5,15 +5,11 @@ import assert from 'node:assert/strict';
 import {statSync} from 'node:fs';
 import {
   archiveItem,
-  convertQueue,
   fileItem,
-  isConverted,
   listFleet,
   listItems,
-  missingWords,
   openFields,
   owedItems,
-  remainderOf,
   slugOf,
   uniqueName
 } from './queue-items.mjs';
@@ -57,111 +53,6 @@ test('openFields writes the optional fields only when set', () => {
   assert.equal(all.priority, -1);
   assert.equal(all.source, 'github a/b#1');
   assert.deepEqual(all.blocked_by, ['x']);
-});
-
-const QUEUE = `---
-title: A queue
----
-Outstanding work, read this first.
-
-## Active
-
-(empty)
-
-## Backlog
-
-### Priority 0
-
-- **One.** Its text.
-  - source: github a/b#1
-
-- **Two.** Its text.
-
-\`\`\`
-## not a heading
-- not an item
-\`\`\`
-
-## See also
-
-- [[topics/a]]
-
-## Watching
-
-- **Three.** Its text.
-`;
-
-test('remainderOf keeps what is outside the items and drops the shape', () => {
-  const lines = QUEUE.split('\n');
-  const at = title => lines.findIndex(l => l.startsWith(`- **${title}`)) + 1;
-  const rest = remainderOf(QUEUE, [at('One'), at('Two'), at('Three')]);
-  assert.match(rest, /^Outstanding work, read this first\./);
-  assert.match(rest, /## See also\n\n- \[\[topics\/a\]\]/);
-  assert.doesNotMatch(rest, /## Active|## Backlog|## Watching|Priority 0|\(empty\)/);
-  assert.doesNotMatch(rest, /One\.|Two\.|Three\./);
-  assert.doesNotMatch(rest, /not a heading/, 'a fence inside an item stays with the item');
-  assert.doesNotMatch(rest, /title: A queue/, 'the frontmatter is not body text');
-});
-
-const resolving =
-  filePath =>
-  async (method, path, {json}) => {
-    assert.equal(method, 'POST');
-    assert.equal(path, '/resolve');
-    assert.deepEqual(json, {wikilinks: ['projects/p/queue.md']});
-    return Response.json({items: [{record_id: filePath && 'id', file_path: filePath}]});
-  };
-
-test('isConverted is false for an older folder beside a real queue.md', async () => {
-  assert.equal(await isConverted('p', resolving('projects/p/queue.md')), false);
-  assert.equal(await isConverted('p', resolving('projects/p/queue/_about.md')), true);
-  assert.equal(await isConverted('p', resolving(null)), false);
-});
-
-test('convert refuses a folder of older pieces beside a real queue.md', async () => {
-  const call = async (method, path) => {
-    if (path === '/vault/projects/p/queue.md') return new Response('- **One.** Text.\n');
-    if (path === '/queue/projects/p') {
-      return Response.json({items: [{title: 'One', section: 'backlog', source_line: 1}]});
-    }
-    if (path === '/queue/projects/p/archive') return Response.json({items: []});
-    if (path === '/notes/query') {
-      return Response.json({
-        items: [{path: 'projects/p/queue/old.md', frontmatter: {title: 'Old'}}]
-      });
-    }
-    assert.fail(`nothing writes before the refusal: ${method} ${path}`);
-  };
-  await assert.rejects(convertQueue('p', {}, call), /1 older note.*projects\/p\/queue/);
-});
-
-test('remainderOf drops a date heading with nothing left under it, and keeps one with text', () => {
-  const text = `Closed items.
-
-## 2026-05-05
-
-- **One.** Shipped.
-
-## 2026-08-20
-
-**A paragraph entry.** It has no bullet.
-
-## 2026-09-01
-
-- **Two.** Shipped.
-`;
-  const lines = text.split('\n');
-  const at = title => lines.findIndex(l => l.startsWith(`- **${title}`)) + 1;
-  const rest = remainderOf(text, [at('One'), at('Two')]);
-  assert.equal(rest, 'Closed items.\n\n## 2026-08-20\n\n**A paragraph entry.** It has no bullet.');
-});
-
-test('missingWords counts each word, and leaves out the note shape', () => {
-  const text =
-    '---\ntitle: Frontmatter words\n---\nLead.\n\n## Backlog\n\n- [x] **One.** Two two.\n';
-  assert.deepEqual(missingWords(text, ['Lead.', 'One.\nTwo two.']), []);
-  assert.deepEqual(missingWords(text, ['Lead.', 'One.\nTwo.']), ['two']);
-  assert.deepEqual(missingWords(text, ['One.\nTwo two.']), ['Lead']);
 });
 
 // A vault in memory, as much of the API as the script calls.
@@ -231,91 +122,6 @@ const fakeVault = ({queue, archive, open, closed = []}) => {
   };
   return {call, notes, moved, old};
 };
-
-test('convert keeps closed items, and the text outside them, in queue-archive/', async () => {
-  const queue = '- **One.** Text.\n';
-  const archive =
-    'Closed.\n\n## 2026-08-06\n\n- **Two.** Done.\n\n## 2026-08-20\n\n**Entry.** Prose.\n';
-  const vault = fakeVault({
-    queue,
-    archive,
-    open: [
-      {
-        title: 'One.',
-        section: 'backlog',
-        source_line: 1,
-        body: 'Text.',
-        blocked_by: [],
-        created_at: '2026-09-30T20:36:23.000Z'
-      }
-    ],
-    closed: [
-      {
-        title: 'Two.',
-        source_line: 5,
-        body: 'Done.',
-        closed_at: '2026-08-06',
-        created_at: '2026-08-01T01:00:00.000Z'
-      }
-    ]
-  });
-  const result = await convertQueue('p', {}, vault.call);
-  assert.equal(result.lostWords, 0);
-  assert.equal(vault.notes.get('projects/p/queue/one.md').frontmatter.filed, '2026-09-30');
-  assert.equal(vault.notes.get('projects/p/queue-archive/two.md').frontmatter.filed, '2026-08-01');
-  assert.equal(vault.notes.get('projects/p/queue-archive/two.md').frontmatter.status, 'archived');
-  assert.equal(
-    vault.notes.get('projects/p/queue-archive/_lead.md').body,
-    'Closed.\n\n## 2026-08-20\n\n**Entry.** Prose.\n'
-  );
-  assert.deepEqual(vault.notes.get('projects/p/queue-archive/_about.md').frontmatter, {
-    title: 'Carried',
-    tags: ['t'],
-    trackers: ['x'],
-    stalls: 'file',
-    type: 'meta',
-    status: 'active'
-  });
-  assert.deepEqual(
-    vault.moved.map(m => m.from),
-    ['projects/p/queue.md', 'projects/p/queue-archive.md']
-  );
-  assert.equal(vault.old['projects/p/queue.md'].frontmatter.status, 'superseded');
-  assert.equal(vault.old['projects/p/queue-archive.md'].frontmatter.status, 'superseded');
-});
-
-test('convert gives a project with no archive note its folder note all the same', async () => {
-  const vault = fakeVault({
-    queue: '- **One.** Text.\n',
-    open: [{title: 'One.', section: 'backlog', source_line: 1, body: 'Text.', blocked_by: []}]
-  });
-  const result = await convertQueue('p', {}, vault.call);
-  assert.equal(result.archivedTo, null);
-  assert.equal(vault.notes.get('projects/p/queue-archive/_about.md').frontmatter.tags[1], 'queue');
-});
-
-test('convert runs again over its own folder note where no archive note ever was', async () => {
-  const vault = fakeVault({
-    queue: '- **One.** Text.\n',
-    open: [{title: 'One.', section: 'backlog', source_line: 1, body: 'Text.', blocked_by: []}]
-  });
-  vault.notes.set('projects/p/queue-archive/_about.md', {
-    frontmatter: {},
-    body: 'From a first run.\n'
-  });
-  const result = await convertQueue('p', {}, vault.call);
-  assert.equal(result.archivedTo, null);
-  assert.equal(vault.notes.get('projects/p/queue-archive/_about.md').frontmatter.tags[1], 'queue');
-});
-
-test('convert refuses to lose text the parse and the lead do not hold', async () => {
-  const vault = fakeVault({
-    queue: '- **One.** Text.\n',
-    open: [{title: 'One.', section: 'backlog', source_line: 1, body: '', blocked_by: []}]
-  });
-  await assert.rejects(convertQueue('p', {}, vault.call), /would lose 1 words: Text/);
-  assert.equal(vault.notes.size, 0, 'nothing written');
-});
 
 test('archive closes an item last in queue-archive/', async () => {
   const vault = fakeVault({queue: '', open: []});
@@ -387,7 +193,7 @@ test('the script runs by its path, as the vault skill calls it', () => {
   assert.ok(statSync(new URL('./queue-items.mjs', import.meta.url)).mode & 0o100);
 });
 
-test('fleet lists every project, of either shape, in the order the convention gives', async () => {
+test('fleet lists the projects kept as item notes, in the order the convention gives', async () => {
   const item = (title, section, priority, sequence_key) => ({
     path: `projects/new/queue/${title}.md`,
     record_id: title,
@@ -423,17 +229,13 @@ test('fleet lists every project, of either shape, in the order the convention gi
         ]
       });
     }
-    assert.equal(url, '/queue/projects/old');
-    return Response.json({
-      items: [{title: 'old one', section: 'backlog', priority: 0, source: null, blocked_by: []}]
-    });
+    assert.fail(`unexpected call ${url}`);
   };
   const titles = items => items.map(i => `${i.project} ${i.title}`);
   assert.deepEqual(titles(await listFleet({}, call)), [
     'new new to triage',
     'new now',
     'new boosted',
-    'old old one',
     'new demoted',
     'new waits'
   ]);
@@ -481,7 +283,7 @@ test('list reads in the same order after items move', async () => {
   );
 });
 
-test('file starts a queue for a project with none, and refuses one still kept as one note', async () => {
+test('file starts a queue for a project with none, and refuses a real queue.md', async () => {
   const vault = fakeVault({queue: '', open: []});
   let answer = null;
   const call = async (method, url, options) =>
@@ -497,8 +299,8 @@ test('file starts a queue for a project with none, and refuses one still kept as
   );
   answer = 'projects/p/queue/_about.md';
   await fileItem('p', {title: 'Second.', body: 'Text.'}, call);
-  assert.ok(vault.notes.has('projects/p/queue/second.md'), 'a converted queue takes it');
+  assert.ok(vault.notes.has('projects/p/queue/second.md'), 'the folder takes it');
   answer = 'projects/p/queue.md';
-  await assert.rejects(fileItem('p', {title: 'Third.', body: 'Text.'}, call), /convert/);
+  await assert.rejects(fileItem('p', {title: 'Third.', body: 'Text.'}, call), /one note/);
   assert.ok(!vault.notes.has('projects/p/queue/third.md'), 'nothing written');
 });

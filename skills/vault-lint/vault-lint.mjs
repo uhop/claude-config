@@ -7,9 +7,8 @@
 // Data source is vault-storage's /sections (bulk records incl. body), reached
 // through `vault-curl` — same auth path as every other vault skill. The only
 // required FM key not on /sections is `tags` (separate membership table); it is
-// out of scope for v1 (documented in SKILL.md). QUEUE reads the server's
-// `/queue/lint` (the canonical rules, vault-storage D25) and runs the copy in
-// ./queue-lint.mjs only against a server that predates the route.
+// out of scope for v1 (documented in SKILL.md). QUEUE reads each queue's item notes
+// through the frontmatter query.
 //
 // Usage:
 //   vault-lint.mjs                  full report
@@ -19,7 +18,8 @@
 //   vault-lint.mjs --no-fetch       skip the per-note raw fetch that confirms density (faster, may over-flag)
 
 import {execFileSync} from 'node:child_process';
-import {parseQueue, itemCount, queueFindings, countMismatch} from './queue-lint.mjs';
+import {SECTIONS} from '../vault/queue-items.mjs';
+import {markerFindings} from './queue-lint.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -387,35 +387,59 @@ if (want('duplicates')) {
       }
 }
 
-// Queue hygiene: the server's `queue_hygiene` rules are canonical (vault-storage
-// D25) and `GET /queue/lint` is their uncapped list. ./queue-lint.mjs is the same
-// rules for a server that predates the route (its JSON error carries no
-// `items`), and the fixture its test pins.
+// Queue hygiene: what the skill's script cannot read, and what a list cannot tell. A note in a queue's
+// folder with no section is skipped by the brief and by `list`'s sections, as a hand-written one would
+// be; a real queue.md beside the shape takes the path from the folder; and an item whose title says
+// its work is finished stays open to every list until it is archived.
 if (want('queue')) {
-  let served = null;
-  try {
-    const r = api('/queue/lint');
-    if (Array.isArray(r.items)) served = r.items;
-  } catch {}
-  if (served) for (const f of served) Q.push({path: f.file_path, detail: f.finding});
-  const QUEUE_RE = /^projects\/([^/]+)\/queue\.md$/;
-  for (const r of served ? [] : active) {
-    const m = QUEUE_RE.exec(r.file_path);
-    if (!m) continue;
-    const parsed = parseQueue(r.body == null ? '' : String(r.body));
-    for (const detail of queueFindings(parsed)) Q.push({path: r.file_path, detail});
-    let served = null;
-    try {
-      served = api(`/queue/projects/${encodeURIComponent(m[1])}`).count;
-    } catch {
+  const QUEUE_NOTE_RE = /^projects\/[^/]+\/queue\.md$/;
+  const ABOUT_RE = /^(projects\/[^/]+\/queue)\/_about\.md$/;
+  const ITEM_RE = /\/_(?:about|lead)\.md$/;
+  const query = body =>
+    JSON.parse(
+      execFileSync(
+        'vault-curl',
+        [
+          '/notes/query',
+          '-s',
+          '-X',
+          'POST',
+          '-H',
+          'Content-Type: application/json',
+          '--data-binary',
+          JSON.stringify(body)
+        ],
+        {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024}
+      )
+    );
+  for (const r of active) {
+    if (QUEUE_NOTE_RE.test(r.file_path)) {
       Q.push({
         path: r.file_path,
-        detail: 'queue slice unreadable (/queue/projects/<name> failed) — count not compared'
+        detail: 'a real queue.md: `queue-items.mjs` and the brief do not read it'
       });
+      continue;
     }
-    if (typeof served === 'number') {
-      const mismatch = countMismatch(itemCount(parsed), served);
-      if (mismatch) Q.push({path: r.file_path, detail: mismatch});
+    const folder = ABOUT_RE.exec(r.file_path)?.[1];
+    if (!folder) continue;
+    for (let offset = 0; ; offset += 500) {
+      const {items} = query({folder, limit: 500, offset});
+      for (const n of items) {
+        if (ITEM_RE.test(n.path)) continue;
+        if (!SECTIONS.includes(n.frontmatter.section)) {
+          Q.push({
+            path: n.path,
+            detail: `section "${n.frontmatter.section ?? ''}" is none of ${SECTIONS.join(', ')}`
+          });
+        }
+        if (n.frontmatter.type !== 'queue-item') {
+          Q.push({path: n.path, detail: `type "${n.frontmatter.type ?? ''}" is not queue-item`});
+        }
+        for (const detail of markerFindings([String(n.frontmatter.title ?? '')])) {
+          Q.push({path: n.path, detail});
+        }
+      }
+      if (items.length < 500) break;
     }
   }
 }

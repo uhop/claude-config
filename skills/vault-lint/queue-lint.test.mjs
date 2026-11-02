@@ -1,241 +1,63 @@
-// Pins the QUEUE category's rules against the shapes the 2026-08-17 fleet
-// audit found and the 2026-09-06 calibration kept. Since 2026-09-07 the rules
-// are read from the server (`GET /queue/lint`, vault-storage D25) and this copy
-// is the fallback for an older server; the same fixture pins the port in
-// vault-storage's tests/test-queue-lint.ts. Run: node --test skills/vault-lint/
+// queue-lint.mjs's rule, pinned on the titles it was calibrated on. Run:
+// node --test skills/vault-lint/queue-lint.test.mjs
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {completionMarker, markerFindings} from './queue-lint.mjs';
 
-import {
-  parseQueue,
-  itemCount,
-  completionMarker,
-  queueFindings,
-  countMismatch
-} from './queue-lint.mjs';
-
-const QUEUE = `Intro paragraph mentioning \`## Done\` in code.
-
-- **Stray item above the schema.** Dropped by the parser.
-
-## Design constraints
-
-- **Not work.** Rationale lives here by convention.
-
-## Active
-
-- [x] **Checked item — _implemented 2026-08-18, unreleased._** Done but never moved.
-- **Phase 8 — MERGE SHIPPED 2026-07-29: all executed.** Real run.
-
-## Backlog
-
-### Priority +1
-
-- **Remove the deprecated \`utils\` re-exports — next major.** Delegation **SHIPPED** 2026-06-07; only the removal remains.
-- **Fix the flaky test.** Filed 2026-08-01; fixed the harness, not the test.
-- **Goedecke read — filed and closed 2026-08-16.** Moved to the archive already.
-- [ ] Peer-dep bump: wait for parent 3.3.0.
-- \`src/index.js\` — default \`keyFromPath\` change.
-  - indented detail is not an item
-- **Item whose \`code\` title survives.** With a \`span\`.
-
-\`\`\`markdown
-## Done
-
-- **Fenced example.** Not a section.
-\`\`\`
-
-## Done
-
-- **Shipped thing.** Left under an invented heading.
-- [x] checked but unbolded
-
-## See also
-
-- [[projects/x/decisions]]
-
-## Watching
-
-- **~~Locate the proposal~~ — CLOSED 2026-07-21.** Nothing to find.
-- **Upstream release.** Waiting.
-`;
-
-test('sections, items and the preamble parse the way queue_items counts them', () => {
-  const parsed = parseQueue(QUEUE);
-  assert.deepEqual(
-    parsed.sections.map(s => [s.heading, s.known, s.prose, s.items.length]),
-    [
-      ['Design constraints', false, true, 1],
-      ['Active', true, false, 2],
-      ['Backlog', true, false, 6],
-      ['Done', false, false, 2],
-      ['See also', false, true, 1],
-      ['Watching', true, false, 2]
-    ]
-  );
-  assert.equal(parsed.preamble.items.length, 1);
-  assert.equal(itemCount(parsed), 10);
-  const code = parsed.sections[2].items[5];
-  assert.equal(code.title, 'Item whose `code` title survives.');
-});
-
-test('completion markers: shouted or dated in the title, checked box, never the description', () => {
-  const backlog = parseQueue(QUEUE).sections[2].items;
+test('completion markers: shouted or dated in the title', () => {
+  assert.equal(completionMarker('Phase 8 — MERGE SHIPPED 2026-07-29: all executed.'), 'SHIPPED');
   assert.equal(
-    completionMarker(backlog[0]),
-    null,
-    'SHIPPED in the description is progress, not closure'
+    completionMarker('Goedecke read — filed and closed 2026-08-16.'),
+    'closed 2026-08-16'
   );
-  assert.equal(completionMarker(backlog[1]), null, 'a plain "fixed" with no date is prose');
-  assert.equal(completionMarker(backlog[2]), 'closed 2026-08-16');
-  const active = parseQueue(QUEUE).sections[1].items;
-  assert.equal(completionMarker(active[0]), '[x]');
-  assert.equal(completionMarker(active[1]), 'SHIPPED');
-  assert.equal(
-    completionMarker({checkbox: null, title: 'Emit `DONE` events.', first: ''}),
-    null,
-    'code spans are stripped'
-  );
+  assert.equal(completionMarker('Fix the flaky test.'), null);
+  assert.equal(completionMarker('Fixed the flaky test, again.'), null, 'a plain one needs a date');
+  assert.equal(completionMarker('Emit `DONE` events.'), null, 'code spans are stripped');
 });
 
 // The 2026-09-29 false positive and the fleet titles the narrowed rule was measured on.
 test('a plain marker before the word it modifies is an adjective, not a marker', () => {
-  const marker = title => completionMarker({checkbox: null, title, first: ''});
   assert.equal(
-    marker('Report stored frontmatter values outside a closed enum (2026-09-29).'),
+    completionMarker('Report stored frontmatter values outside a closed enum (2026-09-29).'),
     null
   );
-  assert.equal(marker('Unlinked mentions of published posts — ruled 2026-09-15.'), null);
-  assert.equal(marker('A fixed-width column for the pager (2026-09-27).'), null);
-  assert.equal(marker('Filed 2026-09-29: closed enums go unreported.'), null);
-  assert.equal(marker('Staging trees ingested — fixed on 2026-07-28.'), 'fixed on 2026-07-28');
-  assert.equal(marker('v0.1.0 published to npm 2026-04-20.'), 'published to npm 2026-04-20');
-  assert.equal(marker('1.2.2 release shipped (2026-05-07).'), 'shipped (2026-05-07');
-  assert.equal(marker('Audit follow-ups (2026-08-10) — shipped'), '2026-08-10) — shipped');
-  assert.equal(marker('Both 2026-06-20 gaps shipped.'), '2026-06-20 gaps shipped');
+  assert.equal(completionMarker('Unlinked mentions of published posts — ruled 2026-09-15.'), null);
+  assert.equal(completionMarker('A fixed-width column for the pager (2026-09-27).'), null);
+  assert.equal(completionMarker('Filed 2026-09-29: closed enums go unreported.'), null);
+  assert.equal(
+    completionMarker('Staging trees ingested — fixed on 2026-07-28.'),
+    'fixed on 2026-07-28'
+  );
+  assert.equal(
+    completionMarker('v0.1.0 published to npm 2026-04-20.'),
+    'published to npm 2026-04-20'
+  );
+  assert.equal(completionMarker('1.2.2 release shipped (2026-05-07).'), 'shipped (2026-05-07');
+  assert.equal(
+    completionMarker('Audit follow-ups (2026-08-10) — shipped'),
+    '2026-08-10) — shipped'
+  );
+  assert.equal(completionMarker('Both 2026-06-20 gaps shipped.'), '2026-06-20 gaps shipped');
+  assert.equal(completionMarker('Staging fixed 2026-07-29.'), 'fixed 2026-07-29');
 });
 
-test('findings: the invented heading, the preamble, the markers, the unbolded bullets', () => {
-  const out = queueFindings(parseQueue(QUEUE));
-  const has = re =>
-    assert.ok(
-      out.some(d => re.test(d)),
-      `missing ${re}\n${out.join('\n')}`
-    );
-  has(/^1 item above the first schema H2/);
-  has(/^## Done: 2 items under a non-schema H2/);
-  has(/^Active "Checked item — _implemented 2026-08-18, unreleased._": completion marker '\[x\]'/);
-  has(/^Active "Phase 8 — MERGE SHIPPED 2026-07-29: all executed.": completion marker 'SHIPPED'/);
-  has(
-    /^Backlog "Goedecke read — filed and closed 2026-08-16.": completion marker 'closed 2026-08-16'/
+// Filed 2026-10-31 from the resume's lint: a modifier that starts with a sign or a count.
+test('a plain marker before a signed or counted modifier is an adjective too', () => {
+  assert.equal(
+    completionMarker('Local days: `tz_offset_hours` is a fixed −5 (filed 2026-10-31)'),
+    null
   );
-  has(/^Watching "~~Locate the proposal~~ — CLOSED 2026-07-21.": completion marker 'CLOSED'/);
-  has(/^Backlog: 2 unbolded column-0 bullets counted as items, first "Peer-dep bump/);
-  assert.ok(!out.some(d => /Design constraints|See also|Fenced example/.test(d)), out.join('\n'));
-  assert.ok(!out.some(d => /Remove the deprecated|Fix the flaky/.test(d)), out.join('\n'));
-  assert.equal(out.length, 7, out.join('\n'));
-});
-
-test('a heading glued to the previous line is reported, not treated as a section', () => {
-  const parsed = parseQueue(
-    '## Active\n\n- **A.** then archive this item.## Backlog\n\n- **B.** open\n'
-  );
-  assert.equal(parsed.sections.length, 1);
-  assert.equal(itemCount(parsed), 2);
-  const out = queueFindings(parsed);
-  assert.equal(out.length, 1);
-  assert.match(
-    out[0],
-    /^line 3: heading glued to prose — "- \*\*A\.\*\* then archive this item\.## Backlog"/
+  assert.equal(completionMarker('A fixed 30-second cap (filed 2026-10-31)'), null);
+  assert.equal(
+    completionMarker('Release shipped 1.2.0 (2026-05-07).'),
+    'shipped 1.2.0 (2026-05-07'
   );
 });
 
-test('a clean queue has no findings and an exact count', () => {
-  const parsed = parseQueue(
-    '## Active\n\n(empty)\n\n## Backlog\n\n- **One.** Open.\n\n## Watching\n\n(empty)\n'
-  );
-  assert.deepEqual(queueFindings(parsed), []);
-  assert.equal(itemCount(parsed), 1);
-  assert.equal(countMismatch(1, 1), null);
-  assert.match(countMismatch(1, 0), /^queue_items holds 0 items, the markdown 1 column-0 bullet/);
-  assert.match(countMismatch(2, 5), /^queue_items holds 5 items, the markdown 2 column-0 bullets/);
-});
-
-// The 2026-09-16 rules, pinned against the server's tests/test-queue-lint.ts fixture:
-// blog's bold-led Active paragraphs and node-re2's embellished placeholder under a filed item.
-const PARAGRAPHS = `Intro paragraph.
-
-## Active
-
-(empty — last shipped 1.26.1 on 2026-07-21: the release notes carry the rest.)
-
-- **Review item filed into the embellished section.** Body.
-
-## Backlog
-
-**_Series hub_ — traffic follow-up, open.** A bold-led paragraph, not a bullet.
-
-- **Real item.** With a body.
-
-Plain prose under the item, at column 0, is not a finding.
-
-**Amended 2026-09-16 — still open.** A bold-led amendment below an item is that item's prose.
-
-\`\`\`
-**Fenced bold.** Not a paragraph.
-(empty — fenced)
-\`\`\`
-
-## Watching
-
-(empty)
-`;
-
-test('bold-led paragraphs, and placeholders that are not the bare (empty) or sit beside an item', () => {
-  const parsed = parseQueue(PARAGRAPHS);
-  const out = queueFindings(parsed);
-  const has = re =>
-    assert.ok(
-      out.some(d => re.test(d)),
-      `missing ${re}\n${out.join('\n')}`
-    );
-  has(/^Active: placeholder is not the bare "\(empty\)" — "\(empty — last shipped 1\.26\.1/);
-  has(/^Active: 1 item and an "\(empty…\)" placeholder together/);
-  has(/^Backlog: 1 bold-led paragraph with no item above it — .* first "\*\*_Series hub_/);
-  assert.ok(
-    !out.some(d => /Watching|Plain prose|Real item|Amended|Fenced|fenced/.test(d)),
-    out.join('\n')
-  );
-  assert.equal(out.length, 3, out.join('\n'));
-  assert.equal(itemCount(parsed), 2, 'the bold-led paragraph is not an item; the bullets are');
-});
-
-test('a paragraph starts after a heading, and a second column-0 line does not start one', () => {
-  const underHeading = parseQueue(
-    '## Active\n(empty — glued under the heading)\n\n## Backlog\n\n- **B.** y\n'
-  );
-  assert.equal(underHeading.sections[0].paragraphs.length, 1);
-  assert.ok(queueFindings(underHeading).some(d => /^Active: placeholder is not the bare/.test(d)));
-  const twoLines = parseQueue(
-    '## Backlog\n\n**Two-line bold-led.** first line\nsecond line at column 0\n\n- **B.** y\n'
-  );
-  assert.equal(twoLines.sections[0].paragraphs.length, 1);
-  assert.equal(queueFindings(twoLines).filter(d => /bold-led paragraph/.test(d)).length, 1);
-});
-
-test('a schema section with nothing in it is reported; a subsection, a fence, or a prose H2 is not', () => {
-  const out = queueFindings(
-    parseQueue(
-      '## Active\n\n## Backlog\n\n### P1\n\n## See also\n\n## Watching\n\n```\nfenced\n```\n\n## backlog\n'
-    )
-  );
-  assert.deepEqual(
-    out,
-    [
-      'Active: no item and no placeholder — write the bare "(empty)"',
-      'backlog: no item and no placeholder — write the bare "(empty)"'
-    ],
-    out.join('\n')
-  );
+test('markerFindings says which title, and says nothing of a clean one', () => {
+  assert.deepEqual(markerFindings(['Fix the flaky test.', 'Release SHIPPED.']), [
+    '"Release SHIPPED.": completion marker \'SHIPPED\' on an open item; archive it'
+  ]);
+  assert.deepEqual(markerFindings([]), []);
 });

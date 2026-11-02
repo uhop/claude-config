@@ -88,67 +88,16 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
   plus near-duplicate note titles within one folder (dated series and
   log/state/queue-item/meta notes excluded). Heuristic — flagged for human
   review, not auto-merged.
-- **QUEUE** — the mechanics of `topics/project-queue-convention` that nothing
-  ran before 2026-09-06, over every `projects/*/queue.md`. The rules run
-  server-side as `/system/lint`'s `queue_hygiene` (`src/queue/lint.ts` in
-  vault-storage, identical on all 53 queues at the port), the SessionStart
-  brief prints a project's findings, and the server copy is canonical
-  (vault-storage D25) — a rule change lands there first. The harness reads
-  the full list from `GET /queue/lint` (server ≥ 2026-09-07; `/system/lint`
-  caps samples at ten) and falls back to its own copy in `queue-lint.mjs`
-  (pinned by `queue-lint.test.mjs`) only when the server predates the
-  route.
-  - *Non-schema H2*: only `## Active` / `## Backlog` / `## Watching` parse, so
-    an invented heading (`## Done`, `## Follow-ups`) holding work-shaped
-    bullets — bold-titled or checkboxed — drops them from every queue view.
-    The sanctioned prose sections (`See also`, `Scope guardrails`,
-    `Deferred…`, `Design constraints`, `Tooling notes`) are exempt whatever
-    they hold; a plain `- See [[…]]` pointer under any heading is not work.
-    Work-shaped bullets above the first schema H2 flag the same way.
-  - *Completion marker in a title*: a checked `[x]`, a shouted `SHIPPED` /
-    `DONE` / `COMPLETE(D)` / `CLOSED` / `FIXED` / `PUBLISHED`, or a plain one
-    of those within 24 characters of a date. **Titles only.** The description
-    is where house style narrates partial progress (`deprecation **SHIPPED**
-    2026-06-07; only the removal remains`), and the calibration run found
-    both description hits false and all six title hits real. A plain marker
-    before the word it modifies is an adjective and is not a finding: "a
-    closed enum (2026-09-29)" stays open, while a connector (`on`, `in`,
-    `to`) may follow the marker, as in "published to npm 2026-04-20"
-    (vault-storage D98, 2026-09-29, measured on the fleet's open and
-    archived titles).
-  - *Unbolded column-0 bullets* in a schema section: the parser counts every
-    column-0 `-`/`*` bullet as an item, so an unbolded one is an item with no
-    key and a column-0 sub-bullet is a stray item, not detail.
-  - *Bold-led paragraph nothing owns* (2026-09-16): `**Title.** text` at
-    column 0 with no item above it in a schema section is prose the parser
-    drops and the item ops cannot find (409 `item_assert_failed`); below an
-    item the same paragraph is that item's prose and is not a finding. Start
-    the line with `- `.
-  - *Placeholder that is not the bare `(empty)`* (2026-09-16): an
-    `(empty — last shipped …)` paragraph is prose that belongs in
-    queue-archive; write the bare form. The server's insert-item op replaces
-    either shape (server ≥ 2026-09-16).
-  - *Item beside a placeholder* (2026-09-16): a schema section holding both a
-    bullet and an `(empty…)` paragraph — remove the placeholder.
-  - *Empty schema section* (2026-09-17): nothing but blank lines under the
-    heading — no item, no placeholder, no prose, subsection, or fence. Write
-    the bare `(empty)`. The server's remove-item and move-item ops write it
-    themselves when they empty a section (server ≥ 2026-09-17); the fleet
-    sweep that day found twelve such sections in eight queues.
-  - *Glued heading*: `…item.## Backlog` is a paragraph, and everything below
-    it lands in the previous section.
-  - *Served count*: the `queue_items` slice against the markdown's column-0
-    bullets in schema sections, compared server-side (the fallback asks
-    `GET /queue/projects/{name}`). They must agree exactly — the linter
-    counts what the parser counts — so any difference is a stale slice or
-    parser drift: `vault_queue_reindex`, then re-lint.
-
-  Calibrated 2026-09-06 on all 53 queues: 19 findings (six title markers,
-  seven `[x]` items under one project's Active, six groups of unbolded
-  bullets), 0 count mismatches once the count rule matched the parser's (7
-  before, every one an unbolded bullet). Report-only like the rest: the
-  archival move stays judgment (condensed-duplicate check, close-date
-  grouping — the convention's § Archiving mechanics).
+- **QUEUE** — what `queue-items.mjs` cannot read, and what a list cannot tell: a
+  note in a project's `queue/` with no known `section` or with a `type` other than
+  `queue-item`, as a hand-written one would be, since the brief and `list`'s
+  sections skip it; a real `queue.md` beside the shape, which takes the path from
+  the folder; and an open item whose title carries a completion marker, a word
+  saying its work is finished ("SHIPPED", or "fixed" beside a date), which stays
+  open to every list until it is archived. `queue-lint.mjs` holds that rule, which
+  the session-start brief asks too. The format is the vault skill's (§ A queue
+  kept one item to a note), and the server knows nothing of it (vault-storage
+  11d-2). One frontmatter query per queue.
 
 ## v1 scope & limitations
 
@@ -170,11 +119,8 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
   sentence boundary can still slip under the bar — deliberate, since loosening
   either threshold reintroduced dozens of false positives. It also cannot see
   a collapse that merged only two paragraphs of a long healthy note.
-- **QUEUE reads `queue.md` only**, not `queue-archive.md`, and reads markers
-  from titles, never descriptions (measured: the description rule was all
-  false positives). A bold title left unclosed (`**Title` with no closing
-  `**`) reads as an unbolded bullet; the finding shows the text, so it is
-  recognizable.
+- **QUEUE's marker rule reads titles, never bodies** (measured: the body rule was
+  all false positives).
 - **Report-only** — no auto-fix, despite the policy listing some
   auto-fixable classes. Fixing is a deliberate follow-up action (FM backfill,
   link rewrite, archival move), not a side effect of linting.

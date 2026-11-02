@@ -38,15 +38,23 @@ resp=$(curl -s --connect-timeout 1 --max-time 2 -w '\n%{http_code}' \
   -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$url") || exit 0
 code=${resp##*$'\n'}
 resp=${resp%$'\n'*}
-# A queue kept one item to a note reads as empty to the server's queue code, so the brief's counts
-# come from the frontmatter query for it (vault-storage 11d-1).
+# A queue is one note per item, and the server knows nothing of it, so the brief's counts come from
+# the frontmatter query (vault-storage 11d-1, 11d-2). An older server's own block stands.
 if [[ $code == 200 && $project =~ ^[a-z0-9][a-z0-9.-]*$ ]] \
-  && jq -e '.project.queue | (.active | length) == 0 and .backlog == 0' <<<"$resp" >/dev/null 2>&1; then
+  && jq -e '(.project.queue.active // [] | length) == 0 and (.project.queue.backlog // 0) == 0' <<<"$resp" >/dev/null 2>&1; then
   items=$(curl -s --connect-timeout 1 --max-time 2 -X POST \
     -H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json' \
     -d "{\"folder\":\"projects/$project/queue\",\"sort\":\"sequence_key\",\"limit\":500}" \
     "$PROGRAM_CLERK_URL/notes/query") || items=''
-  merged=$(jq --argjson q "${items:-null}" '
+  # A title that says its work is finished: the rule's one home is queue-lint.mjs.
+  findings='[]'
+  lint="$HOME/.claude/skills/vault-lint/queue-lint.mjs"
+  if [[ -f $lint ]]; then
+    findings=$(jq -c '[.items // [] | .[].frontmatter | select(.section != null) | .title]' <<<"${items:-null}" 2>/dev/null \
+      | node "$lint" 2>/dev/null) || findings='[]'
+    [[ -n $findings ]] || findings='[]'
+  fi
+  merged=$(jq --argjson q "${items:-null}" --argjson findings "$findings" '
     ($q.items // [] | map(.frontmatter | select(.section != null))) as $f
     | if ($f | length) == 0 then . else
         ($f | map(select(.section == "backlog"))) as $b
@@ -57,9 +65,18 @@ if [[ $code == 200 && $project =~ ^[a-z0-9][a-z0-9.-]*$ ]] \
             inbox: ($f | map(select(.section == "inbox")) | length),
             backlog: ($b | length),
             ready: (($b | length) - $blocked),
-            blocked: $blocked
+            blocked: $blocked,
+            hygiene: $findings
           }
       end' <<<"$resp" 2>/dev/null) && resp=$merged
+fi
+# agent-workflow's Active items, which the server no longer reads (vault-storage 11d-2).
+if [[ $code == 200 ]] && [[ $(jq -r '.workflow.active // false' <<<"$resp" 2>/dev/null) == false ]]; then
+  active=$(curl -s --connect-timeout 1 --max-time 2 -X POST \
+    -H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json' \
+    -d '{"folder":"projects/agent-workflow/queue","match":{"section":"active"},"limit":1}' \
+    "$PROGRAM_CLERK_URL/notes/query" | jq -r '.total // 0' 2>/dev/null)
+  [[ ${active:-0} -gt 0 ]] && merged=$(jq '.workflow.active = true' <<<"$resp" 2>/dev/null) && resp=$merged
 fi
 # A refused key is the one failure the session must hear of: the day it expires, the hooks go quiet (D210).
 if [[ $code == 401 ]]; then
@@ -129,7 +146,7 @@ jq -r '
               else "" end)) | join(" | "))
         else null end),
         (if (.queue.inbox // 0) > 0 then "\(.queue.inbox) in the inbox to triage" else null end),
-        "\(.queue.ready)/\(.queue.backlog) backlog ready",
+        (if .queue.backlog != null then "\(.queue.ready)/\(.queue.backlog) backlog ready" else null end),
         (if .queue.blocked > 0 then "\(.queue.blocked) blocked" else null end),
         ((.queue.hygiene // []) | if length > 0 then "queue hygiene \(length): \(.[0])" else null end),
         (if .feedback then "feedback.md updated \(.feedback.updated)" else null end),

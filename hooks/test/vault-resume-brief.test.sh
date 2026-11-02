@@ -110,6 +110,46 @@ out=$(jq -r "$prog" <<<"$owed" 2>&1)
 [[ "$out" == *"[vault] p: 0/0 backlog ready; 2 of its handoffs returned for rework"* ]] && ok ||
   bad "the filer's project line counts its returned handoffs (out=$out)"
 
+# A server with no queue block says nothing of a queue on its own: no `null/null`.
+noqueue='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p"}}'
+out=$(jq -r "$prog" <<<"$noqueue" 2>&1)
+[[ "$out" != *"null"* && "$out" != *"backlog ready"* ]] && ok || bad "no queue block: no queue clause (out=$out)"
+
+# A queue kept one item to a note: the counts come from the frontmatter query, and the notes with no
+# section, a folder's own, are left out (vault-storage 11d-1, 11d-2).
+port_file=$(mktemp)
+node -e '
+const items = [
+  {frontmatter: {title: "About."}},
+  {frontmatter: {title: "A.", section: "active", source: "github uhop/p#1"}},
+  {frontmatter: {title: "B.", section: "backlog"}},
+  {frontmatter: {title: "C.", section: "backlog", blocked_by: ["A."]}},
+  {frontmatter: {title: "D.", section: "inbox"}},
+  {frontmatter: {title: "E.", section: "watching"}},
+  {frontmatter: {title: "F SHIPPED 2026-07-29.", section: "backlog"}}
+];
+const s = require("http").createServer((q, r) => {
+  r.writeHead(200, {"content-type": "application/json"});
+  r.end(JSON.stringify(q.url.startsWith("/notes/query") ? {items, total: items.length} : {
+    lint: {ok: true, total_issues: 0}, suggestions_pending: 0,
+    workflow: {active: false, clarify_pending: 0}, latest_log: null, project: {name: "p"}
+  }));
+}).listen(0, "127.0.0.1", () => require("fs").writeFileSync(process.argv[1], String(s.address().port)));
+' "$port_file" &
+srv=$!
+for _ in $(seq 50); do [[ -s $port_file ]] && break; sleep 0.1; done
+fake="http://127.0.0.1:$(cat "$port_file")"
+repo=$(mktemp -d)
+mkdir "$repo/p" && git -C "$repo/p" init -q
+out=$(cd "$repo/p" && env PROGRAM_CLERK_URL="$fake" PROGRAM_CLERK_KEY=pck VAULT_API_URL="$fake" VAULT_API_TOKEN=pck bash "$HOOK" 2>/dev/null); rc=$?
+kill "$srv" 2>/dev/null; rm -f "$port_file"; rm -rf "$repo"
+[[ $rc -eq 0 && "$out" == *"[vault] p: ACTIVE: A. (github uhop/p#1); 1 in the inbox to triage; 2/3 backlog ready; 1 blocked"* ]] && ok ||
+  bad "item notes: the brief counts them (rc=$rc out=$out)"
+[[ "$out" == *"queue hygiene 1: \"F SHIPPED 2026-07-29.\": completion marker 'SHIPPED'"* ]] && ok ||
+  bad "item notes: a finished title is said at session start (out=$out)"
+[[ "$out" == *"agent-workflow Active non-empty"* ]] && ok ||
+  bad "agent-workflow's Active comes from its item notes (out=$out)"
+
 # A key the server refuses (401) is said, never silent: the day it expires, or a recall (D210).
 port_file=$(mktemp)
 node -e 'const s=require("http").createServer((q,r)=>{r.writeHead(401,{"content-type":"application/json"});r.end("{}")}).listen(0,"127.0.0.1",()=>require("fs").writeFileSync(process.argv[1],String(s.address().port)))' "$port_file" &
