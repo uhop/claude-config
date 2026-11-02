@@ -179,7 +179,7 @@ const measure = async () => {
     console.log(JSON.stringify({over}, null, 1));
     return;
   }
-  console.log(`${over.length} notes past their size bound`);
+  console.log(`${over.length} note${over.length === 1 ? '' : 's'} past the size bound`);
   for (const o of over) {
     const price = o.tokens ? `; curating: ~${(o.tokens / 1e6).toFixed(1)}M tokens` : '';
     console.log(
