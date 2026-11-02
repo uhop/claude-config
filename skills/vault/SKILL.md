@@ -97,10 +97,12 @@ project has `projects/<name>/queue/<slug>.md` per open item, with `section`
 (`inbox`, `active`, `backlog`, `watching`) and `sequence_key`, and `priority`,
 `source`, and `blocked_by` when set; closed items are under `queue/archive/`,
 `status: archived`, with `closed_at` and `close_reason`. Its `queue.md` is the
-folder's composed path, and the folder's `_about.md` holds `trackers:`. The
-server's item tools and `vault_queue_*` do not see it: the item tools answer a
-409 `composed_view` naming the folder, so a write cannot misfile, and the views
-read empty, so **use the script for either shape**:
+folder's composed path, and the folder's `_about.md` holds `trackers:`. That
+composed text, the resume bundle's `queue` body included, shows each item as a
+heading with no section, so Watching reads like Backlog: `list` says which is
+which. The server's item tools and `vault_queue_*` do not see it: the item
+tools answer a 409 `composed_view` naming the folder, so a write cannot misfile,
+and the views read empty, so **use the script for either shape**:
 
 ```bash
 Q=~/.claude/skills/vault/queue-items.mjs
@@ -1261,8 +1263,9 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      blocks yourself. **A converted queue is invisible to `owed`** (§ A queue
      kept one item to a note): when `projects/<name>/queue/_about.md` exists,
      run `queue-items.mjs owed <name> --since <changes.since.ended>`, act on its
-     `triage` and `place` the same way, and read each `upstream` item's ticket,
-     archiving a closed one.
+     `triage` and `place` the same way, read each `upstream` item's ticket,
+     archiving a closed one, and take the items' sections from
+     `queue-items.mjs list <name>`, since the `queue` body shows none.
      - `log` — a session ended without a wrap. Write its log first, from
        its record's commits and notes, the drift check, the queue and
        decisions as they stand, and, on the host that ran it, the transcript
