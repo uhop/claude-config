@@ -66,6 +66,7 @@ import {execFile, execFileSync} from 'node:child_process';
 import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import {fileItem as fileQueueItem, isConverted} from '../vault/queue-items.mjs';
 import {vaultSettings} from '../vault/vault-settings.mjs';
 
 if (!import.meta.main)
@@ -2094,6 +2095,20 @@ const fileItem = async () => {
     .split('\n')
     .map((line, i) => (i === 0 || !line.trim() ? line : `  ${line}`))
     .join('\n');
+  if (await isConverted(project)) {
+    if (dryRun) {
+      console.log(`DRY RUN — would file "${heading}" as an item note of ${project}`);
+      return;
+    }
+    const filed = await fileQueueItem(project, {
+      title: heading,
+      section: section.toLowerCase(),
+      source: source ?? null,
+      body
+    });
+    console.log(`${filed.path}: item ${filed.replaced ? 'updated in place' : 'filed'}`);
+    return;
+  }
   const itemText = `- **${heading}** ${continuation}${source ? `\n  - source: ${source}` : ''}`;
   const docPath = `projects/${project}/queue.md`;
   const doc = await vaultGet(docPath);

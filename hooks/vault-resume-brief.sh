@@ -38,6 +38,29 @@ resp=$(curl -s --connect-timeout 1 --max-time 2 -w '\n%{http_code}' \
   -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$url") || exit 0
 code=${resp##*$'\n'}
 resp=${resp%$'\n'*}
+# A queue kept one item to a note reads as empty to the server's queue code, so the brief's counts
+# come from the frontmatter query for it (vault-storage 11d-1).
+if [[ $code == 200 && $project =~ ^[a-z0-9][a-z0-9.-]*$ ]] \
+  && jq -e '.project.queue | (.active | length) == 0 and .backlog == 0' <<<"$resp" >/dev/null 2>&1; then
+  items=$(curl -s --connect-timeout 1 --max-time 2 -X POST \
+    -H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json' \
+    -d "{\"folder\":\"projects/$project/queue\",\"sort\":\"sequence_key\",\"limit\":500}" \
+    "$PROGRAM_CLERK_URL/notes/query") || items=''
+  merged=$(jq --argjson q "${items:-null}" '
+    ($q.items // [] | map(.frontmatter | select(.section != null))) as $f
+    | if ($f | length) == 0 then . else
+        ($f | map(select(.section == "backlog"))) as $b
+        | ($b | map(select((.blocked_by // []) | length > 0)) | length) as $blocked
+        | .project.queue += {
+            active: ($f | map(select(.section == "active") | .title)),
+            in_flight: ($f | map(select(.section == "active") | {title, source: (.source // null), upstream: null})),
+            inbox: ($f | map(select(.section == "inbox")) | length),
+            backlog: ($b | length),
+            ready: (($b | length) - $blocked),
+            blocked: $blocked
+          }
+      end' <<<"$resp" 2>/dev/null) && resp=$merged
+fi
 # A refused key is the one failure the session must hear of: the day it expires, the hooks go quiet (D210).
 if [[ $code == 401 ]]; then
   echo "[vault] the vault refused PROGRAM_CLERK_KEY (401): expired or recalled; make a new key on /ui/keys.html (a fresh sign-in)"

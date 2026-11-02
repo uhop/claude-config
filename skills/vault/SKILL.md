@@ -92,6 +92,31 @@ title. An append with no `##` heading is a 409 too, so a one-line record goes
 in as a section of its own. `vault_list_pieces({file_prefix:
 "projects/<name>/decisions/d45-"})` finds an item's path.
 
+**A queue kept one item to a note** (vault-storage 11d-1): a converted
+project has `projects/<name>/queue/<slug>.md` per open item, with `section`
+(`inbox`, `active`, `backlog`, `watching`) and `sequence_key`, and `priority`,
+`source`, and `blocked_by` when set; closed items are under `queue/archive/`,
+`status: archived`, with `closed_at` and `close_reason`. Its `queue.md` is the
+folder's composed path, and the folder's `_about.md` holds `trackers:`. The
+server's item tools and `vault_queue_*` do not see it: the item tools answer a
+409 `composed_view` naming the folder, so a write cannot misfile, and the views
+read empty, so **use the script for either shape**:
+
+```bash
+Q=~/.claude/skills/vault/queue-items.mjs
+"$Q" list <name> [--section backlog] [--json]     # both shapes
+"$Q" file <name> --title T [--section backlog] [--source S] --body-file F   # replaces by title or source
+"$Q" move <name> "<title or slug>" --section active
+"$Q" archive <name> "<title or slug>" --reason shipped --trail "D123, abc1234."
+"$Q" owed <name> --since <the last session's end>
+"$Q" convert <name> [--dry-run]                   # a queue and its archive; safe to run again
+```
+
+On a project not converted yet, `file`, `move`, and `archive` are errors, and
+`vault_insert_item`, `vault_move_item`, and `vault_remove_item` stay right.
+Edit an item's prose with `vault_replace` on its own path, with no `agent`
+patch: an item carries no summary.
+
 **Split by topic** (vault-storage D576): pass `topics` to `vault_split`,
 each `{name, title?, sections}` with `sections` the headings of whole
 `##` sections, so a folder holds a few topic pieces in place of one per
@@ -1233,7 +1258,11 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      tool call takes, and `why` is the evidence. **Act on each entry**, and
      say in the resume what you did with it; an empty list means nothing is
      owed. An older server sends no `owed`: apply the same kinds to the
-     blocks yourself.
+     blocks yourself. **A converted queue is invisible to `owed`** (§ A queue
+     kept one item to a note): when `projects/<name>/queue/_about.md` exists,
+     run `queue-items.mjs owed <name> --since <changes.since.ended>`, act on its
+     `triage` and `place` the same way, and read each `upstream` item's ticket,
+     archiving a closed one.
      - `log` — a session ended without a wrap. Write its log first, from
        its record's commits and notes, the drift check, the queue and
        decisions as they stand, and, on the host that ran it, the transcript
@@ -1569,7 +1598,7 @@ Trackers card shows the declaration without a way to change it (Eugene,
 4. **Write** with `vault_patch_fm({record_id, ops: [{op: "add", path:
    "/trackers", value: {kind, ref, role, create, intake, write}}]})` on the queue's
    record (`vault_list_pieces({file_prefix: "projects/<name>/queue.md"})`
-   gives the id); an object member is accepted (checked 2026-09-29), and
+   gives the id, or `queue/_about.md` for a queue kept one item to a note); an object member is accepted (checked 2026-09-29), and
    `remove` with the same value drops an entry. Never rewrite the note for it.
 5. **Read it back** with `vault_project_trackers` and report the validated
    view; a non-empty `problems` list is a malformed entry, fixed in the same

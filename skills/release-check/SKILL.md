@@ -51,7 +51,7 @@ is one, so that question ratchets upward every time. Reachability is not API.
 to avoid, so check the project's queue rather than assuming:
 
 ```
-vault_queue_by_project({project: "<name>"})
+~/.claude/skills/vault/queue-items.mjs list <name>   # either shape of queue
 ```
 
 - **Active must hold no actionable item.** One that is genuinely blocked or
