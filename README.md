@@ -5,7 +5,7 @@ Personal Claude Code configuration — commands, skills, hooks, settings, and `C
 ## Install
 
 ```bash
-git clone git@github.com:uhop/claude-config.git ~/Open/claude-config
+git clone https://github.com/uhop/claude-config.git ~/Open/claude-config
 cd ~/Open/claude-config
 node install.mjs           # dry-run (default)
 node install.mjs --apply   # symlink files into ~/.claude/
@@ -15,26 +15,70 @@ The installer is idempotent — safe to re-run after `git pull`.
 
 ### On chezmoi-managed machines
 
-If you also use the [dotfiles](https://github.com/uhop/dotfiles) chezmoi repo, install claude-config **before** the first `chezmoi apply`. The dotfiles repo includes a Windsurf-side bridge script that requires `~/.claude/skills/` to exist — installing claude-config first lets it succeed on first apply. (If you do them in the other order, the bridge fails the first time with a clear message; just re-run `chezmoi apply` after this installer.)
+If you also use the [dotfiles](https://github.com/uhop/dotfiles) chezmoi repo, install claude-config
+**before** the first `chezmoi apply`. The dotfiles repo includes a Windsurf-side bridge script that
+requires `~/.claude/skills/` to exist — installing claude-config first lets it succeed on first
+apply. (If you do them in the other order, the bridge fails the first time with a clear message;
+just re-run `chezmoi apply` after this installer.)
 
-Once both are bootstrapped, `playbash-{daily,weekly,clean}` (from dotfiles) will keep this repo refreshed via a `claude-config-update` wrapper that does `git pull --ff-only` + `node install.mjs --apply`.
+Once both are bootstrapped, `playbash-{daily,weekly,clean}` (from dotfiles) will keep this repo
+refreshed via a `claude-config-update` wrapper that does `git pull --ff-only` +
+`node install.mjs --apply`.
 
 ## What gets installed
 
-Top-level `CLAUDE.md`, `settings.json`, and the contents of `commands/`, `skills/`, `hooks/`, and `agents/` are symlinked into `~/.claude/`. Anything else in `~/.claude/` (per-host `settings.local.json`, runtime caches, `plugins/`, `projects/`, `sessions/`, etc.) is left untouched.
+Top-level `CLAUDE.md`, `settings.json`, and the contents of `commands/`, `skills/`, `hooks/`, and
+`agents/` are symlinked into `~/.claude/`. Anything else in `~/.claude/` (per-host
+`settings.local.json`, runtime caches, `plugins/`, `projects/`, `sessions/`, etc.) is left
+untouched.
 
 ### `agents/`
 
-- `vault-sweep.md` — the sub-agent type `/vault sweep` dispatches for its enrichment, tag, edge, and duplicate passes: Sonnet at `medium` effort with `omitClaudeMd`, told not to call the advisor and to report in five lines at most. A `general-purpose` sub-agent inherits the session's `effortLevel` and advisor instead.
+- `vault-sweep.md` — the sub-agent type `/vault sweep` dispatches for its enrichment, tag, edge, and
+  duplicate passes: Sonnet at `medium` effort with `omitClaudeMd`, told not to call the advisor and
+  to report in five lines at most. A `general-purpose` sub-agent inherits the session's
+  `effortLevel` and advisor instead.
 
 ### `hooks/`
 
 `PreToolUse` / `PostToolUse` scripts that gate or react to tool calls. Currently:
 
-- `git-commit-gate.sh` — reinstates the old default-deny for `git commit`, but allows it in projects that opt in by creating `.claude/git-commit-allowed`. Wired in via `settings.json`'s `hooks.PreToolUse`. A free substring pre-filter, then the shared parser (`hooks/lib/shell_segments.py`, the lease gate's) decides whether the verb is executed — heading a segment, inside `$(...)`, in a `bash -c` string, in a heredoc a shell receives — or is data: a heredoc body `cat` receives, a quoted string, a `git log --grep` argument (2026-09-06). With the parser unavailable the substring verdict stands, since this gate defaults to deny. The script's header comment documents the why and the contract; the per-project marker is intended to be committed alongside the project so the opt-in travels with the code.
-- `vault-lease-gate.sh` — enforces the agent-coordination repo lease on `Edit`/`Write`/`NotebookEdit` and on write-shaped `Bash`: resolves the edited file's repo (or, for Bash, every repository the command's write targets name: redirections, `sed -i`, `tee`, `cp`/`mv` destinations, `rm`, `mkdir`, mutating `git` verbs, `prettier --write`, `npm install`, with `cd` tracked and heredoc bodies ignored) to its normalized remote URL, asks vault-storage who holds that lease, and blocks the call when the holder is someone other than this session, pointing at the worktree + handoff path instead. Linked worktrees are never blocked, since they are that path. **Fails open on every unknown** — no vault env, no `jq`/`curl`, unreachable or slow server, non-repo path, unclaimed repo — because the worktree discipline was already collision-safe, so the hook may only redirect work, never deny it on infrastructure trouble. A 10-second per-repo cache keeps an edit burst to one request. Solo sessions with an empty lease registry never notice it. The same script runs as `vault-lease-gate.sh --touch` from `hooks.PostToolUse` on every tool call: it renews the session's own cwd lease (and re-claims it after a lapse) so a session that edits through Bash or works through MCP tools alone stays live; a fresh renew stamp costs a `stat`, and touch mode never blocks or prints. The command reader is `hooks/lib/shell_segments.py`, shared with the commit gate (2026-09-06).
-- `vault-notices.sh` — the hosted vault's notices (vault-storage 7q-4): what still interrupts the service, from `GET /system/notices`, which the front answers. As `vault-notices.sh --session-start` in `hooks.SessionStart` it lists every notice as `[vault] notice:` lines beside the brief; from `hooks.PostToolUse` it asks at most once a minute and puts each notice the session has not seen into the agent's context once, with a reminder to tell the user and start no sweep or long batch inside its window. The ids seen are kept per session under `~/.cache/claude-vault-notices/`, a week long. Sub-agents are skipped. **Fails open**, like the other vault hooks: no env, no `jq`/`curl`, an unreachable server, or one without the route is silence.
+- `git-commit-gate.sh` — reinstates the old default-deny for `git commit`, but allows it in projects
+  that opt in by creating `.claude/git-commit-allowed`. Wired in via `settings.json`'s
+  `hooks.PreToolUse`. A free substring pre-filter, then the shared parser
+  (`hooks/lib/shell_segments.py`, the lease gate's) decides whether the verb is executed — heading a
+  segment, inside `$(...)`, in a `bash -c` string, in a heredoc a shell receives — or is data: a
+  heredoc body `cat` receives, a quoted string, a `git log --grep` argument (2026-09-06). With the
+  parser unavailable the substring verdict stands, since this gate defaults to deny. The script's
+  header comment documents the why and the contract; the per-project marker is intended to be
+  committed alongside the project so the opt-in travels with the code.
+- `vault-lease-gate.sh` — enforces the agent-coordination repo lease on
+  `Edit`/`Write`/`NotebookEdit` and on write-shaped `Bash`: resolves the edited file's repo (or, for
+  Bash, every repository the command's write targets name: redirections, `sed -i`, `tee`, `cp`/`mv`
+  destinations, `rm`, `mkdir`, mutating `git` verbs, `prettier --write`, `npm install`, with `cd`
+  tracked and heredoc bodies ignored) to its normalized remote URL, asks vault-storage who holds
+  that lease, and blocks the call when the holder is someone other than this session, pointing at
+  the worktree + handoff path instead. Linked worktrees are never blocked, since they are that path.
+  **Fails open on every unknown** — no vault env, no `jq`/`curl`, unreachable or slow server,
+  non-repo path, unclaimed repo — because the worktree discipline was already collision-safe, so the
+  hook may only redirect work, never deny it on infrastructure trouble. A 10-second per-repo cache
+  keeps an edit burst to one request. Solo sessions with an empty lease registry never notice it.
+  The same script runs as `vault-lease-gate.sh --touch` from `hooks.PostToolUse` on every tool call:
+  it renews the session's own cwd lease (and re-claims it after a lapse) so a session that edits
+  through Bash or works through MCP tools alone stays live; a fresh renew stamp costs a `stat`, and
+  touch mode never blocks or prints. The command reader is `hooks/lib/shell_segments.py`, shared
+  with the commit gate (2026-09-06).
+- `vault-notices.sh` — the hosted vault's notices (vault-storage 7q-4): what still interrupts the
+  service, from `GET /system/notices`, which the front answers. As
+  `vault-notices.sh --session-start` in `hooks.SessionStart` it lists every notice as
+  `[vault] notice:` lines beside the brief; from `hooks.PostToolUse` it asks at most once a minute
+  and puts each notice the session has not seen into the agent's context once, with a reminder to
+  tell the user and start no sweep or long batch inside its window. The ids seen are kept per
+  session under `~/.cache/claude-vault-notices/`, a week long. Sub-agents are skipped. **Fails
+  open**, like the other vault hooks: no env, no `jq`/`curl`, an unreachable server, or one without
+  the route is silence.
 
 ## Uninstall
 
-`rm` the symlinks under `~/.claude/`. The runtime files Claude Code creates (caches, sessions, plugins) are unaffected.
+`rm` the symlinks under `~/.claude/`. The runtime files Claude Code creates (caches, sessions,
+plugins) are unaffected.

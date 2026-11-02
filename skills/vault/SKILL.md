@@ -117,6 +117,11 @@ Q=~/.claude/skills/vault/queue-items.mjs
 `file` starts a queue for a project with none.
 Edit an item's prose with `vault_replace` on its own path, with no `agent`
 patch: an item carries no summary.
+`--source` names a tracker's ticket: `github owner/repo#15`,
+`github owner/repo discussion#15`, `github owner/repo GHSA-xxxx-xxxx-xxxx`,
+`linear ENG-123`, or `jira VS-7`. `file` refuses anything else, since a resume
+reads a source as a ticket to check and `file` replaces the open item that
+holds it. Where an item came from goes in its body.
 
 **Split by topic** (vault-storage D576): pass `topics` to `vault_split`,
 each `{name, title?, sections}` with `sections` the headings of whole

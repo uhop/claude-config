@@ -18,6 +18,11 @@ import {vaultSettings} from './vault-settings.mjs';
 
 export const SECTIONS = ['inbox', 'active', 'backlog', 'watching'];
 export const CLOSE_REASONS = ['shipped', 'rejected', 'parked', 'deferred'];
+// A resume reads a source as a ticket to check, and `file` replaces the open item that holds it.
+export const SOURCE_RE =
+  /^(?:github [\w.-]+\/[\w.-]+(?:#[1-9]\d*| discussion#[1-9]\d*| GHSA-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4})|(?:linear|jira) [A-Z][A-Z0-9]{1,9}-[1-9]\d*)$/;
+export const SOURCE_HELP =
+  "--source names a ticket: 'github owner/repo#15', 'github owner/repo discussion#15', 'github owner/repo GHSA-xxxx-xxxx-xxxx', 'linear ENG-123', or 'jira VS-7'; where an item came from goes in its body";
 const SPECIAL = new Set(['_about.md', '_lead.md']);
 const PAGE = 500;
 const SLUG_MAX = 80;
@@ -225,8 +230,11 @@ export const fileItem = async (
   {title, section = 'backlog', priority = 0, source = null, blockedBy = [], body},
   call = client()
 ) => {
-  if (!SECTIONS.includes(section)) throw new Error(`--section is one of ${SECTIONS.join(', ')}`);
-  if (!title || !body?.trim()) throw new Error('an item needs a title and a body');
+  if (!SECTIONS.includes(section)) {
+    throw new RangeError(`--section is one of ${SECTIONS.join(', ')}`);
+  }
+  if (!title || !body?.trim()) throw new TypeError('an item needs a title and a body');
+  if (source && !SOURCE_RE.test(source)) throw new RangeError(`${SOURCE_HELP}; got: ${source}`);
   await readyToFile(call, project);
   const notes = await openNotes(call, project);
   const same = notes.find(
@@ -269,7 +277,9 @@ const patchScalars = async (call, recordId, fields) => {
 
 /** Moves an open item to another section. */
 export const moveItem = async (project, ref, {section, priority}, call = client()) => {
-  if (!SECTIONS.includes(section)) throw new Error(`--section is one of ${SECTIONS.join(', ')}`);
+  if (!SECTIONS.includes(section)) {
+    throw new RangeError(`--section is one of ${SECTIONS.join(', ')}`);
+  }
   const note = await findNote(call, project, ref);
   await patchScalars(call, note.record_id, {
     section,
@@ -281,7 +291,7 @@ export const moveItem = async (project, ref, {section, priority}, call = client(
 /** Closes an open item: its trail appended, its fields set, and the note moved to the archive. */
 export const archiveItem = async (project, ref, {reason, trail}, call = client()) => {
   if (!CLOSE_REASONS.includes(reason)) {
-    throw new Error(`--reason is one of ${CLOSE_REASONS.join(', ')}`);
+    throw new RangeError(`--reason is one of ${CLOSE_REASONS.join(', ')}`);
   }
   const note = await findNote(call, project, ref);
   const date = today();

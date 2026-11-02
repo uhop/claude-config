@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  push:
+    branches: ['*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests on ubuntu-latest
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: latest
+      - name: Link the scripts the hook tests read from ~/.claude
+        run: node install.mjs --apply
+      - name: Set the git name the hook tests commit under
+        run: git config --global user.name ci
+      - name: Set the git email the hook tests commit under
+        run: git config --global user.email ci@example.invalid
+      - name: Run the script tests
+        run: node --test $(git ls-files '*.test.mjs')
+      - name: Run the hook tests
+        run: for t in hooks/test/*.test.sh; do bash "$t" || rc=1; done; exit "${rc:-0}"

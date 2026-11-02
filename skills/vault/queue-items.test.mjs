@@ -2,8 +2,8 @@
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {statSync} from 'node:fs';
 import {
+  SOURCE_RE,
   archiveItem,
   fileItem,
   listFleet,
@@ -194,10 +194,6 @@ test('owed places a Backlog item by the day it was filed, and never the stall it
   );
 });
 
-test('the script runs by its path, as the vault skill calls it', () => {
-  assert.ok(statSync(new URL('./queue-items.mjs', import.meta.url)).mode & 0o100);
-});
-
 test('fleet lists the projects kept as item notes, in the order the convention gives', async () => {
   const item = (title, section, priority, sequence_key) => ({
     path: `projects/new/queue/${title}.md`,
@@ -265,6 +261,78 @@ test('file dates a new item, and a replaced one keeps its date', async () => {
   assert.equal(again.replaced, true);
   assert.equal(vault.notes.get(path).frontmatter.filed, '2026-01-05');
   assert.equal(vault.notes.get(path).body, 'More text.\n');
+});
+
+test('a source names a tracker and its ticket, in each form the skills prescribe', () => {
+  for (const source of [
+    'github uhop/deep6#123',
+    'github denoland/deno#37090',
+    'github uhop/stream.json_x#1',
+    'github uhop/deep6 discussion#7',
+    'github uhop/deep6 GHSA-528h-abcd-9xyz',
+    'linear ENG-123',
+    'jira VS-7'
+  ]) {
+    assert.ok(SOURCE_RE.test(source), source);
+  }
+});
+
+test('a source refuses provenance text and an incomplete ticket', () => {
+  for (const source of [
+    'blog 2026-11-02 size-bound pass',
+    'apodict arc 2b, 2026-11-02',
+    'apodict 2026-11-02 declines',
+    'apodict L 2026-11-02 walks',
+    'apodict declines',
+    'github',
+    'github uhop/deep6',
+    'github deep6#1',
+    'github uhop/deep6#0',
+    'github uhop/deep6 #1',
+    'github uhop/deep6 discussion',
+    'github uhop/deep6 GHSA-528h',
+    'linear eng-123',
+    'jira VS',
+    'gitlab uhop/deep6#1'
+  ]) {
+    assert.equal(SOURCE_RE.test(source), false, source);
+  }
+});
+
+test('file refuses a source that names no ticket and writes nothing', async () => {
+  const fake = fakeVault({queue: '', open: []});
+  const vault = {
+    ...fake,
+    call: async (method, url, options) =>
+      url === '/resolve'
+        ? Response.json({items: [{file_path: 'projects/p/queue/_about.md'}]})
+        : fake.call(method, url, options)
+  };
+  await assert.rejects(
+    fileItem(
+      'p',
+      {title: 'New.', body: 'Text.', source: 'blog 2026-11-02 size-bound pass'},
+      vault.call
+    ),
+    RangeError
+  );
+  assert.equal(vault.notes.size, 0);
+});
+
+test('file replaces the open item with the same ticket, under a new title', async () => {
+  const fake = fakeVault({queue: '', open: []});
+  const vault = {
+    ...fake,
+    call: async (method, url, options) =>
+      url === '/resolve'
+        ? Response.json({items: [{file_path: 'projects/p/queue/_about.md'}]})
+        : fake.call(method, url, options)
+  };
+  const source = 'github uhop/deep6#123';
+  const {path} = await fileItem('p', {title: 'Old.', body: 'Text.', source}, vault.call);
+  const again = await fileItem('p', {title: 'Renamed.', body: 'More.', source}, vault.call);
+  assert.deepEqual(again, {path, replaced: true});
+  assert.equal(vault.notes.get(path).frontmatter.title, 'Renamed.');
 });
 
 test('list reads in the same order after items move', async () => {

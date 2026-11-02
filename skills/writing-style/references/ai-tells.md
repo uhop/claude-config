@@ -9,14 +9,13 @@ Provenance: four calibrations of Eugene's blog corpus — 123 pre-LLM posts (200
 words) against the 2026 posts and drafts — on 2026-08-14, 2026-08-29, 2026-09-07, and 2026-09-17
 (the last one a budget for a construction Eugene ruled out, measured the same way). Every family
 below scored zero in the pre-LLM corpus (or one hit in twenty years) and 4–100 instances in 2026
-prose, except the five Orwell families of the third pass, which are prophylactic: zero pre-LLM and
-a handful of 2026 hits each. The external lists that nominated candidates (sloptells.com,
-Wikipedia's _Signs of AI writing_, Simon Willison's cliché highlighter, the load-bearing vocabulary
-of Claude, Orwell's _Politics and the English Language_) were filtered by that measurement, and
-about a third of what they flag turned out to be ordinary human writing (§ Not tells). A list
-nominates; a corpus decides, per word. Tables and per-post inventories: vault
-`projects/blog/writing-voice` § AI-tell calibration; the fleet rule: vault
-`topics/ai-writing-tells-calibrated`.
+prose, except the five Orwell families of the third pass, which are prophylactic: zero pre-LLM and a
+handful of 2026 hits each. The external lists that nominated candidates (sloptells.com, Wikipedia's
+_Signs of AI writing_, Simon Willison's cliché highlighter, the load-bearing vocabulary of Claude,
+Orwell's _Politics and the English Language_) were filtered by that measurement, and about a third
+of what they flag turned out to be ordinary human writing (§ Not tells). A list nominates; a corpus
+decides, per word. Tables and per-post inventories: vault `projects/blog/writing-voice` § AI-tell
+calibration; the fleet rule: vault `topics/ai-writing-tells-calibrated`.
 
 ## The families
 
@@ -39,8 +38,8 @@ nominates; a corpus decides, per word. Tables and per-post inventories: vault
 ## Claude's own vocabulary
 
 These words are the register Claude writes in — the highest-lift words in its pull-request prose —
-and they are absent from Eugene's pre-LLM writing. One hit is a nudge; several in a paragraph is
-the register.
+and they are absent from Eugene's pre-LLM writing. One hit is a nudge; several in a paragraph is the
+register.
 
 | Cut or replace                                               | Write instead                                                |
 | ------------------------------------------------------------ | ------------------------------------------------------------ |
@@ -79,32 +78,32 @@ parentheticals, each halved or worse. Too clean reads as generated too.
 
 ## Not tells
 
-Flagged by external lists, present in the pre-LLM corpus, and therefore allowed: the
-question–answer pivot ("Why? Because …"), one-word triads ("Simple, elegant, practical."), a single
-short sentence, _especially_, _in practice_, _instead of_, _essentially_, _worth noting_, "the real
-problem", colon-introduced lists, and short sentences in general. The machine's monotone is
-_uniform_ sentence length, not short length: the coefficient of variation did not drift. Don't
-"fix" these in anyone's prose.
+Flagged by external lists, present in the pre-LLM corpus, and therefore allowed: the question–answer
+pivot ("Why? Because …"), one-word triads ("Simple, elegant, practical."), a single short sentence,
+_especially_, _in practice_, _instead of_, _essentially_, _worth noting_, "the real problem",
+colon-introduced lists, and short sentences in general. The machine's monotone is _uniform_ sentence
+length, not short length: the coefficient of variation did not drift. Don't "fix" these in anyone's
+prose.
 
 Also not a tell: a third-party quotation that trips a pattern. Quotations are inviolable (blog
 feedback 4.8).
 
-The Orwell pass (2026-09-07) added his own words that Orwell's lists would flag: _in order to_
-(32 pre-LLM hits), _is able to_, _the fact that_, _take into account_, _in terms of_, _leverage_,
+The Orwell pass (2026-09-07) added his own words that Orwell's lists would flag: _in order to_ (32
+pre-LLM hits), _is able to_, _the fact that_, _take into account_, _in terms of_, _leverage_,
 _paradigm_, _methodology_, _per se_, _e.g._ / _i.e._ (57 hits; Google's ban stands for
 documentation, the blog voice keeps them), the praise words _simple_ (148), _flexible_, _powerful_,
 _clean_, _elegant_, _robust_, _lightweight_, _modern_, _sophisticated_, and the figures _heavy
 lifting_, _secret sauce_, _best of both worlds_, _reinvent the wheel_. None is on a list; the
-plain-word rule still prefers the short form in documentation. Long-word share is a negative
-result: Orwell's Latinity measure runs 15.8% three-syllable words pre-LLM against 12.1% in 2026, so
-it separates the two corpora the wrong way and has no budget. The 2026 drift is structural
-(contrast moves, cadence, negation), not Latinate.
+plain-word rule still prefers the short form in documentation. Long-word share is a negative result:
+Orwell's Latinity measure runs 15.8% three-syllable words pre-LLM against 12.1% in 2026, so it
+separates the two corpora the wrong way and has no budget. The 2026 drift is structural (contrast
+moves, cadence, negation), not Latinate.
 
 ## Mechanical check
 
 `prose-tells` in this skill's directory runs the calibrated checker on any Markdown file. The
-canonical tool and its tests live in the `blog-hugo` repository (`tools/prose-tells/index.mjs`),
-so the shim needs that checkout at `~/Open/blog-hugo` or `BLOG_HUGO_DIR`:
+canonical tool and its tests live in the `blog-hugo` repository (`tools/prose-tells/index.mjs`), so
+the shim needs that checkout at `~/Open/blog-hugo` or `BLOG_HUGO_DIR`:
 
 ```bash
 ~/.claude/skills/writing-style/prose-tells --check README.md dev-docs/*.md

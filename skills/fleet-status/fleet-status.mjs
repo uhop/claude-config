@@ -66,7 +66,7 @@ import {execFile, execFileSync} from 'node:child_process';
 import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import {fileItem as fileQueueItem} from '../vault/queue-items.mjs';
+import {fileItem as fileQueueItem, SOURCE_HELP, SOURCE_RE} from '../vault/queue-items.mjs';
 import {vaultSettings} from '../vault/vault-settings.mjs';
 
 if (!import.meta.main)
@@ -2015,8 +2015,6 @@ const commit = async () => {
 // title or the same `source` replaces the open item where it stands (the
 // 2026-08-28 ruling: update, never duplicate), so a renamed thread updates its
 // item; a project with no queue gets one.
-const SOURCE_RE = /^[a-z][a-z0-9-]* \S+$/;
-
 const fileItem = async () => {
   requireVault();
   const {project, title} = opts;
@@ -2027,8 +2025,7 @@ const fileItem = async () => {
   const body = readFileSync(bodyFile, 'utf8').trim();
   if (!body) fail(1, 'the item body is empty');
   const source = opts.source?.trim().replace(/\s+/g, ' ');
-  if (source !== undefined && !SOURCE_RE.test(source))
-    fail(1, `--source is "<kind> <ref>", such as 'github uhop/deep6#123'; got: ${source}`);
+  if (source !== undefined && !SOURCE_RE.test(source)) fail(1, `${SOURCE_HELP}; got: ${source}`);
   // Where the item lands: Active (reflected review items, the default) or the
   // Inbox, when the project's GitHub entry declares `intake: triage`
   // (vault-storage D109; server ≥ 2026-09-30 parses the section).
