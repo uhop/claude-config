@@ -3,8 +3,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  archiveItem,
   convertQueue,
   isConverted,
+  missingWords,
   openFields,
   remainderOf,
   slugOf,
@@ -124,4 +126,163 @@ test('convert refuses a folder of older pieces beside a real queue.md', async ()
     assert.fail(`nothing writes before the refusal: ${method} ${path}`);
   };
   await assert.rejects(convertQueue('p', {}, call), /1 older note.*projects\/p\/queue/);
+});
+
+test('remainderOf drops a date heading with nothing left under it, and keeps one with text', () => {
+  const text = `Closed items.
+
+## 2026-05-05
+
+- **One.** Shipped.
+
+## 2026-08-20
+
+**A paragraph entry.** It has no bullet.
+
+## 2026-09-01
+
+- **Two.** Shipped.
+`;
+  const lines = text.split('\n');
+  const at = title => lines.findIndex(l => l.startsWith(`- **${title}`)) + 1;
+  const rest = remainderOf(text, [at('One'), at('Two')]);
+  assert.equal(rest, 'Closed items.\n\n## 2026-08-20\n\n**A paragraph entry.** It has no bullet.');
+});
+
+test('missingWords counts each word, and leaves out the note shape', () => {
+  const text =
+    '---\ntitle: Frontmatter words\n---\nLead.\n\n## Backlog\n\n- [x] **One.** Two two.\n';
+  assert.deepEqual(missingWords(text, ['Lead.', 'One.\nTwo two.']), []);
+  assert.deepEqual(missingWords(text, ['Lead.', 'One.\nTwo.']), ['two']);
+  assert.deepEqual(missingWords(text, ['One.\nTwo two.']), ['Lead']);
+});
+
+// A vault in memory, as much of the API as the script calls.
+const fakeVault = ({queue, archive, open, closed = []}) => {
+  const notes = new Map();
+  const real = new Map([['projects/p/queue.md', queue]]);
+  if (archive !== undefined) real.set('projects/p/queue-archive.md', archive);
+  const moved = [];
+  const call = async (method, url, {json} = {}) => {
+    if (method === 'GET' && url === '/queue/projects/p') return Response.json({items: open});
+    if (method === 'GET' && url === '/queue/projects/p/archive') {
+      return Response.json({items: closed});
+    }
+    if (method === 'POST' && url === '/notes/query') {
+      const prefix = `${json.folder}/`;
+      const items = [...notes]
+        .filter(([path]) => path.startsWith(prefix) && !path.slice(prefix.length).includes('/'))
+        .map(([path, note]) => ({path, record_id: path, ...note}));
+      return Response.json({items});
+    }
+    if (method === 'GET' && url.startsWith('/sections?')) {
+      const path = decodeURIComponent(url.match(/file_path=([^&]+)/)[1]);
+      return Response.json({items: [{record_id: path, file_path: path}]});
+    }
+    if (method === 'GET' && url.startsWith('/sections/')) {
+      return Response.json({
+        frontmatter: {title: 'Carried', tags: ['t'], trackers: ['x'], agent: {}}
+      });
+    }
+    if (method === 'PATCH') {
+      const note = notes.get(url.match(/^\/sections\/(.+)\/fm$/)[1]);
+      for (const {op, path, value} of json.ops) {
+        if (op === 'set') note.frontmatter[path.slice(1)] = value;
+        else delete note.frontmatter[path.slice(1)];
+      }
+      return Response.json({});
+    }
+    if (method === 'POST' && url === '/vault/edit') {
+      notes.get(json.path).body += json.text;
+      return Response.json({});
+    }
+    if (method === 'POST' && url === '/vault/move') {
+      moved.push(json);
+      if (real.has(json.from)) real.delete(json.from);
+      else {
+        notes.set(json.to, notes.get(json.from));
+        notes.delete(json.from);
+      }
+      return Response.json({});
+    }
+    const path = url.slice('/vault/'.length);
+    if (method === 'PUT') {
+      notes.set(path, {frontmatter: json.frontmatter, body: json.body});
+      return Response.json({});
+    }
+    if (real.has(path)) {
+      return new Response(real.get(path), {headers: {etag: `"${path}"`}});
+    }
+    return new Response('', {status: 404});
+  };
+  return {call, notes, moved};
+};
+
+test('convert keeps closed items, and the text outside them, in queue-archive/', async () => {
+  const queue = '- **One.** Text.\n';
+  const archive =
+    'Closed.\n\n## 2026-08-06\n\n- **Two.** Done.\n\n## 2026-08-20\n\n**Entry.** Prose.\n';
+  const vault = fakeVault({
+    queue,
+    archive,
+    open: [{title: 'One.', section: 'backlog', source_line: 1, body: 'Text.', blocked_by: []}],
+    closed: [{title: 'Two.', source_line: 5, body: 'Done.', closed_at: '2026-08-06'}]
+  });
+  const result = await convertQueue('p', {}, vault.call);
+  assert.equal(result.lostWords, 0);
+  assert.equal(vault.notes.get('projects/p/queue-archive/two.md').frontmatter.status, 'archived');
+  assert.equal(
+    vault.notes.get('projects/p/queue-archive/_lead.md').body,
+    'Closed.\n\n## 2026-08-20\n\n**Entry.** Prose.\n'
+  );
+  assert.deepEqual(vault.notes.get('projects/p/queue-archive/_about.md').frontmatter, {
+    title: 'Carried',
+    tags: ['t'],
+    trackers: ['x'],
+    type: 'meta',
+    status: 'active'
+  });
+  assert.deepEqual(
+    vault.moved.map(m => m.from),
+    ['projects/p/queue.md', 'projects/p/queue-archive.md']
+  );
+});
+
+test('convert gives a project with no archive note its folder note all the same', async () => {
+  const vault = fakeVault({
+    queue: '- **One.** Text.\n',
+    open: [{title: 'One.', section: 'backlog', source_line: 1, body: 'Text.', blocked_by: []}]
+  });
+  const result = await convertQueue('p', {}, vault.call);
+  assert.equal(result.archivedTo, null);
+  assert.equal(vault.notes.get('projects/p/queue-archive/_about.md').frontmatter.tags[1], 'queue');
+});
+
+test('convert refuses to lose text the parse and the lead do not hold', async () => {
+  const vault = fakeVault({
+    queue: '- **One.** Text.\n',
+    open: [{title: 'One.', section: 'backlog', source_line: 1, body: '', blocked_by: []}]
+  });
+  await assert.rejects(convertQueue('p', {}, vault.call), /would lose 1 words: Text/);
+  assert.equal(vault.notes.size, 0, 'nothing written');
+});
+
+test('archive closes an item last in queue-archive/', async () => {
+  const vault = fakeVault({queue: '', open: []});
+  vault.notes.set('projects/p/queue/one.md', {
+    frontmatter: {title: 'One.', section: 'active', status: 'active', sequence_key: 2},
+    body: 'Text.\n'
+  });
+  vault.notes.set('projects/p/queue-archive/_about.md', {frontmatter: {}, body: 'A folder.\n'});
+  vault.notes.set('projects/p/queue-archive/old.md', {
+    frontmatter: {title: 'Old.', sequence_key: 7},
+    body: 'Old.\n'
+  });
+  const {path} = await archiveItem('p', 'One.', {reason: 'shipped', trail: 'D1.'}, vault.call);
+  assert.equal(path, 'projects/p/queue-archive/one.md');
+  const closed = vault.notes.get(path);
+  assert.equal(closed.frontmatter.sequence_key, 8);
+  assert.equal(closed.frontmatter.status, 'archived');
+  assert.equal(closed.frontmatter.section, undefined);
+  assert.match(closed.body, /\*\*Shipped\*\* \d{4}-\d{2}-\d{2}\. D1\.\n$/);
 });

@@ -2,8 +2,9 @@
 // A project's queue kept one item to a note (vault-storage 11d-1): the skill defines the folder, the
 // fields, and what archiving does, and the server only stores and queries them. An open item is
 // projects/<p>/queue/<slug>.md with `section` and `sequence_key`, and `priority`, `source`, and
-// `blocked_by` when set; a closed one is projects/<p>/queue/archive/<slug>.md, `status: archived`,
-// with `closed_at` and `close_reason`. `list` reads both shapes while the fleet is mixed.
+// `blocked_by` when set; a closed one is projects/<p>/queue-archive/<slug>.md, `status: archived`,
+// with `closed_at` and `close_reason`. Each folder composes at its old path, so links to `queue.md`
+// and `queue-archive.md` keep working. `list` reads both shapes while the fleet is mixed.
 //
 //   queue-items.mjs list <project> [--section S] [--json]
 //   queue-items.mjs file <project> --title T [--section S] [--priority N] [--source S]
@@ -47,19 +48,24 @@ export const uniqueName = (slug, taken) => {
 
 const STRUCTURE_RE =
   /^(?:##\s+(?:inbox|active|backlog|watching)\s*|###\s+priority\s+[-+]?\d+\s*|\(empty\)\s*)$/i;
+const DATE_HEADING_RE = /^##\s+\d{4}-\d{2}-\d{2}\s*$/;
+const CHECKBOX_RE = /^\s*[-*+]\s+\[[ x]\]\s/i;
+
+const bodyStart = lines => {
+  if (lines[0] !== '---') return 0;
+  const end = lines.indexOf('---', 1);
+  return end > 0 ? end + 1 : 0;
+};
 
 /**
  * What a queue note's text holds outside its items: each item runs from its `source_line` (1-based,
  * counted in the whole file) to the next column-0 bullet or heading, fences masked, and the
- * section headings and `(empty)` placeholders are the shape the fields replace.
+ * section headings and `(empty)` placeholders are the shape the fields replace, as is a date heading
+ * with nothing left under it, which `closed_at` holds.
  */
 export const remainderOf = (text, sourceLines) => {
   const lines = text.split('\n');
-  let start = 0;
-  if (lines[0] === '---') {
-    const end = lines.indexOf('---', 1);
-    if (end > 0) start = end + 1;
-  }
+  const start = bodyStart(lines);
   const starts = new Set(sourceLines.map(n => n - 1));
   const kept = [];
   let inItem = false;
@@ -73,9 +79,37 @@ export const remainderOf = (text, sourceLines) => {
     if (!inItem && !STRUCTURE_RE.test(line)) kept.push(line);
   }
   return kept
+    .filter((line, i) => {
+      if (!DATE_HEADING_RE.test(line)) return true;
+      let next = i + 1;
+      while (next < kept.length && !kept[next].trim()) ++next;
+      return next < kept.length && !/^#{1,2} /.test(kept[next]);
+    })
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+};
+
+const wordsOf = text => text.match(/[\p{L}\p{N}]+/gu) ?? [];
+
+/**
+ * The words of a note's body that `kept`, the texts written in its place, do not hold, each word
+ * counted: counts and titles cannot show text a conversion would lose. The note's shape is left out.
+ */
+export const missingWords = (text, kept) => {
+  const have = new Map();
+  for (const word of wordsOf(kept.join('\n'))) have.set(word, (have.get(word) ?? 0) + 1);
+  const lines = text.split('\n');
+  const missing = [];
+  for (const line of lines.slice(bodyStart(lines))) {
+    if (STRUCTURE_RE.test(line) || DATE_HEADING_RE.test(line)) continue;
+    for (const word of wordsOf(line.replace(CHECKBOX_RE, ''))) {
+      const left = have.get(word) ?? 0;
+      if (left === 0) missing.push(word);
+      else have.set(word, left - 1);
+    }
+  }
+  return missing;
 };
 
 /** An open item's frontmatter: the fields a reader wants, the optional ones only when set. */
@@ -123,6 +157,7 @@ const expectJson = async (r, what) => {
 };
 
 const folderOf = project => `projects/${project}/queue`;
+const closedFolderOf = project => `projects/${project}/queue-archive`;
 
 /**
  * Whether the project's queue is a folder of item notes yet. The path decides, since an older split
@@ -150,10 +185,12 @@ const queryAll = async (call, folder, match) => {
   }
 };
 
-const openNotes = async (call, project, match) =>
-  (await queryAll(call, folderOf(project), match)).filter(
+const itemNotes = async (call, folder, match) =>
+  (await queryAll(call, folder, match)).filter(
     n => !SPECIAL.has(n.path.slice(n.path.lastIndexOf('/') + 1))
   );
+
+const openNotes = (call, project, match) => itemNotes(call, folderOf(project), match);
 
 const shaped = n => ({
   title: n.frontmatter.title ?? n.title,
@@ -270,16 +307,17 @@ export const archiveItem = async (project, ref, {reason, trail}, call = client()
     }),
     `trail on ${note.path}`
   );
+  const folder = closedFolderOf(project);
+  const closed = await itemNotes(call, folder);
   await patchScalars(call, note.record_id, {
     status: 'archived',
     closed_at: date,
     close_reason: reason,
-    section: null
+    section: null,
+    sequence_key: Math.max(0, ...closed.map(n => n.frontmatter.sequence_key ?? 0)) + 1
   });
-  const folder = folderOf(project);
-  const listed = await call('GET', `/vault/${folder}/archive/`);
-  const taken = new Set(listed.ok ? (await listed.json()).files : []);
-  const to = `${folder}/archive/${uniqueName(slugOf(note.frontmatter.title ?? note.title), taken)}`;
+  const taken = new Set(closed.map(n => n.path.slice(folder.length + 1)));
+  const to = `${folder}/${uniqueName(slugOf(note.frontmatter.title ?? note.title), taken)}`;
   await expectJson(
     await call('POST', '/vault/move', {json: {from: note.path, to}}),
     `move ${note.path}`
@@ -313,8 +351,23 @@ export const owedItems = async (project, since, call = client()) => {
 
 const CARRIED = ['title', 'tags', 'related', 'edges', 'trackers', 'key'];
 
+const carriedFields = async (call, path) => {
+  const record = await expectJson(
+    await call('GET', `/sections?file_path=${encodeURIComponent(path)}&fields=record_id,file_path`),
+    `the record of ${path}`
+  );
+  const {frontmatter} = await expectJson(
+    await call('GET', `/sections/${record.items[0].record_id}/fm?exclude=body`),
+    `the frontmatter of ${path}`
+  );
+  return Object.fromEntries(
+    CARRIED.filter(k => frontmatter[k] !== undefined).map(k => [k, frontmatter[k]])
+  );
+};
+
 // A note cannot be empty, and an item with no text past its title has the title to say.
 const itemText = item => `${item.body.trim() || item.title}\n`;
+const writtenText = ({frontmatter, body}) => `${frontmatter.title}\n${body}`;
 
 const archiveSlot = async (call, project, name) => {
   const year = new Date().getUTCFullYear();
@@ -325,6 +378,15 @@ const archiveSlot = async (call, project, name) => {
   return r.status === 404 ? plain : `${dir}/${name}-${today()}.md`;
 };
 
+// A note's text, or none where it has no note.
+const readNote = async (call, path) => {
+  const r = await call('GET', `/vault/${path}`);
+  const text = await r.text();
+  if (r.status === 404) return {text: '', etag: null, exists: false};
+  if (!r.ok) throw new Error(`read ${path}: ${r.status} ${text.slice(0, 300)}`);
+  return {text, etag: r.headers.get('etag'), exists: true};
+};
+
 const titlesMatch = (notes, items) => {
   const have = notes.map(n => n.frontmatter.title).sort();
   const want = items.map(i => i.title).sort();
@@ -333,13 +395,15 @@ const titlesMatch = (notes, items) => {
 
 /**
  * Moves a project's queue and archive to item notes from the server's own parse: every item written,
- * counts and titles compared, and only then the old notes moved to the archive with their record
- * ids. A failure before the move leaves the queue as it was, and a run again writes the same paths.
+ * every word of the old notes accounted for, counts and titles compared, and only then the old notes
+ * moved to the archive with their record ids. A failure before the move leaves the queue as it was,
+ * and a run again writes the same paths.
  */
 export const convertQueue = async (project, {dryRun = false} = {}, call = client()) => {
   const queuePath = `projects/${project}/queue.md`;
   const archivePath = `projects/${project}/queue-archive.md`;
   const folder = folderOf(project);
+  const closedFolder = closedFolderOf(project);
   const read = await call('GET', `/vault/${queuePath}`);
   if (!read.ok) throw new Error(`read ${queuePath}: ${read.status}`);
   if (read.headers.get('x-program-clerk-composed')) {
@@ -385,9 +449,18 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
     }),
     body: itemText(item)
   }));
-  const takenClosed = new Set();
+  const archive = await readNote(call, archivePath);
+  const closedLead = remainderOf(
+    archive.text,
+    closed.map(i => i.source_line)
+  );
+  const lost = [
+    ...missingWords(text, [...writes.map(writtenText), lead]),
+    ...missingWords(archive.text, [...closed.map(i => `${i.title}\n${itemText(i)}`), closedLead])
+  ];
+  const takenClosed = new Set(SPECIAL);
   const closedWrites = closed.map((item, i) => ({
-    path: `${folder}/archive/${uniqueName(slugOf(item.title), takenClosed)}`,
+    path: `${closedFolder}/${uniqueName(slugOf(item.title), takenClosed)}`,
     frontmatter: {
       title: item.title,
       type: 'queue-item',
@@ -398,65 +471,76 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
     },
     body: itemText(item)
   }));
-  const plan = {project, open: open.length, closed: closed.length, leadBytes: lead.length};
-  if (dryRun) return {...plan, dryRun: true, lead: lead.slice(0, 400)};
+  const plan = {
+    project,
+    open: open.length,
+    closed: closed.length,
+    leadBytes: lead.length,
+    closedLeadBytes: closedLead.length,
+    lostWords: lost.length
+  };
+  if (dryRun) return {...plan, dryRun: true, lost: lost.slice(0, 12), lead: lead.slice(0, 400)};
+  if (lost.length > 0) {
+    throw new Error(
+      `the conversion would lose ${lost.length} words: ${lost.slice(0, 12).join(' ')}`
+    );
+  }
 
-  const record = await expectJson(
-    await call(
-      'GET',
-      `/sections?file_path=${encodeURIComponent(queuePath)}&fields=record_id,file_path`
-    ),
-    'the queue note'
-  );
-  const {frontmatter} = await expectJson(
-    await call('GET', `/sections/${record.items[0].record_id}/fm?exclude=body`),
-    'its frontmatter'
-  );
+  const carried = await carriedFields(call, queuePath);
+  const closedCarried = archive.exists
+    ? await carriedFields(call, archivePath)
+    : {title: `${project} — Queue Archive`, tags: [project, 'queue', 'archive']};
   for (const {path, frontmatter: fm, body} of [...writes, ...closedWrites]) {
     await expectJson(
       await call('PUT', `/vault/${path}`, {json: {frontmatter: fm, body}}),
       `write ${path}`
     );
   }
-  if (lead) {
+  for (const [dir, text, title] of [
+    [folder, lead, `${project}: queue notes outside its items`],
+    [closedFolder, closedLead, `${project}: archive notes outside its items`]
+  ]) {
+    if (!text) continue;
     await expectJson(
-      await call('PUT', `/vault/${folder}/_lead.md`, {
-        json: {
-          frontmatter: {title: `${project}: queue notes outside its items`, type: 'meta'},
-          body: `${lead}\n`
-        }
+      await call('PUT', `/vault/${dir}/_lead.md`, {
+        json: {frontmatter: {title, type: 'meta'}, body: `${text}\n`}
       }),
-      'the lead'
+      `the lead of ${dir}`
     );
   }
   const wroteOpen = await openNotes(call, project);
   if (!titlesMatch(wroteOpen, open)) {
     throw new Error(`${wroteOpen.length} open notes read back against ${open.length} planned`);
   }
-  const wroteClosed = await queryAll(call, `${folder}/archive`);
+  const wroteClosed = await itemNotes(call, closedFolder);
   if (!titlesMatch(wroteClosed, closed)) {
     throw new Error(
       `${wroteClosed.length} archived notes read back against ${closed.length} planned`
     );
   }
-  const carried = Object.fromEntries(
-    CARRIED.filter(k => frontmatter[k] !== undefined).map(k => [k, frontmatter[k]])
-  );
-  await expectJson(
-    await call('PUT', `/vault/${folder}/_about.md`, {
-      json: {
-        frontmatter: {...carried, type: 'meta', status: 'active'},
-        body:
-          `One note per queue item, read with \`queue-items.mjs list ${project}\` or by the ` +
-          'frontmatter query; closed items are in `archive/`. The vault skill says how to file, move, and archive one.\n'
-      }
-    }),
-    'the folder note'
-  );
-  const again = await call('GET', `/vault/${queuePath}`, {headers: {'Cache-Control': 'no-cache'}});
-  await again.text();
-  if (again.headers.get('etag') !== etag) {
-    throw new Error(`${queuePath} changed during the conversion; run it again`);
+  for (const [dir, fields, body] of [
+    [
+      folder,
+      carried,
+      `One note per queue item, read with \`queue-items.mjs list ${project}\` or by the frontmatter query; closed items are in \`queue-archive/\`. The vault skill says how to file, move, and archive one.\n`
+    ],
+    [
+      closedFolder,
+      closedCarried,
+      'One note per closed queue item, read by the frontmatter query; open items are in `queue/`. The vault skill says how to close one.\n'
+    ]
+  ]) {
+    await expectJson(
+      await call('PUT', `/vault/${dir}/_about.md`, {
+        json: {frontmatter: {...fields, type: 'meta', status: 'active'}, body}
+      }),
+      `the folder note of ${dir}`
+    );
+  }
+  const again = await readNote(call, queuePath);
+  const archiveAgain = await readNote(call, archivePath);
+  if (again.etag !== etag || archiveAgain.etag !== archive.etag) {
+    throw new Error(`${queuePath} or its archive changed during the conversion; run it again`);
   }
   const queueTo = await archiveSlot(call, project, 'queue');
   await expectJson(
@@ -464,9 +548,7 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
     "the queue note's move"
   );
   let archivedTo = null;
-  const hadArchive = await call('GET', `/vault/${archivePath}`);
-  await hadArchive.text();
-  if (hadArchive.ok) {
+  if (archive.exists) {
     archivedTo = await archiveSlot(call, project, 'queue-archive');
     await expectJson(
       await call('POST', '/vault/move', {json: {from: archivePath, to: archivedTo}}),

@@ -95,9 +95,10 @@ in as a section of its own. `vault_list_pieces({file_prefix:
 **A queue kept one item to a note** (vault-storage 11d-1): a converted
 project has `projects/<name>/queue/<slug>.md` per open item, with `section`
 (`inbox`, `active`, `backlog`, `watching`) and `sequence_key`, and `priority`,
-`source`, and `blocked_by` when set; closed items are under `queue/archive/`,
-`status: archived`, with `closed_at` and `close_reason`. Its `queue.md` is the
-folder's composed path, and the folder's `_about.md` holds `trackers:`. That
+`source`, and `blocked_by` when set; closed items are in `queue-archive/`,
+`status: archived`, with `closed_at` and `close_reason`. Its `queue.md` and
+`queue-archive.md` are those folders' composed paths, so links to them keep
+working, and `queue/_about.md` holds `trackers:`. That
 composed text, the resume bundle's `queue` body included, shows each item as a
 heading with no section, so Watching reads like Backlog: `list` says which is
 which. The server's item tools and `vault_queue_*` do not see it: the item
