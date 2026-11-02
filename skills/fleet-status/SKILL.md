@@ -229,10 +229,9 @@ one-line summary is `show --cwd`'s job.
 
 ## Review items
 
-A review item is a queue item meant to review one change; it goes under `## Active` on the
-project's own `queue.md`, created in the convention's shape when the project has none. The script
-does the placement through the server's `insert-item` op (server ≥ 2026-09-06), which replaces an
-`(empty)` placeholder and creates a missing `## Active` before Backlog; you write the body:
+A review item is a queue item meant to review one change; it goes in the Active section of the
+project's own queue, which `file` starts when the project has none. The script writes the item note;
+you write the body:
 
 ```bash
 "$S" file --project NAME --title 'GitHub: OWNER/NAME#123 — Title of the issue' \
@@ -279,12 +278,10 @@ does the placement through the server's `insert-item` op (server ≥ 2026-09-06)
   by two spaces (blank lines stay blank), so bullets, a numbered list, and a fenced draft stay
   inside the one item: the queue convention counts every column-0 bullet as an item, and a body
   pasted verbatim was served as several (2026-09-06). Nested bullets keep their relative depth.
-- An item closes when Eugene archives it (`queue-archive.md`) or the thread closes upstream; a
-  closed thread's item is not refiled. The project page (`/ui/fleet-project.html`) marks each
-  open thread with the item that mirrors it, archives an item whose thread the baseline shows
-  closed or merged on a click, and offers **Track** on a thread no item mirrors, filing the
-  title, the link, and the source only (vault-storage D111). A later `file` for that thread
-  replaces the one-line body with the pre-review, by the same source.
+- An item closes when Eugene archives it (`queue-items.mjs archive`) or the thread closes upstream; a
+  closed thread's item is not refiled. The project page (`/ui/fleet-project.html`) does not read a
+  queue kept as item notes, so tracking a thread goes through an agent (vault-storage D585).
+  A later `file` for a thread replaces the item's body, by the same source.
 
 ## Baseline storage
 

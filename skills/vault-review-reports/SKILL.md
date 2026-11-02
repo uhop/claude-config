@@ -80,7 +80,7 @@ is no vault-triage.mjs harness kind for reports.
      fanout is the note's function); `review_backlog_high` from a
      transient mid-sweep spike.
    - **Real tune-and-stay condition → accept**, and in the same pass file
-     a Backlog item in `projects/vault-storage/queue.md` naming the
+     a Backlog item on vault-storage's queue (`queue-items.mjs file`) naming the
      remediation (VACUUM, retention tuning, a compaction or split target
      for an organically over-linked note). The
      accept note points at the queue item — acceptance without a tracked
@@ -114,8 +114,8 @@ Dispatch prompt template — fill `<holder>`/`<limit>` from the sweep plan:
 > against live data, then resolve via POST /suggestions/resolve-batch with
 > `resolved_by: "<holder>"` and that claim's `claim_token`:
 > reject by-design conditions with a reason; accept real conditions only
-> after filing the remediation as a Backlog item in
-> `projects/vault-storage/queue.md`. Never resolve
+> after filing the remediation as a Backlog item on vault-storage's queue
+> (`queue-items.mjs file vault-storage`). Never resolve
 > `infrastructure_upgrade` — reopen it and list it in your report.
 > Prefer the `mcp__vault__*` tools; on the `vault-curl` fallback path guard
 > any `| jq` pipe with `|| true`. Return the per-item disposition lines.

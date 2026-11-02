@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // A project's queue kept one item to a note (vault-storage 11d-1): the skill defines the folder, the
 // fields, and what archiving does, and the server only stores and queries them. An open item is
-// projects/<p>/queue/<slug>.md with `section` and `sequence_key`, and `priority`, `source`, and
-// `blocked_by` when set; a closed one is projects/<p>/queue-archive/<slug>.md, `status: archived`,
+// projects/<p>/queue/<slug>.md with `section`, `sequence_key`, and `filed`, the day it entered the
+// queue, and `priority`, `source`, and `blocked_by` when set; a closed one is projects/<p>/queue-archive/<slug>.md, `status: archived`,
 // with `closed_at` and `close_reason`. Each folder composes at its old path, so links to `queue.md`
 // and `queue-archive.md` keep working. `list` reads both shapes while the fleet is mixed.
 //
@@ -118,6 +118,7 @@ export const openFields = ({
   title,
   section,
   sequence,
+  filed = null,
   priority = 0,
   source = null,
   blockedBy = []
@@ -127,12 +128,14 @@ export const openFields = ({
   status: 'active',
   section,
   sequence_key: sequence,
+  ...(filed ? {filed} : {}),
   ...(priority ? {priority} : {}),
   ...(source ? {source} : {}),
   ...(blockedBy.length > 0 ? {blocked_by: blockedBy} : {})
 });
 
 const today = () => new Date().toISOString().slice(0, 10);
+const dayOf = at => (at ? String(at).slice(0, 10) : null);
 
 const client = () => {
   const {base, token, problem} = vaultSettings();
@@ -199,8 +202,15 @@ const shaped = n => ({
   priority: n.frontmatter.priority ?? 0,
   source: n.frontmatter.source ?? null,
   blocked_by: n.frontmatter.blocked_by ?? [],
+  filed: n.frontmatter.filed ?? n.frontmatter.created ?? null,
   path: n.path
 });
+
+// The convention's order: by section, then the higher priority first; a sort keeps the order within.
+const inOrder = items =>
+  items.sort(
+    (a, b) => SECTIONS.indexOf(a.section) - SECTIONS.indexOf(b.section) || b.priority - a.priority
+  );
 
 const serverItems = async (call, project) => {
   const {items} = await expectJson(
@@ -213,6 +223,7 @@ const serverItems = async (call, project) => {
     priority: i.priority,
     source: i.source,
     blocked_by: i.blocked_by,
+    filed: dayOf(i.created_at),
     path: null
   }));
 };
@@ -220,12 +231,12 @@ const serverItems = async (call, project) => {
 /** The project's open items in order, from either shape. */
 export const listItems = async (project, {section} = {}, call = client()) => {
   if (await isConverted(project, call)) {
-    return (await openNotes(call, project, section ? {section} : undefined)).map(shaped);
+    return inOrder((await openNotes(call, project, section ? {section} : undefined)).map(shaped));
   }
   return (await serverItems(call, project)).filter(i => !section || i.section === section);
 };
 
-/** Every project's open items, of either shape, by section, then priority; the server's views see only the old shape. */
+/** Every project's open items, of either shape, in the convention's order; the server's views see only the old shape. */
 export const listFleet = async ({section, priority, limit} = {}, call = client()) => {
   const {files} = await expectJson(await call('GET', '/vault/projects/'), 'the projects');
   const names = files.filter(f => f.endsWith('/')).map(f => f.slice(0, -1));
@@ -243,14 +254,12 @@ export const listFleet = async ({section, priority, limit} = {}, call = client()
         : await serverItems(call, project);
     all.push(...items.map(item => ({project, ...item})));
   }
-  const order = i =>
-    i.section === 'active' ? 0 : i.section === 'inbox' ? 1 : SECTIONS.indexOf(i.section);
-  const picked = all
-    .filter(
+  const picked = inOrder(
+    all.filter(
       i =>
         (!section || i.section === section) && (priority === undefined || i.priority === priority)
     )
-    .sort((a, b) => order(a) - order(b) || a.priority - b.priority);
+  );
   return limit === undefined ? picked : picked.slice(0, limit);
 };
 
@@ -268,6 +277,50 @@ const findNote = async (call, project, ref) => {
   return hits[0];
 };
 
+const writeFolderNotes = async (call, project, fields, closedFields) => {
+  for (const [dir, about, body] of [
+    [
+      folderOf(project),
+      fields,
+      `One note per queue item, read with \`queue-items.mjs list ${project}\` or by the frontmatter query; closed items are in \`queue-archive/\`. The vault skill says how to file, move, and archive one.\n`
+    ],
+    [
+      closedFolderOf(project),
+      closedFields,
+      'One note per closed queue item, read by the frontmatter query; open items are in `queue/`. The vault skill says how to close one.\n'
+    ]
+  ]) {
+    await expectJson(
+      await call('PUT', `/vault/${dir}/_about.md`, {
+        json: {frontmatter: {...about, type: 'meta', status: 'active'}, body}
+      }),
+      `the folder note of ${dir}`
+    );
+  }
+};
+
+const closedDefaults = project => ({
+  title: `${project} — Queue Archive`,
+  tags: [project, 'queue', 'archive']
+});
+
+// A project with no queue starts in this shape; one still kept as one note converts first.
+const readyToFile = async (call, project) => {
+  const {items} = await expectJson(
+    await call('POST', '/resolve', {json: {wikilinks: [`projects/${project}/queue.md`]}}),
+    `resolve the queue of ${project}`
+  );
+  const path = items[0].file_path;
+  if (path === `${folderOf(project)}/_about.md`) return;
+  if (path !== null) throw new Error(`${path} is one note yet: run convert ${project} first`);
+  await writeFolderNotes(
+    call,
+    project,
+    {title: `${project} — Queue`, tags: [project, 'queue']},
+    closedDefaults(project)
+  );
+};
+
 /**
  * Files an item on a converted queue. An open item with the same source or the same title is
  * replaced where it stands, so a repeated call files nothing twice. Answers its path and what it did.
@@ -279,6 +332,7 @@ export const fileItem = async (
 ) => {
   if (!SECTIONS.includes(section)) throw new Error(`--section is one of ${SECTIONS.join(', ')}`);
   if (!title || !body?.trim()) throw new Error('an item needs a title and a body');
+  await readyToFile(call, project);
   const notes = await openNotes(call, project);
   const same = notes.find(
     n => (source && n.frontmatter.source === source) || (n.frontmatter.title ?? n.title) === title
@@ -292,7 +346,15 @@ export const fileItem = async (
     `${folder}/${uniqueName(slugOf(title), new Set(notes.map(n => n.path.slice(folder.length + 1))))}`;
   const r = await call('PUT', `/vault/${path}`, {
     json: {
-      frontmatter: openFields({title, section, sequence, priority, source, blockedBy}),
+      frontmatter: openFields({
+        title,
+        section,
+        sequence,
+        filed: same?.frontmatter.filed ?? today(),
+        priority,
+        source,
+        blockedBy
+      }),
       body: `${body.trim()}\n`
     }
   });
@@ -359,23 +421,16 @@ export const archiveItem = async (project, ref, {reason, trail}, call = client()
 
 /**
  * What a resume owes for a converted queue, which the server's `owed` cannot see: Inbox items to
- * triage, items filed into the Backlog on or after `since`'s day and after the conversion's, and
- * items mirroring a ticket, to read upstream.
+ * triage, items filed into the Backlog on or after `since`'s day, and items mirroring a ticket, to
+ * read upstream.
  */
 export const owedItems = async (project, since, call = client()) => {
-  const all = await queryAll(call, folderOf(project));
-  const notes = all.filter(n => !SPECIAL.has(n.path.slice(n.path.lastIndexOf('/') + 1)));
-  const converted = String(all.find(n => n.path.endsWith('/_about.md'))?.frontmatter.created ?? '');
+  const notes = await openNotes(call, project);
   const day = since.slice(0, 10);
   // The server files its own stall item, so nobody places it.
-  const filedSince = n => {
-    const created = String(n.frontmatter.created ?? '');
-    return (
-      created >= day &&
-      created > converted &&
-      !String(n.frontmatter.title).startsWith('Loop stalls recorded through ')
-    );
-  };
+  const filedSince = n =>
+    String(shaped(n).filed) >= day &&
+    !String(n.frontmatter.title).startsWith('Loop stalls recorded through ');
   const owed = (kind, picked) => picked.map(n => ({kind, ...shaped(n)}));
   return [
     ...owed(
@@ -494,6 +549,7 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
       title: item.title,
       section: item.section,
       sequence: i + 1,
+      filed: dayOf(item.created_at),
       priority: item.priority,
       source: item.source,
       blockedBy: item.blocked_by
@@ -517,6 +573,7 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
       type: 'queue-item',
       status: 'archived',
       sequence_key: i + 1,
+      ...(item.created_at ? {filed: dayOf(item.created_at)} : {}),
       ...(item.closed_at ? {closed_at: item.closed_at} : {}),
       ...(item.close_reason ? {close_reason: item.close_reason} : {})
     },
@@ -541,9 +598,7 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
   const archiveId = archive.exists ? await recordIdOf(call, archivePath) : null;
   const carried = await carriedFields(call, queueId);
   const closedCarried =
-    archiveId === null
-      ? {title: `${project} — Queue Archive`, tags: [project, 'queue', 'archive']}
-      : await carriedFields(call, archiveId);
+    archiveId === null ? closedDefaults(project) : await carriedFields(call, archiveId);
   for (const {path, frontmatter: fm, body} of [...writes, ...closedWrites]) {
     await expectJson(
       await call('PUT', `/vault/${path}`, {json: {frontmatter: fm, body}}),
@@ -572,25 +627,7 @@ export const convertQueue = async (project, {dryRun = false} = {}, call = client
       `${wroteClosed.length} archived notes read back against ${closed.length} planned`
     );
   }
-  for (const [dir, fields, body] of [
-    [
-      folder,
-      carried,
-      `One note per queue item, read with \`queue-items.mjs list ${project}\` or by the frontmatter query; closed items are in \`queue-archive/\`. The vault skill says how to file, move, and archive one.\n`
-    ],
-    [
-      closedFolder,
-      closedCarried,
-      'One note per closed queue item, read by the frontmatter query; open items are in `queue/`. The vault skill says how to close one.\n'
-    ]
-  ]) {
-    await expectJson(
-      await call('PUT', `/vault/${dir}/_about.md`, {
-        json: {frontmatter: {...fields, type: 'meta', status: 'active'}, body}
-      }),
-      `the folder note of ${dir}`
-    );
-  }
+  await writeFolderNotes(call, project, carried, closedCarried);
   const again = await readNote(call, queuePath);
   const archiveAgain = await readNote(call, archivePath);
   if (again.etag !== etag || archiveAgain.etag !== archive.etag) {

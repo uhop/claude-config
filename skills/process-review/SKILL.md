@@ -109,7 +109,7 @@ design iteration looks identical to thrash in the diff.
    | --- | --- |
    | A lag that a rule would have prevented, cutting across projects | claude-config `CLAUDE.md` |
    | A lag specific to one project's layout (N ports, N docs) | vault `projects/<name>/feedback.md` |
-   | A concrete missed change still un-applied | that project's vault `queue.md` Backlog |
+   | A concrete missed change still un-applied | that project's vault queue, Backlog (`queue-items.mjs file <name>`) |
    | A repeated shape worth a named pattern | vault `topics/<slug>.md` |
    | Ambiguous — thrash or legitimate iteration? | `projects/agent-workflow/clarify-queue.md` |
 

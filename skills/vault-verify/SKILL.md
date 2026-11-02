@@ -25,7 +25,7 @@ existed, a path deleted three weeks ago (agent-workflow queue, filed
 /vault verify                        current project, running files and design notes
 /vault verify <project>              a vault project name other than the directory's
 /vault verify --unchecked            also list the enumerated claims nothing can verify
-/vault verify --all                  include corpus/, research/, archives, queue-archive.md
+/vault verify --all                  include corpus/, research/, archives, queue-archive/
 /vault verify --files=decisions,learnings   only notes whose path contains one of these
 /vault verify --quiet                tab-separated `category<TAB>note:line<TAB>detail`
 /vault verify --fenced               read fenced code blocks too (examples, off by default)
@@ -92,7 +92,7 @@ produced, so proximity alone is not a pairing.
 ## Which notes
 
 By default the project's running files and design notes: everything under
-`projects/<name>/` except `state.md`, `queue-archive.md`, `**/archive/**`,
+`projects/<name>/` except `state.md`, `queue-archive/**`, `**/archive/**`,
 `corpus/**` and `research/**`. Corpus and research notes describe other
 codebases by construction — every path in a libunifex sweep is libunifex's —
 and archives are history. `--all` reads them anyway.
@@ -125,7 +125,7 @@ is wrong. Decision record: `projects/claude-config/decisions` D17.
 - **Untracked files count as present** when they exist on disk, so a
   gitignored artifact a note cites is not a finding; a file that was
   tracked and is now neither tracked nor on disk is *gone*.
-- **`queue-archive.md` and `corpus/` are skipped by default** and carry
+- **`queue-archive/` and `corpus/` are skipped by default** and carry
   stale paths by nature; `--all` reads them when that is the question.
 - **Every committed `package.json` answers version claims**, a fixture
   under a test directory included, so a version such a file declares passes

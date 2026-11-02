@@ -2095,7 +2095,9 @@ const fileItem = async () => {
     .split('\n')
     .map((line, i) => (i === 0 || !line.trim() ? line : `  ${line}`))
     .join('\n');
-  if (await isConverted(project)) {
+  const docPath = `projects/${project}/queue.md`;
+  const doc = (await isConverted(project)) ? null : await vaultGet(docPath);
+  if (!doc) {
     if (dryRun) {
       console.log(`DRY RUN — would file "${heading}" as an item note of ${project}`);
       return;
@@ -2110,22 +2112,6 @@ const fileItem = async () => {
     return;
   }
   const itemText = `- **${heading}** ${continuation}${source ? `\n  - source: ${source}` : ''}`;
-  const docPath = `projects/${project}/queue.md`;
-  const doc = await vaultGet(docPath);
-  if (!doc) {
-    const intro = `Outstanding work for ${project}. Items prefixed \`GitHub:\` under \`## ${section}\` are review-the-change items filed by the \`fleet-status\` skill; archive an item to \`queue-archive.md\` when it is processed.\n\n`;
-    const body =
-      section === 'Inbox'
-        ? `${intro}## Inbox\n\n${itemText}\n\n## Active\n\n## Backlog\n\n## Watching\n`
-        : `${intro}## Active\n\n${itemText}\n\n## Backlog\n\n## Watching\n`;
-    await vaultPut(
-      docPath,
-      {title: `${project} — Queue`, type: 'project', status: 'active', tags: [project, 'queue']},
-      body
-    );
-    console.log(`${docPath}: created with the item`);
-    return;
-  }
   const text = doc.text;
   const existing = new RegExp(
     `(?<=^|\\n)- \\*\\*${escapeRe(heading)}\\*\\*[\\s\\S]*?(?=\\n- \\*\\*|\\n## |$)`

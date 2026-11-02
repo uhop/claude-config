@@ -159,7 +159,7 @@ notes = notes.filter(r => {
   // archives are history. All four are --all territory.
   if (
     !ALL &&
-    (/(^|\/)(?:archive|corpus|research)\//.test(r.file_path) ||
+    (/(^|\/)(?:archive|corpus|research|queue-archive)\//.test(r.file_path) ||
       r.file_path.endsWith('/queue-archive.md'))
   )
     return false;

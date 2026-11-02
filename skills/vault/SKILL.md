@@ -38,7 +38,7 @@ in the same row.
 | One `## Heading` section — read it, or replace its content leaving every other byte alone | **`vault_read_section` / `vault_replace_section`** (adapter ≥ 0.7.0; server ≥ 2026-09-06) | `vault-curl '/vault/<path>?section=<heading line>'` + `POST /vault/edit` with `{path, op: "replace-section", heading, body}` |
 | One span — a section by its heading's leading text (a heading cited without its date) or under a parent, one queue item by its bold title, or one table row by its first cell — read whole or cut to its tail or head, or a `replace` whose `from` need be unique only inside it | **`vault_read_span`**, and **`vault_replace`** with `within` (and `count`, the number it asserts), `prefix` on `vault_replace_section` and the item tools (adapter ≥ 0.18.0; server ≥ 2026-10-26, vault-storage 4h) | `vault-curl '/vault/<path>?item=<title>&section=<heading>&tail=<bytes>'` (or `section` with `prefix=true`, or `row`) + `POST /vault/edit` with `{path, op: "replace", from, to, within: {item: "<title>"}}` |
 | A note's tail or head with no span — the newest entries of a rolling note, the last decision's number in a decisions note still whole (§ A split note for one split) | **`vault_read_span`** with only `tail` or `max_bytes` (adapter ≥ 0.19.0; server ≥ 2026-10-28, vault-storage D514): the body, frontmatter left out, no `hash`; a composed folder note is a 409 `composed_view` naming its pieces, since their order is not its newest (D515). Any cut keeps whole lines while they fill half of it and otherwise fills the rest from the line past them | `vault-curl '/vault/<path>?tail=<bytes>'` |
-| One queue item — remove it, insert it, or move it between documents with a trail after its title | **`vault_remove_item` / `vault_insert_item` / `vault_move_item`** (adapter ≥ 0.7.0; server ≥ 2026-09-06, D35) | `POST /vault/edit` with `{op: "remove-item" \| "insert-item", …}` + `POST /vault/move-item` |
+| One queue item on a queue not converted, or an item in any other note — remove it, insert it, or move it between documents with a trail after its title | **`vault_remove_item` / `vault_insert_item` / `vault_move_item`** (adapter ≥ 0.7.0; server ≥ 2026-09-06, D35) | `POST /vault/edit` with `{op: "remove-item" \| "insert-item", …}` + `POST /vault/move-item` |
 | One frontmatter array member (`related:`, `agent.tags_suggested`) | **`vault_patch_fm`** | `PATCH /sections/{record_id}/fm` via `vault-curl` |
 | One `tags:` member — the server refuses `/tags` in an FM patch (400 `protected_field`, since tags are taxonomy-validated) | **`vault_tag_add` / `vault_tag_remove`** (adapter ≥ 0.9.0) | `vault-curl /sections/{record_id}/tags -X POST` with `{"tag": "<tag>"}`, and `vault-curl /sections/{record_id}/tags/<tag> -X DELETE` |
 | The nearest existing tags for proposed names or a draft's text, before minting (§ Note format) | **`vault_tag_nearest`** (adapter ≥ 0.12.0; server ≥ 2026-09-28, vault-storage D82) | `vault-curl /tags/nearest -X POST -H 'Content-Type: application/json' --data-binary '{"tags": ["<name>", …]}'` |
@@ -94,8 +94,8 @@ in as a section of its own. `vault_list_pieces({file_prefix:
 
 **A queue kept one item to a note** (vault-storage 11d-1): a converted
 project has `projects/<name>/queue/<slug>.md` per open item, with `section`
-(`inbox`, `active`, `backlog`, `watching`) and `sequence_key`, and `priority`,
-`source`, and `blocked_by` when set; closed items are in `queue-archive/`,
+(`inbox`, `active`, `backlog`, `watching`), `sequence_key`, and `filed`, the day
+it entered the queue, and `priority`, `source`, and `blocked_by` when set; closed items are in `queue-archive/`,
 `status: archived`, with `closed_at` and `close_reason`. Its `queue.md` and
 `queue-archive.md` are those folders' composed paths, so links to them keep
 working, and `queue/_about.md` holds `trackers:`. That
@@ -117,8 +117,9 @@ Q=~/.claude/skills/vault/queue-items.mjs
 "$Q" convert <name> [--dry-run]                   # a queue and its archive; safe to run again
 ```
 
-On a project not converted yet, `file`, `move`, and `archive` are errors, and
-`vault_insert_item`, `vault_move_item`, and `vault_remove_item` stay right.
+`file` starts a queue for a project with none. On a project still kept as one
+note, `file` is an error until `convert` runs, and `vault_insert_item`,
+`vault_move_item`, and `vault_remove_item` stay right there.
 Edit an item's prose with `vault_replace` on its own path, with no `agent`
 patch: an item carries no summary.
 
@@ -693,8 +694,8 @@ rather than a preference:
   (2026-08-04) are `vault_read_file` on `schedule.md` at 52 KB,
   `vault_resume_bundle` at 79 KB and `vault_queue_by_project` at 145 KB, all
   three overflowed and had to be `jq`-ed off disk.
-- **Verbatim relocation must be mechanical.** Moving a shipped queue item
-  into `queue-archive.md` means reproducing multi-KB paragraphs exactly.
+- **Verbatim relocation must be mechanical.** A queue kept as item notes
+  moves whole notes; in any other note, moving an item means reproducing multi-KB paragraphs exactly.
   `vault_replace` takes `from`/`to` as strings, so that is you retyping them;
   `--replace-file` matches byte-for-byte against what `sed` cut. Retyping is
   the risk, not the round-trip. **From D35 (2026-09-06) the server does the
@@ -840,7 +841,8 @@ projects/          # per-project knowledge (subfolder per project)
     decisions.md   # architecture & design decisions
     learnings.md   # gotchas, patterns, what worked
     stack.md       # tech stack & dependencies
-    queue.md       # outstanding work
+    queue/         # outstanding work, one note per item (queue.md reads it whole)
+    queue-archive/ # closed items, one note each
     state.md       # baseline snapshot for vault-check-drift
 queries/           # filed Q&A research outputs
 logs/              # session logs until vault-storage 10e-2, expiring at 90 days; since, projects/<name>/data/sessions/
@@ -868,8 +870,9 @@ MCP server surfaced that `mcpServers` had never been a recognized
 | Everything at priority N (Backlog) | `queue-items.mjs fleet --section backlog --priority N` |
 | Fleet-wide Active / Watching | `queue-items.mjs fleet --section <section>` |
 
-Queue endpoints are backed by `queue_items`, a derivative every import keeps in
-sync with each project's `queue.md` and `queue-archive.md`: an API write's
+The server's queue endpoints, which see only a queue kept as one note, are
+backed by `queue_items`, a derivative every import keeps in sync with each such
+project's `queue.md` and `queue-archive.md`: an API write's
 slice is current when the response returns, and a pull is covered by the
 incremental reindex (server ≥ 2026-09-19, vault-storage D61; before that only
 the watcher derived slices, so a pull needed `vault_queue_reindex`). Markdown
@@ -942,8 +945,8 @@ Rules:
   2026-09-30): `none`, `reflect` (as items with the thread's `source:` under
   `## Active`, fleet-status's shape and the default when nothing is declared),
   or `triage` (the same items under `## Inbox`, where you accept one into
-  Backlog or Active with `vault_move_item` on the queue itself, or archive it
-  with a **Rejected** trail; a primary outside the vault takes none, since the
+  Backlog or Active with `queue-items.mjs move`, or archive it with
+  `--reason rejected`; a primary outside the vault takes none, since the
   vault records only the item in flight); `write` the fields the vault may
   write back (empty means read-only); `url` where a person opens it (derived
   for GitHub).
@@ -1026,8 +1029,8 @@ are skipped — the user is still iterating on them.
    `claim_token`. Then, for each claimed note, read the content with
    `vault_read_file`.
 3. Extract concepts — create or update topic notes in `topics/`,
-   project notes in `projects/<name>/`, or queue items in
-   `projects/<name>/queue.md` per the content's nature. Before extending
+   project notes in `projects/<name>/`, or queue items with
+   `queue-items.mjs file <name>` per the content's nature. Before extending
    or superseding an existing topic note, claim it too (a second
    `vault_work_claim`, its own token), so a duplicate merge cannot archive
    it under you; when `held` names it, write a new note instead, or leave
@@ -1284,13 +1287,14 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      - `handoff` — another agent waits on this session: read the request
        with `vault_handoff_get` before acting (§ Agent coordination —
        handoffs). `rework` — your own submission came back: surface it.
-     - `archive` — the item's ticket is closed or merged upstream: move it
-       to `queue-archive.md` (`vault_move_item`) with a **Shipped** trail
-       when the work was yours and a **Closed** trail otherwise.
+     - `archive` — the item's ticket is closed or merged upstream: close it
+       with `queue-items.mjs archive`, `--reason shipped` when the work was
+       yours and `--reason parked` with a trail saying it closed upstream
+       otherwise.
      - `triage` — an Inbox item a secondary tracker took in: read it with
-       its `source:` and accept it (`vault_move_item` to `## Backlog` or
-       `## Active`, with a trail saying why) or reject it (to
-       `queue-archive.md` with a **Rejected** trail). Say what you decided;
+       its `source` and accept it (`queue-items.mjs move … --section backlog`
+       or `active`) or reject it (`queue-items.mjs archive … --reason
+       rejected`, with a trail saying why). Say what you decided;
        leave an item you cannot judge and name it.
      - `place` — the item entered the Backlog since the last session, or
        during it where the project keeps a plan under `plans/` (server ≥
@@ -1378,8 +1382,8 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      `composed: true` and `pieces`; a `null` entry means the file doesn't
      exist.
      The block also carries `trackers` (vault-storage D95): where the
-     project's work is tracked, from the `trackers:` list in its `queue.md`
-     frontmatter, as `{declared, trackers: [{kind, ref, role, create,
+     project's work is tracked, from the `trackers:` list in its
+     `queue/_about.md` frontmatter, as `{declared, trackers: [{kind, ref, role, create,
      write, url}], primary, problems}`; no declaration means the vault
      queue is primary. **When `primary.kind` is not `vault`, new work is
      filed there** (through that tracker's own MCP server, or as a
@@ -1388,14 +1392,14 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      tracker and its id; the vault keeps context, notes, edges, and
      handoffs either way. **The item in flight is one Active item with
      `source:`** (vault-storage D108): when you start on a ticket,
-     `vault_insert_item` under `## Active` with `  - source: github
-     owner/repo#15` (or `linear ENG-123`, `jira VS-7`) among its
-     continuation lines and your notes as the body — the server updates the
-     open item that already carries that source instead of filing a second
-     (D107), so the call is safe to repeat; the Backlog stays empty in that
-     configuration, since the tracker holds the list; when the ticket
-     closes, move the item to `queue-archive.md` with a **Shipped** trail
-     (`vault_move_item`), or remove it when the work moves off you. Before
+     `queue-items.mjs file <name> --section active --source "github
+     owner/repo#15"` (or `linear ENG-123`, `jira VS-7`) with your notes as
+     the body — the script replaces the open item that already carries that
+     source instead of filing a second (D107), so the call is safe to
+     repeat; the Backlog stays empty in that configuration, since the tracker
+     holds the list; when the ticket closes, `queue-items.mjs archive …
+     --reason shipped`, or `--reason parked` when the work moves off you.
+     Before
      starting on a ticket, read what the vault holds about it:
      `vault_links({key: "<the source>"})` (or `{url}` for any link) lists
      the notes and queue items that mention it (vault-storage D112).
@@ -1581,7 +1585,7 @@ quiet.
 ### /vault trackers [project]
 
 Declare or change where a project's work is tracked: the `trackers:` list in
-the project's `queue.md` frontmatter (vault-storage D95). A setting that
+the project's `queue/_about.md` frontmatter (vault-storage D95). A setting that
 needs decisions and credentials is set from the agent, and the project page's
 Trackers card shows the declaration without a way to change it (Eugene,
 2026-09-29). GitHub first; Linear and Jira when he has subscriptions.
@@ -1604,8 +1608,8 @@ Trackers card shows the declaration without a way to change it (Eugene,
    declaration, never a reason to skip it.
 4. **Write** with `vault_patch_fm({record_id, ops: [{op: "add", path:
    "/trackers", value: {kind, ref, role, create, intake, write}}]})` on the queue's
-   record (`vault_list_pieces({file_prefix: "projects/<name>/queue.md"})`
-   gives the id, or `queue/_about.md` for a queue kept one item to a note); an object member is accepted (checked 2026-09-29), and
+   folder note (`vault_list_pieces({file_prefix:
+   "projects/<name>/queue/_about.md"})` gives the id); an object member is accepted (checked 2026-09-29), and
    `remove` with the same value drops an entry. Never rewrite the note for it.
 5. **Read it back** with `vault_project_trackers` and report the validated
    view; a non-empty `problems` list is a malformed entry, fixed in the same
