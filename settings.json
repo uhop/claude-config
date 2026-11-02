@@ -10,6 +10,11 @@
     "defaultMode": "auto"
   },
   "model": "opus[1m]",
+  "skillOverrides": {
+    "vault-search": "off",
+    "vault-similar": "off",
+    "vault-graph": "off"
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -137,14 +142,29 @@
     ]
   },
   "enabledPlugins": {
-    "typescript-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": false,
     "clangd-lsp@claude-plugins-official": true,
-    "cc-plugin-you-should-know@builtin": true
+    "cc-plugin-you-should-know@builtin": true,
+    "typescript-native-lsp@uhop-pinned": true
   },
-  "skillOverrides": {
-    "vault-search": "off",
-    "vault-similar": "off",
-    "vault-graph": "off"
+  "extraKnownMarketplaces": {
+    "uhop-pinned": {
+      "source": {
+        "source": "settings",
+        "name": "uhop-pinned",
+        "plugins": [
+          {
+            "name": "typescript-native-lsp",
+            "source": {
+              "source": "github",
+              "repo": "rubberduck-studio/typescript-native-lsp",
+              "ref": "v1.1.3",
+              "sha": "c04b3e5a8ef4a5bd920e6bd86ba082f45e9dc405"
+            }
+          }
+        ]
+      }
+    }
   },
   "effortLevel": "xhigh",
   "modelSettings": {

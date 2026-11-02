@@ -71,6 +71,12 @@ both. Several tests have a live half that reaches the real vault when `PROGRAM_C
   `.prettierignore` holds what must keep its exact text, and its comments say why.
 - The rest of the house style is in `CLAUDE.md` § Code.
 
+## Third-party plugins
+
+A plugin from outside this repository runs in every session on every fleet host, so `settings.json`
+pins it to a commit that was read, and an update means reading the new commit first. Auto-update off
+holds an installed copy, and only the pin holds a later install to the same code.
+
 ## Where the work is tracked
 
 The queue, decisions, and learnings live in the vault under `projects/claude-config/`, and the same

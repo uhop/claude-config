@@ -13,6 +13,13 @@ node install.mjs --apply   # symlink files into ~/.claude/
 
 The installer is idempotent — safe to re-run after `git pull`.
 
+The TypeScript language server is a plugin pinned in `settings.json`, and its install is one step
+per machine. Start any Claude Code session once so it registers the pinned marketplace, then run:
+
+```bash
+claude plugin install typescript-native-lsp@uhop-pinned
+```
+
 ### On chezmoi-managed machines
 
 If you also use the [dotfiles](https://github.com/uhop/dotfiles) chezmoi repo, install claude-config
