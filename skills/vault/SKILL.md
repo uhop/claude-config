@@ -1685,21 +1685,18 @@ same stage run as parallel sub-agents):
   a suggestion is a request for a decision, and that one is made. Leaving
   it here is what gave the queue a permanent pending floor (measured
   2026-09-01: five pending, four of them logs).
-- `suggestions.size_bound` — a note of lessons or a current view past its
-  size bound (vault-storage arc 3b): a write files it, and the server's
-  bundled scan settles it once the note is back under. `/vault-reorg`
-  reorganizes lessons (2026-10-27, Eugene: _"a big size should trigger a
-  reorg"_), and `reorg-batch measure` lists what is over with its price;
-  a first reorganization costs millions of agent tokens, so it runs on
-  Eugene's word. Any of them, a current view or lessons, splits
-  losslessly with `vault_split` (vault-storage D573, § A split note), at
-  no model cost; until a pilot on `blog/api-series-plan` measures it, the
-  sweep splits nothing by itself (question 178). The done report lists
-  each pending one under `size_bound` with its role, bytes, bound, and
-  remedy: name them in the summary and act on none. A record past its
-  bound files nothing; queue archives become one item per
-  file at vault-storage's 11c, and lint lists them under its advisory
-  `size_bound` check.
+- **Notes past their size bound** are no queue: lint's advisory `size_bound`
+  lists them live, each with its role and remedy, the list the dashboard and
+  `reorg-batch measure` show too (vault-storage 3k), and a note leaves it at
+  the next read once it is back under. A note splits losslessly with
+  `vault_split` (vault-storage D573, § A split note), at no model cost, and a
+  piece, which `vault_split` refuses, is cut by hand; until a pilot on
+  `blog/api-series-plan` measures it, the sweep splits nothing by itself
+  (question 178). `/vault-reorg` curates lessons (2026-10-27, Eugene: _"a big
+  size should trigger a reorg"_), and `measure` prices it; a first
+  reorganization costs millions of agent tokens, so it runs on Eugene's word.
+  The done report lists each note under `size_bound`: name them in the summary
+  and act on none.
 
 #### Ordering constraints
 
@@ -1876,8 +1873,8 @@ W=$(mktemp -d)
    check that no stage covers (filed 2026-10-28: a sweep converged while
    `oversized_summaries` read 1). An advisory check (`size_bound`, the
    notes past their size bound) counts toward neither `ok` nor `failing`;
-   the report's own `size_bound` list names the lessons and current views
-   among them. `begin --dry-run` prints the same verdict and list.
+   the report's own `size_bound` list names every one. `begin --dry-run` prints
+   the same verdict and list.
 
 A stuck kind isn't a failure — some suggestions legitimately need user
 input, and the sub-agent's `--auto` mode is conservative on ambiguity.

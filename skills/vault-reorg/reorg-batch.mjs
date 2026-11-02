@@ -6,7 +6,7 @@
 // triage agents' work, and the plan (which lessons go in which subject piece, merges, summaries)
 // is the main session's.
 //
-//   reorg-batch measure [--prefix=projects/] [--note-kb=50] [--piece-kb=20] [--json]
+//   reorg-batch measure [--prefix=projects/] [--json]
 //   reorg-batch prepare <path> [--out-dir=DIR] [--shard-kb=110] [--full] [--repo=DIR]
 //   reorg-batch merge --dir=DIR
 //   reorg-batch build --dir=DIR --plan=FILE
@@ -52,13 +52,11 @@ if (!import.meta.main)
     'reorg-batch.mjs is a CLI entry point, not a module — run it, do not import it (importing executes it). To check it loads, use `node --check`.'
   );
 
-const NOTE_KB = 50; // C7's bound for a running file (vault-storage design constraints)
 const PIECE_KB = 20; // the folder bound the 2026-10-27 reorganization wrote into _about.md
 const SHARD_KB = 110;
 const TOKENS_PER_KB = 3300; // measured 2026-10-27: 2.3M agent tokens over 697 KB of bullets
 const MINUTES_PER_SHARD = 25;
 const ATOMIZED = 'Atomized from `';
-const LESSONS = /learnings/; // the notes the brief's classes judge; records (decisions, queues, archives) need others
 const ENRICH = new URL('../vault-enrich-all/enrich-batch.mjs', import.meta.url).pathname;
 
 const fail = (code, message) => {
@@ -67,7 +65,7 @@ const fail = (code, message) => {
 };
 
 const usage = `Usage:
-  reorg-batch measure [--prefix=projects/] [--note-kb=${NOTE_KB}] [--piece-kb=${PIECE_KB}] [--json]
+  reorg-batch measure [--prefix=projects/] [--json]
   reorg-batch prepare <path> [--out-dir=DIR] [--shard-kb=${SHARD_KB}] [--full] [--repo=DIR]
   reorg-batch merge --dir=DIR
   reorg-batch build --dir=DIR --plan=FILE
@@ -79,7 +77,7 @@ if (!['measure', 'prepare', 'merge', 'build', 'write', 'rebase'].includes(comman
   fail(command === '--help' || command === '-h' ? 0 : 2, usage);
 
 const FLAGS = {
-  measure: ['--prefix', '--note-kb', '--piece-kb', '--json'],
+  measure: ['--prefix', '--json'],
   prepare: ['--out-dir', '--shard-kb', '--full', '--repo'],
   merge: ['--dir'],
   build: ['--dir', '--plan'],
@@ -163,59 +161,29 @@ const listRecords = async (prefix, fields) => {
   return records;
 };
 
-const allRecords = async prefix =>
-  (await listRecords(prefix, 'file_path,body,archived_at')).filter(
-    r => !r.archived_at && !r.file_path.includes('/archive/')
-  );
-
-// What brings a note that is not lessons under its bound (vault-storage D573).
-const RECORDS = new Set(['queue-archive', 'sessions']);
-const BY_PATH = new Set(['queue', 'state']);
-const remedyOf = path => {
-  const stem = basename(path, '.md');
-  if (RECORDS.has(stem)) return 'record: 11c-2, per item';
-  if (BY_PATH.has(stem)) return 'read by path, not split';
-  return 'vault_split';
-};
-
+// lint's list, the one the dashboard and the sweep show (vault-storage 3k), with the price of curating
 const measure = async () => {
-  const noteLimit = Number(opts['note-kb'] ?? NOTE_KB) * 1024;
-  const pieceLimit = Number(opts['piece-kb'] ?? PIECE_KB) * 1024;
-  const records = await allRecords(opts.prefix ?? 'projects/');
-  const folders = new Set(
-    records
-      .filter(
-        r => r.file_path.endsWith('/_about.md') && (r.body ?? '').trimStart().startsWith(ATOMIZED)
-      )
-      .map(r => dirname(r.file_path))
-  );
-  const over = [];
-  for (const r of records) {
-    if (r.file_path.endsWith('/_about.md')) continue;
-    const bytes = Buffer.byteLength(r.body ?? '', 'utf8');
-    const piece = folders.has(dirname(r.file_path));
-    const stem = basename(piece ? dirname(r.file_path) : r.file_path, '.md');
-    if (bytes > (piece ? pieceLimit : noteLimit))
-      over.push({
-        path: r.file_path,
-        kind: piece ? 'piece' : 'note',
-        lessons: LESSONS.test(stem),
-        kb: kb(bytes),
-        tokens: kb(bytes) * TOKENS_PER_KB
-      });
-  }
-  over.sort((a, b) => b.kb - a.kb);
+  const lint = await api('GET', '/system/lint');
+  const prefix = opts.prefix ?? 'projects/';
+  const over = (lint.checks?.size_bound?.samples ?? [])
+    .filter(n => n.file_path.startsWith(prefix))
+    .map(n => ({
+      path: n.file_path,
+      role: n.role,
+      kb: kb(n.bytes),
+      bound_kb: kb(n.bound),
+      remedy: n.remedy,
+      ...(n.role === 'lessons' ? {tokens: kb(n.bytes) * TOKENS_PER_KB} : {})
+    }));
   if (opts.json) {
-    console.log(JSON.stringify({checked: records.length, over}, null, 1));
+    console.log(JSON.stringify({over}, null, 1));
     return;
   }
-  console.log(
-    `${records.length} live notes checked; ${over.length} over the bound (notes ${kb(noteLimit)} KB, folder pieces ${kb(pieceLimit)} KB)`
-  );
+  console.log(`${over.length} notes past their size bound`);
   for (const o of over) {
-    const what = o.lessons ? `~${(o.tokens / 1e6).toFixed(1)}M tokens` : remedyOf(o.path);
+    const price = o.tokens ? `; curating: ~${(o.tokens / 1e6).toFixed(1)}M tokens` : '';
     console.log(
-      `${String(o.kb).padStart(6)} KB  ${o.kind.padEnd(5)}  ${what.padEnd(24)}  ${o.path}`
+      `${String(o.kb).padStart(6)} KB past ${String(o.bound_kb).padStart(3)}  ${o.role.padEnd(7)}  ${o.path}\n         ${o.remedy}${price}`
     );
   }
 };

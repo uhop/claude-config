@@ -15,9 +15,9 @@ A reorganization keeps what a session needs and archives the rest:
 
 ## When to run
 
-- **`reorg-batch measure`** lists every live project note over C7's 50 KB and every folder piece over 20 KB. A note of lessons (a `learnings` note or a piece of one) gets a token estimate; a record is marked for vault-storage's 11c, `queue.md` and `state.md` as read by their path, and any other note as one `vault_split` handles (§ Scope).
+- **`reorg-batch measure`** prints lint's list of the notes past their size bound, the one the dashboard and `/vault sweep` show (vault-storage 3k), each with its role and remedy; a note of lessons, or a piece of one, gets a token estimate for curating it.
 - **On request**, `/vault-reorg <path>`.
-- **From a `size_bound` suggestion**, only when Eugene picks a curation over the split. The server files one when a write takes a note past its bound (vault-storage arc 3b), and `/vault sweep` lists it in its done report; `vault_split` is its default remedy (§ Scope). This skill runs on Eugene's word, never by itself (§ Cost); `measure` prices the note first.
+- **From that list**, only when Eugene picks a curation over the split; `vault_split` is the default for a note (§ Scope). This skill runs on Eugene's word, never by itself (§ Cost); `measure` prices the note first.
 
 ## Scope
 
