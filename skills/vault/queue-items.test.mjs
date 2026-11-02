@@ -187,6 +187,11 @@ test('owed places a Backlog item by the day it was filed, and never the stall it
     ['backlog 2026-11-02', 'backlog 2026-11-20', 'No field'],
     'a conversion moves an item, and files nothing'
   );
+  assert.deepEqual(
+    (await owedItems('p', null, vault.call)).filter(i => i.kind === 'place'),
+    [],
+    'with no session to go by, nothing is placed'
+  );
 });
 
 test('the script runs by its path, as the vault skill calls it', () => {

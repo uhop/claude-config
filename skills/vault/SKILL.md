@@ -112,7 +112,6 @@ Q=~/.claude/skills/vault/queue-items.mjs
 "$Q" file <name> --title T [--section backlog] [--source S] --body-file F   # replaces by title or source
 "$Q" move <name> "<title or slug>" --section active
 "$Q" archive <name> "<title or slug>" --reason shipped --trail "D123, abc1234."
-"$Q" owed <name> --since <the last session's end>
 ```
 
 `file` starts a queue for a project with none.
@@ -1226,7 +1225,8 @@ failure the hook names, in a single line pointing at `/ui/keys.html`, since
 its silence is how an agent would otherwise lose its vault context unnoticed.
 
 This workflow is **MCP-native** — steps 2 and 5 are tool calls, not shell. The
-Bash is `check-drift.sh` (step 1) and `fleet-status.mjs` (step 3), each run
+Bash is `check-drift.sh` (step 1), `resume-owed.mjs` (step 2), and
+`fleet-status.mjs` (step 3), each run
 alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
 
 1. **Drift check first.** Run `~/.claude/skills/vault-check-drift/check-drift.sh`
@@ -1242,17 +1242,14 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
    what used to be five separate reads. Do **not** hand-roll this as
    `vault-curl … | jq` into a scratch file — the MCP call returns the whole
    structure directly.
-   - `owed` (server ≥ 2026-10-26, vault-storage 1h) — what this resume
-     owes, `[{kind, target, why}]`, in the order to act on it: the server
-     applies the resume's rules to the blocks below, `target` is what the
-     tool call takes, and `why` is the evidence. **Act on each entry**, and
-     say in the resume what you did with it; an empty list means nothing is
-     owed. An older server sends no `owed`: apply the same kinds to the
-     blocks yourself. **A queue's part comes from the script**, since the server
-     keeps no list of a queue's items (§ A queue kept one item to a note): run
-     `queue-items.mjs owed <name> --since <changes.since.ended>`, act on its
-     `triage`, `place`, and `upstream` as below, and take the items' sections
-     from `queue-items.mjs list <name>`, since the `queue` body shows none.
+   - **What this resume owes** comes from a script, since the rules are the
+     skill's and the server keeps the blocks (vault-storage 1h, 11d-2b): run
+     `~/.claude/skills/vault/resume-owed.mjs <name>`, which reads the bundle and
+     the project's queue and prints `[{kind, target, why}]`, in the order to act
+     on it: `target` is what the call takes, and `why` is the evidence. **Act on
+     each entry**, and say in the resume what you did with it; an empty list
+     means nothing is owed. Take the items' sections from
+     `queue-items.mjs list <name>`, since the `queue` body shows none.
      - `log` — a session ended without a wrap. Write its log first, from
        its record's commits and notes, the drift check, the queue and
        decisions as they stand, and, on the host that ran it, the transcript
@@ -1268,17 +1265,17 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      - `handoff` — another agent waits on this session: read the request
        with `vault_handoff_get` before acting (§ Agent coordination —
        handoffs). `rework` — your own submission came back: surface it.
-     - `upstream` (the script) — the item mirrors a ticket: read the ticket,
+     - `upstream` — the item, by its slug, mirrors a ticket: read the ticket,
        and when it is closed or merged upstream, close the item
        with `queue-items.mjs archive`, `--reason shipped` when the work was
        yours and `--reason parked` with a trail saying it closed upstream
        otherwise.
-     - `triage` (the script) — an Inbox item a secondary tracker took in: read it with
+     - `triage` — an Inbox item a secondary tracker took in: read it with
        its `source` and accept it (`queue-items.mjs move … --section backlog`
        or `active`) or reject it (`queue-items.mjs archive … --reason
        rejected`, with a trail saying why). Say what you decided;
        leave an item you cannot judge and name it.
-     - `place` (the script) — the item entered the Backlog since the last session, or
+     - `place` — the item entered the Backlog since the last session, or
        during it where the project keeps a plan under `plans/` (vault-storage
        D525, D527), since a wrap files what
        arrives after it: place it by the project's plan, or say that the
@@ -1324,7 +1321,7 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      the past week, `{count, latestAt, latestMs, worstAt, worstMs}`, in one
      line; null when none, and then stay quiet. With `filedBy: "server"`
      (D264) the server files them itself, so add `filedThrough` and file
-     nothing; otherwise `owed` carries `file-stalls`.
+     nothing; otherwise the owed list carries `file-stalls`.
    - `workflow` — surface the agent-workflow Active items
      (`queue-items.mjs list agent-workflow --section active`) under a
      `Workflow:` heading when there are any. If
@@ -1335,8 +1332,8 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      lines; `project.logs` is the project's own latest logs in the same
      shape and number, since the fleet's newest can all belong to other
      projects — read those first. Skim the summaries; fetch a full body
-     when a fleet log's summary is missing or `summary_stale` (`owed` names
-     the project's own), or when the session directly continues that log's
+     when a fleet log's summary is missing or `summary_stale` (the owed list
+     names the project's own), or when the session directly continues that log's
      work: a `log` line's entry (`file_path: null`) names its body in
      `data_path`, read with `vault_data_read` or `vault-curl /data/<path>`
      (vault-storage 10e-2), and a log note's is read with `vault_read_file`.
@@ -1356,8 +1353,8 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
      when `body_bytes` says it is huge) and still surface the rules.
      The other files (queue/decisions/learnings/stack) come as
      `summary` + `body_bytes`, each with `summary_stale` and, when its text
-     stood long, `summaryPossiblyStale` (`owed` asks the reads they call
-     for). A note of 64 KB or more with `summaryPossiblyStale` is owed no
+     stood long, `summaryPossiblyStale` (the owed list asks the reads they
+     call for). A note of 64 KB or more with `summaryPossiblyStale` is owed no
      read: relay its summary marked possibly stale, and read only the
      sections you need; the sweep restates it (vault-storage D287). A file
      kept as an atomized folder comes as the note its path composes, with

@@ -12,7 +12,6 @@
 //                        [--blocked-by B] (--body B | --body-file F)
 //   queue-items.mjs move <project> <title or slug> --section S [--priority N]
 //   queue-items.mjs archive <project> <title or slug> --reason R [--trail T]
-//   queue-items.mjs owed <project> --since ISO
 
 import {readFileSync} from 'node:fs';
 import {vaultSettings} from './vault-settings.mjs';
@@ -69,7 +68,7 @@ export const openFields = ({
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-const client = () => {
+export const client = () => {
   const {base, token, problem} = vaultSettings();
   if (problem) throw new Error(problem);
   return async (method, path, {json, headers = {}} = {}) => {
@@ -86,7 +85,7 @@ const client = () => {
   };
 };
 
-const expectJson = async (r, what) => {
+export const expectJson = async (r, what) => {
   const text = await r.text();
   if (!r.ok) throw new Error(`${what}: ${r.status} ${text.slice(0, 300)}`);
   return text ? JSON.parse(text) : {};
@@ -316,19 +315,24 @@ export const archiveItem = async (project, ref, {reason, trail}, call = client()
 };
 
 /**
- * What a resume owes for a project's queue, which the server's `owed` does not hold: Inbox items to
- * triage, items filed into the Backlog on or after `since`'s day, and items mirroring a ticket, to
- * read upstream.
+ * What a resume owes for a project's queue (`resume-owed.mjs`): items mirroring a ticket, to read
+ * upstream, Inbox items to triage, and items filed into the Backlog on or after `since`'s day, none
+ * when `since` is null.
  */
 export const owedItems = async (project, since, call = client()) => {
   const notes = await openNotes(call, project);
-  const day = since.slice(0, 10);
+  const day = since?.slice(0, 10);
   // The server files its own stall item, so nobody places it.
   const filedSince = n =>
+    day !== undefined &&
     String(shaped(n).filed) >= day &&
     !String(n.frontmatter.title).startsWith('Loop stalls recorded through ');
   const owed = (kind, picked) => picked.map(n => ({kind, ...shaped(n)}));
   return [
+    ...owed(
+      'upstream',
+      notes.filter(n => n.frontmatter.source)
+    ),
     ...owed(
       'triage',
       notes.filter(n => n.frontmatter.section === 'inbox')
@@ -336,10 +340,6 @@ export const owedItems = async (project, since, call = client()) => {
     ...owed(
       'place',
       notes.filter(n => n.frontmatter.section === 'backlog' && filedSince(n))
-    ),
-    ...owed(
-      'upstream',
-      notes.filter(n => n.frontmatter.source)
     )
   ];
 };
@@ -359,7 +359,7 @@ const main = async () => {
   const opts = parseArgs(process.argv.slice(2));
   const [command, project, ref] = opts._;
   if (!command || (!project && command !== 'fleet')) {
-    throw new Error('usage: queue-items.mjs list|file|move|archive|owed <project> …, or fleet');
+    throw new Error('usage: queue-items.mjs list|file|move|archive <project> …, or fleet');
   }
   const priority = opts.priority === undefined ? undefined : Number(opts.priority);
   const show = value => console.log(JSON.stringify(value, null, 2));
@@ -398,9 +398,6 @@ const main = async () => {
       return show(await moveItem(project, ref, {section: opts.section, priority}));
     case 'archive':
       return show(await archiveItem(project, ref, {reason: opts.reason, trail: opts.trail}));
-    case 'owed':
-      if (!opts.since) throw new Error('owed needs --since ISO');
-      return show(await owedItems(project, opts.since));
     default:
       throw new Error(`unknown command: ${command}`);
   }
