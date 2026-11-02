@@ -185,7 +185,7 @@ const fakeVault = ({queue, archive, open, closed = []}) => {
     }
     if (method === 'GET' && url.startsWith('/sections/')) {
       return Response.json({
-        frontmatter: {title: 'Carried', tags: ['t'], trackers: ['x'], agent: {}}
+        frontmatter: {title: 'Carried', tags: ['t'], trackers: ['x'], stalls: 'file', agent: {}}
       });
     }
     if (method === 'PATCH') {
@@ -249,6 +249,7 @@ test('convert keeps closed items, and the text outside them, in queue-archive/',
     title: 'Carried',
     tags: ['t'],
     trackers: ['x'],
+    stalls: 'file',
     type: 'meta',
     status: 'active'
   });
@@ -328,6 +329,14 @@ test('owed places a Backlog item filed since, and no item the conversion itself 
   vault.notes.set('projects/p/queue/new.md', item('backlog', '2026-11-20'));
   vault.notes.set('projects/p/queue/watch.md', item('watching', '2026-11-20'));
   vault.notes.set('projects/p/queue/in.md', item('inbox', '2026-11-02'));
+  vault.notes.set('projects/p/queue/loop-stalls.md', {
+    frontmatter: {
+      title: 'Loop stalls recorded through 2026-11-20T00:00:00.000Z.',
+      section: 'backlog',
+      created: '2026-11-20'
+    },
+    body: 'Filed by the server.\n'
+  });
   const owed = await owedItems('p', '2026-11-10T12:00:00Z', vault.call);
   assert.deepEqual(
     owed.map(i => [i.kind, i.title]),

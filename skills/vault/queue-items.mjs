@@ -367,9 +367,14 @@ export const owedItems = async (project, since, call = client()) => {
   const notes = all.filter(n => !SPECIAL.has(n.path.slice(n.path.lastIndexOf('/') + 1)));
   const converted = String(all.find(n => n.path.endsWith('/_about.md'))?.frontmatter.created ?? '');
   const day = since.slice(0, 10);
+  // The server files its own stall item, so nobody places it.
   const filedSince = n => {
     const created = String(n.frontmatter.created ?? '');
-    return created >= day && created > converted;
+    return (
+      created >= day &&
+      created > converted &&
+      !String(n.frontmatter.title).startsWith('Loop stalls recorded through ')
+    );
   };
   const owed = (kind, picked) => picked.map(n => ({kind, ...shaped(n)}));
   return [
@@ -388,7 +393,7 @@ export const owedItems = async (project, since, call = client()) => {
   ];
 };
 
-const CARRIED = ['title', 'tags', 'related', 'edges', 'trackers', 'key'];
+const CARRIED = ['title', 'tags', 'related', 'edges', 'trackers', 'stalls', 'key'];
 
 const recordIdOf = async (call, path) => {
   const record = await expectJson(

@@ -1308,8 +1308,9 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
        resume files what is not filed yet, since the server is shared: find
        the newest `Loop stalls recorded through <at>.` title among
        vault-storage's open and archived items (`vault_queue_by_project`
-       and `vault_queue_project_archive` with `project: "vault-storage"`),
-       which marks where filing stopped; read every stall record since it
+       and `vault_queue_project_archive` with `project: "vault-storage"`;
+       on a converted queue the open one is `queue/loop-stalls.md`, the rest
+       in `queue-archive/`), which marks where filing stopped; read every stall record since it
        with `vault-curl '/system/events?log=stalls&since=<that at>&limit=1000' -f`,
        following `next` while it is not null and leaving out the record at
        exactly that `at`. `-f` makes an HTTP error stop the step, since
