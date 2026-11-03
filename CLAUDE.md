@@ -213,14 +213,15 @@ reported counts; this one verifies your own narration.
 
 ## Code
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
+
 - **The coding-tactics blog series is house style.** `~/Open/blog-hugo/content/blog/` 2026 series —
   code-linearization, code-is-cheap, logical-optimizations, cheating-as-a-programming-discipline,
   boolean-algebra, loop-and-if-invariants, break-continue-goto, back-of-the-envelope-estimates,
   premature-optimization — is the authority for simplification calls: collapse `else` when the `if`
   body ends in `return`/`break`/`continue`, guard clauses over nesting, booleans are booleans, etc.
   When a simplification matches a tactic, double-check it (tests/probes), then apply — don't just
-  note it. (Origin: deep6 2026-07-13 — the user pointed at the series after an `else`-after-exit
-  discussion stayed theoretical.)
+  note it.
 - Prefer prefix `++i` / `--i` when the result is unused.
 - **Never `var`; a genuinely global binding goes on `globalThis` explicitly** (`window` in
   browser-only code), everything else is `const`/`let`. Eugene, 2026-09-19: _"in my code I avoid
@@ -244,19 +245,13 @@ reported counts; this one verifies your own narration.
   class for every failure is a `heya-io`-era habit from when the standard set was thin. Audit on
   touch: in a file you edit that throws, enumerate its throw sites and keep only the classes a
   caller distinguishes (double-meh 2026-09-20: eight `TypeError` sites already standard, `FailedIO`
-  kept with the platform error on `cause`, `CacheFull` reworked the same day). (Origin: double-meh
-  2026-09-20 — _"a criticism of using custom errors instead of standard errors in this project … If
-  it is beneficial for us, we should use `cause` and `AggregateError` to combine underlying errors
-  with other errors as appropriate."_ Ruled fleet-wide at /clarify 2026-09-22.)
+  kept with the platform error on `cause`, `CacheFull` reworked the same day).
 - **A program reports every missing required setting, together.** Check all mandatory settings at
-  start and name each missing one in a single error, never only the first. (Origin: vault-storage
-  2026-10-07, a server process dropping old setting names without a word; Eugene: _"All mandatory
-  settings should be reported if missing."_)
+  start and name each missing one in a single error, never only the first.
 - **The docs are the spec; a test that contradicts them is the bug.** When a change turns a test
   red, read what the documentation, the library's stated contract, and the language spec promise:
   fix a test that contradicts them, and never bend the code or keep a wrong test for compatibility.
-  (Origin: tape-six 2026-10-21, the 1.16.0 `t.match` defect. Full:
-  [[topics/ai-written-tests-can-encode-bugs]].)
+  (Full: [[topics/ai-written-tests-can-encode-bugs]].)
 - **A timeout caps a runaway; a state machine drives the logic.** Sequence work by the events it
   waits for. A timeout stops a process that never reaches its next event, is anchored at an event (a
   run's start, a cleanup's start), and never stands in for one. A step that reaches the network or
@@ -277,29 +272,18 @@ reported counts; this one verifies your own narration.
   and frequently suseptible to ReDoS attacks. Yes, users should control their data, but it can
   happen accidentally in a good input and I prefer not to open a door for any exploits if I can help
   it without major sacrifices."_ A lookbehind also fails older engines: Safari before 16.4 cannot
-  parse one, so the whole module fails to load. (Origin: stream-json 2026-10-28 — `57f73f1` escaped
-  lone surrogates with a lookbehind, replaced by the `u` flag in `9c3e828`, where
-  `tests/node/test-browser-safe.js` now refuses one in browser-loaded code.)
+  parse one, so the whole module fails to load.
 - **Every symbol is `Symbol.for()`, never `Symbol()`, internal ones included**, keyed under the
   project's own prefix (`object-stream.` across the stream-* family). A well-known name is a
   protocol without a dependency: another library can produce or recognize the package's markers by
   defining the same symbol and following the package's rules, with no formal dependency just to
   import a symbol. A `Symbol()` marker can only be imported. Check the project's `AGENTS.md` for its
-  prefix before minting a key. (Origin: stream-chain 2026-10-26 — `pipeRunSymbol` was written as
-  `Symbol()` against stream-chain's own `AGENTS.md`, beside five older internal `Symbol()` calls;
-  Eugene: _"Use `Symbol.for()` for all our symbols, even for internal ones."_ and _"IIRC I used
-  `object-stream.` as a symbol's name prefix."_ The reason, 2026-10-27, after it was recorded as
-  letting installed copies agree: _"The reason I use `Symbol.for()` not to avoid different versions
-  of the same library, but to avoid formal dependencies between different libraries."_)
+  prefix before minting a key.
 - **No defensive code for unsupported setups.** A library does not slow or complicate a supported
   path to guard against misuse it does not support: mixed versions of itself in one project, files
   removed from the package, functions called against their docs. Keep the cheap check (an
   `instanceof`, a direct property read) and let the unsupported case fail, even when the failure is
-  hard to trace. (Origin: stream-chain 2026-10-27, a side agent's suggestion to recognize an older
-  copy's `Stop` by duck typing; Eugene: _"We are not going to bastardize a cheap and efficient
-  `instanceof` check with duck-typing in an off-chance that somebody mixed-and-matched incompatible
-  version of our library. Otherwise it'll be never-ending 'what, purely by mistake, they removed
-  some of our files?' …"_ and _"We don't support multiple copies of different versions."_)
+  hard to trace.
 - **Build the basics first; never invent work the goal does not need.** Before adding a field, a
   check, a parse, an option, or a dependency, name the reader or writer that needs it today; with
   none, cut it. Data the system does not need to understand is an opaque text snippet: define
@@ -318,25 +302,18 @@ reported counts; this one verifies your own narration.
   apart. A genuine duplicate is fixed by moving every copy to one home, since a new helper beside
   the old copies is one more duplicate (§ Fix the class, not the instance). Say so in the proposal.
   A "cleanup" that assumes duplication where the author bought speed is a regression wearing a
-  refactor's clothes. (Origin: 2026-08-05, apodict analysis campaign — _"Remember that sometimes
-  repetition (AKA inlining) is a performance technique. So be careful with that."_ 2026-10-03: the
-  knowledge test from DRY's definition, the helper line from Tomas Vykruta's `AGENTS.md`.)
+  refactor's clothes.
 - **A rule names the mismatch it guards, never today's value.** The same knowledge test reaches past
   code: a rule, a check, a CI step, or a document that guards a relation (tests on the runtime's
   Node, a limit, a host) states the relation and reads the value from the one place it is chosen,
   and a change sweeps the other copies ([[projects/agent-workflow/feedback]] § A rule names the
-  mismatch it guards). (Origin: apodictum-web 2026-10-22, a deploy rule that said Node 24; Eugene:
-  _"we don't care about Node 24 at all. We care about a mismatch between running tests locally on
-  one version of Node and a lambda's runtime version."_)
+  mismatch it guards).
 - **Don't write config that restates a default.** Read the tool's own configuration reference before
   adding a key, then write only keys that _change_ behaviour. A key set to the value it already had
   is a no-op that reads as a fix — it makes the config longer, the next reader unsure which lines
   are load-bearing, and (the real cost) it looks like the problem was addressed when nothing
   changed. Pinning a default deliberately, to guard against an upstream change, is fine — say so in
-  the same line, or it is indistinguishable from the mistake. (Origin: /clarify 2026-08-08, from the
-  2026-08-07 herdr session — `prompt_new_tab_name` written explicitly while chasing a tab-naming
-  behaviour; Eugene: _"`prompt_new_tab_name` is `true` anyway. And it still suggests a number. So
-  you can remove an explicit settings for it."_)
+  the same line, or it is indistinguishable from the mistake.
 - Measure perf with `nano-bench` (`~/Open/nano-bench/`). No ad-hoc timing. **One question per bench
   file:** variants differ in exactly one respect and only the within-file delta is a measurement —
   never put incomparable workloads (different operator or operand counts, different floors) in one
@@ -345,23 +322,11 @@ reported counts; this one verifies your own narration.
   input mix, a lowered `-s`/`-m`, a crowded module, a busy machine, a core count. A wall time
   compares only with runs under the same machine, cores, and load, and quoted for any other it is a
   prediction until measured there; state the distribution-free claim (dominance) when one exists,
-  and a degraded run never overturns a clean one. (Origin: apodict 2026-08-22/23 — "15 vs 30 `!!`
-  applications" reported as a code property when it was a 50/50 branch split baked into the test
-  inputs, then three published-and-retracted benchmark conclusions from a 13-variant file and a
-  shortened sweep. Eugene: _"Never lump together uncomparable items and try to see if they are
-  statistically different."_ Skill-side fix queued on `projects/nano-bench/queue`; full account in
-  `projects/apodict/learnings` 2026-08-23. Wall-time clause 2026-10-06: apodict's census, 220 s
-  whole against 490 s split, compared across runs under different load, and a re-embed measured on a
-  16-thread desktop, quoted for a far smaller server; the side agent caught both, the 2026-10-06
-  reflect report, M1.)
+  and a degraded run never overturns a clean one.
 - **A cost that grows faster than its input is scheduled for removal once it is measured.** "No real
   input is slow from it yet" is no reason to wait: the first real input to meet a quadratic is a
   user's session. Measure growth on generated inputs at doubling sizes, since one file shows a
-  constant and never a rate, and keep the generator as the fix's measure. (Origin: apodict
-  2026-10-16 — D403 took one file's harvest from 1,381 s to about 1.6 s, yet a generated function's
-  harvest still grew with the square of its size; asked whether that could wait for a real slow
-  function, Eugene: _"When a real function appears, it'll be too late. Let's schedule removing
-  quadratic stuff."_)
+  constant and never a rate, and keep the generator as the fix's measure.
 - **No comments that narrate the code.** Code isn't documentation — don't add a comment that
   restates _what_ the code does. The only allowed comments, each as the **shortest possible marker**
   (a pointer, not an explanation): JSDoc when explicitly requested or required; a reference for a
@@ -377,11 +342,7 @@ reported counts; this one verifies your own narration.
   fragments, and query liveness, minimality, and, for a value-position `&&`/`??` whose result meets
   a member access, the §15 truthy projection (the `apodictum` skill, constructive mode; queries
   through `bin/ledger.js record` so every checked claim has a hash; corpus note per run). The pass
-  costs minutes and belongs beside tests and lint, not after the deploy. (Origin: 2026-09-07 — the
-  vault-storage fleet dashboard shipped with `location.hash && getElementById(…)` feeding
-  `tr?.classList`; `''` is falsy but not nullish, Safari threw on every plain visit, and the retro
-  pass refuted the guard with exactly that world while the oracle had sat registered and unused.
-  Eugene: _"I hope you use `apodict` to verify code when working on it."_ Topic:
+  costs minutes and belongs beside tests and lint, not after the deploy. (Topic:
   [[topics/optional-chaining-guards-nullish-not-falsy]].)
 - **Refactor first, then change behavior, when the change does not fit the structure.** Restructure
   in one commit, then make the change on the new structure in the next. The refactor preserves only
@@ -392,21 +353,13 @@ reported counts; this one verifies your own narration.
   refactor commit. The refactor commit is reviewed for one property, that what it keeps did not
   change: tests unchanged and green, and the conditions and control flow it rewrote checked with
   apodict's `equivalent` and `skeletonEquivalent` (the `apodictum` skill). The report says which
-  path an arc took and why. (Origin: 2026-10-03, vault-storage — Tomas Vykruta's `AGENTS.md` rule
-  "refactor first, then change; never both in one unverifiable diff" (X, 2026-09-30), the practice
-  of Kent Beck's _Tidy First?_. Eugene: _"It sounds like an `apodictum` turf --- it is suited for
-  checking the equivalence. Yet it is not a universal rule"_, with two counter-cases: a dropped
-  `a()` when an array becomes a list, and a `c()` trivial on arrays and hard on lists. And: _"His
-  rule works frequently, but not always. But it makes sense in some cases --- a matter of a
-  judgement."_)
+  path an arc took and why.
 - **A shared interface is shaped by drafts of every implementation.** While only one of an
   interface's implementations is built, its signatures stay provisional: sketch the others' major
   operations as drafts, which need not run, and take the arguments and the call granularity from
   what they need. When the implementations pull different ways, the one the product sells wins
   ([[projects/agent-workflow/feedback]] § Shape a shared interface with a draft of every
-  implementation). (Origin: vault-storage 2026-10-18, D313 ruled from SQLite alone; Eugene: _"Do
-  other implementations as draft implementations. They are not necessarily working, but sketch out
-  major operations."_)
+  implementation).
 - **A management surface gets the full action set.** Every state an action can enter has an action
   that leads out (disable ⇄ enable, create ⇄ delete, lost secret → rotate, submit → cancel), and a
   tool that collects or stores something ships its read verb (`/x show`) with its write verbs
