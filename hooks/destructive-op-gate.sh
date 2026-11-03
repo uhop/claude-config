@@ -409,7 +409,7 @@ if [[ "$cmd" =~ ${word}(git|npm)([^[:alnum:]_-]|$) && "$cmd" =~ ${word}(push|tag
   fi
   case "${found%%$'\n'*}" in
     'git push')
-      deny "git push" "Pushing is reserved: pushed history cannot be taken back." ;;
+      deny "git push" "Pushing is reserved: pushed history cannot be taken back. Between two local repositories in a test, fetch from the other side: \`git -C <dst> fetch <src> <ref>:<ref>\`." ;;
     'git tag')
       deny "git tag" "Tags are reserved; list them with \`git for-each-ref refs/tags\`." ;;
     'git clean')

@@ -213,5 +213,9 @@ check ALLOW 'ls -l'
 HOOK=$real_hook
 rm -rf "$broken"
 
+# ── the push refusal names the local equivalent (2026-11-02, D43) ──
+jq -nc --arg c 'git -C /tmp/x push /tmp/y main' '{tool_name:"Bash", tool_input:{command:$c}}' | bash "$HOOK" 2>&1 >/dev/null | grep -q 'fetch <src> <ref>:<ref>'
+[ "${PIPESTATUS[2]}" -eq 0 ] && ((++pass)) || { ((++fail)); echo "FAIL  the push refusal must name the fetch"; }
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

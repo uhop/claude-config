@@ -106,8 +106,10 @@ check ALLOW "W=$SCRATCH; cd \"\$W\" && $V -m x"
 OUTSIDE=$(mktemp -d /var/tmp/gate-test.XXXXXX); git -C "$OUTSIDE" init -q
 git -C "$OUTSIDE" -c user.name=t -c user.email=t@t commit -q --allow-empty -m zero
 LINKED=$(mktemp -d); rmdir "$LINKED"; git -C "$OUTSIDE" worktree add -q "$LINKED" -b gate-test 2>/dev/null
+FAR=$(mktemp -d /var/tmp/gate-wt.XXXXXX); rmdir "$FAR"; git -C "$OUTSIDE" worktree add -q "$FAR" -b gate-far 2>/dev/null
+SUB=$(mktemp -d /var/tmp/gate-sub.XXXXXX); echo 'gitdir: ../.git/modules/x' > "$SUB/.git"
 CACHE=$(mktemp -d /var/tmp/gate-cache.XXXXXX); git -C "$CACHE" init -q
-trap 'rm -rf "$PLAIN" "$MARKED" "$SCRATCH" "$OUTSIDE" "$LINKED" "$CACHE"' EXIT
+trap 'rm -rf "$PLAIN" "$MARKED" "$SCRATCH" "$OUTSIDE" "$LINKED" "$FAR" "$SUB" "$CACHE"' EXIT
 XDG_CACHE_HOME="$CACHE" check ALLOW "git -C $CACHE commit -m x"
 XDG_CACHE_HOME="$CACHE" check ALLOW "git -C $CACHE/r init -q && git -C $CACHE/r commit -m x"
 XDG_CACHE_HOME="$CACHE" check ALLOW "W=\$(mktemp -d -p $CACHE); cd \"\$W\" && git init -q && $V -m one"
@@ -126,9 +128,18 @@ check DENY  "W=\$(mktemp -d); git clone -q /src/base && git -C \"\$W\" commit -m
 check DENY  "W=\$(mktemp -d); git -C \"\$W\" commit -m x"
 check DENY  "W=\$(mktemp -d); git -C \"\$W\" commit -m x; git -C \"\$W\" init -q"
 check DENY  "W=\$(mktemp -d); git init -q \"\$W\"; $V -m x"
-check DENY  "git -C $LINKED commit -m x"
-check DENY  "W=$LINKED; cd \"\$W\" && $V -m x"
-check DENY  "W=\$(mktemp -d)/wt; git -C $OUTSIDE worktree add \"\$W\" -b t && git -C \"\$W\" commit -m x"
+check DENY  "git -C $SUB commit -m x"
+check DENY  "git -C $OUTSIDE worktree list && git -C $OUTSIDE commit -m x"
+check DENY  "git -C $OUTSIDE worktree remove /var/tmp/gate-absent && git -C /var/tmp/gate-absent commit -m x"
+# ── a linked worktree needs no marker, anywhere, and its main checkout still does (2026-11-02) ──
+check ALLOW "git -C $LINKED commit -m x"
+check ALLOW "git -C $FAR commit -m x"
+check ALLOW "cd $FAR/sub && $V -m x"
+check ALLOW "W=$LINKED; cd \"\$W\" && $V -m x"
+check ALLOW "W=\$(mktemp -d)/wt; git -C $OUTSIDE worktree add \"\$W\" -b t && git -C \"\$W\" commit -m x"
+check ALLOW "git -C $OUTSIDE worktree add -q -b t /var/tmp/gate-absent HEAD && git -C /var/tmp/gate-absent commit -m x"
+check DENY  "git -C $OUTSIDE commit -m x"
+check DENY  "git -C $OUTSIDE worktree add -b t /var/tmp/gate-absent && git -C /var/tmp/gate-absent-2 commit -m x"
 TMPDIR="$OUTSIDE/tmp" check DENY "git -C $OUTSIDE/tmp/fixture commit -m x"
 # ── parser absent: the substring verdict stands, at the cwd ──
 MISSING=$(mktemp -d); cp "$HOOK" "$MISSING/git-commit-gate.sh"

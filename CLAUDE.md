@@ -26,14 +26,14 @@ unless `.claude/git-commit-allowed` exists at or above the directory the commit 
 after any `cd` in the command, or git's `-C` (since 2026-09-06; before that the session cwd alone
 decided, which denied a `cd <marked repo> && git commit` from an unmarked cwd) — (a per-project
 opt-in marker — only a couple of repos carry it; `find ~/Open -path '*/.claude/git-commit-allowed'`
-answers _which_, don't hardcode the list; a scratch repository under the temp or cache directory
-needs none, and a site the gate cannot read is denied). `push` / `tag` / `publish` are in
-`settings.json`'s absolute `permissions.deny` — a hook can't reopen a deny — and since that deny
-matches a literal prefix, `hooks/destructive-op-gate.sh` denies the spellings it misses (git's and
-npm's global options before the verb: `git -C <dir> tag` ran on 2026-09-29), so they're impossible
-**everywhere, on every repo, always**; `npm publish` also needs interactive 2FA the agent doesn't
-have. So: on the verb, in a marked repo, just commit; otherwise the action can't happen — don't
-narrate the gate, don't ask.
+answers _which_, don't hardcode the list; a scratch repository under the temp or cache directory and
+a linked worktree need none, and a site the gate cannot read is denied). `push` / `tag` / `publish`
+are in `settings.json`'s absolute `permissions.deny` — a hook can't reopen a deny — and since that
+deny matches a literal prefix, `hooks/destructive-op-gate.sh` denies the spellings it misses (git's
+and npm's global options before the verb: `git -C <dir> tag` ran on 2026-09-29), so they're
+impossible **everywhere, on every repo, always**; `npm publish` also needs interactive 2FA the agent
+doesn't have. So: on the verb, in a marked repo, just commit; otherwise the action can't happen —
+don't narrate the gate, don't ask.
 
 **"Published" is a fact, and the registry lags it.** A successful `npm publish` now ends with _"npm
 notice Your package is being processed and may take a few minutes to become available"_, so
@@ -775,9 +775,10 @@ whether I hold it or am **subordinate** to another cwd session; subordinate mean
 go worktree + handoff, and taking the lease is _his_ act, in the UI only (`/ui/agents.html`, ruled
 2026-09-19): on `"take the lease"`, point him there, never `force` a release yourself. A cwd lease
 unrenewed for an hour passes to the next session that starts in the repo, and the gate says so once
-when it happens to an idle session of mine. Committing and pushing stay his, worktree or not.
-**Inside a Herdr session (`HERDR_ENV=1`), open the finished worktree for his review yourself** —
-`herdr worktree open --cwd <repo-root> --branch <topic> --label <topic> --no-focus` — instead of
+when it happens to an idle session of mine. Committing in his checkouts and pushing stay his; a
+disposable worktree's commit only carries a handoff's patch ([[projects/claude-config/decisions]]
+D43). **Inside a Herdr session (`HERDR_ENV=1`), open the finished worktree for his review yourself**
+— `herdr worktree open --cwd <repo-root> --branch <topic> --label <topic> --no-focus` — instead of
 handing him the command; `--cwd` must name the _sibling repo_, since herdr resolves worktrees
 against the caller-pane's repo otherwise (hit 2026-08-09: `worktree_not_found` from a blog-hugo
 pane). `--no-focus` so his focus stays put; he switches when ready. (Eugene 2026-08-09: _"you can

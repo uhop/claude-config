@@ -15,8 +15,9 @@
 #
 # A scratch repository needs no marker: one under the temp or the cache directory
 # that this command's `git init` or `git clone` made, or that is on disk, since a
-# commit there reaches none of Eugene's repositories. A linked worktree there is
-# not one: its commit lands on a real repository's branch.
+# commit there reaches none of Eugene's repositories. Neither does a linked
+# worktree, anywhere (2026-11-02, claude-config D43): the worktree-and-handoff
+# protocol commits there, and the lease gate has never blocked one.
 #
 # Background: Claude Code's permissions.deny is absolute (a more-local
 # allow rule never overrides it), so the old `Bash(git commit:*)` deny
@@ -62,7 +63,8 @@ cwd=$(jq -r '.cwd // ""' <<<"$payload")
 
 # The parser prints one line per commit site that needs the marker — the
 # directory the verb runs in, `?` when a variable leaves it unknown — and nothing
-# when the words are data or the site is a scratch repository. Parser unavailable
+# when the words are data or the site is a scratch repository or a linked
+# worktree. Parser unavailable
 # or failing: the pre-2026-09-06 regex decides, gaps and all, at the cwd.
 sites=
 [[ "$cmd" =~ ${word}git[[:space:]]+commit([^a-zA-Z0-9_-]|$) ]] && sites="$cwd"
@@ -77,10 +79,10 @@ from shell_segments import (strip_heredocs, segments, command_tokens, git_split,
 
 PLACES = {os.path.realpath(p) for p in (os.environ.get('TMPDIR'), '/tmp',
                                         os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache')) if p}
-VALUE_OPTS = {'-b', '--branch', '--initial-branch', '-o', '--origin', '-c', '--config', '--depth', '-j', '--jobs',
+VALUE_OPTS = {'-b', '-B', '--reason', '--branch', '--initial-branch', '-o', '--origin', '-c', '--config', '--depth', '-j', '--jobs',
               '-u', '--upload-pack', '--reference', '--template', '--separate-git-dir', '--object-format',
               '--ref-format', '--shallow-since', '--shallow-exclude', '--server-option', '--bundle-uri'}
-env, made = {}, []
+env, made, added = {}, [], []
 
 def in_place(path):
     real = os.path.realpath(path)
@@ -100,11 +102,15 @@ def made_repo(verb, args, site):
         k += 1
     if verb == 'init':
         return resolve_path(rest[0], site, env) if rest else site
+    if verb == 'worktree' and rest[:1] != ['add']:
+        return None
     return resolve_path(rest[1], site, env) if len(rest) > 1 else None
 
-def scratch(site):
+def needs_no_marker(site):
     root, linked = checkout_of(site)
-    if linked or not in_place(site):
+    if linked or any(covers(a, site) for a in added):
+        return True
+    if not in_place(site):
         return False
     return any(covers(m, site) for m in made) or (root is not None and in_place(root))
 
@@ -135,11 +141,11 @@ def sites(cmd, eff, depth=0):
         elif name == 'git':
             verb, cdir, k = git_split(args)
             site = resolve_path(cdir, eff, env) if cdir else eff
-            if verb in ('init', 'clone') and site is not None:
+            if verb in ('init', 'clone', 'worktree') and site is not None:
                 d = made_repo(verb, args[k + 1:], site)
                 if d:
-                    made.append(d)
-            elif verb == 'commit' and (site is None or not scratch(site)):
+                    (added if verb == 'worktree' else made).append(d)
+            elif verb == 'commit' and (site is None or not needs_no_marker(site)):
                 out.append(site)
         elif name in SHELLS:
             for a in nonflag:
@@ -195,5 +201,6 @@ so the opt-in travels with the code.
 
 A scratch repository needs no marker: one under the temp or the cache directory,
 made with \`git init\` or \`git clone\` earlier in this command, or already on disk.
+Neither does a linked worktree.
 EOF
 exit 2
