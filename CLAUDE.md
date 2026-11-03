@@ -1338,6 +1338,9 @@ whether those reasons still hold; mark each historical claim checked or recalled
   dependency ships a skill for (`.claude/skills/`, the package's `skills/`), invoke that skill; one
   found afterward audits the hand-written artifact ([[projects/agent-workflow/feedback]] § Consult
   dependency-shipped agent skills before authoring artifacts they govern).
+- **An `LSP` answer can be stale about a file the session has not opened.** On Linux, after a pull,
+  a rebase, or generated code, run an `LSP` call on that file before believing a surprising type
+  error; a `Read` does not refresh it ([[projects/claude-config/decisions]] D41).
 
 ## Fleet standards
 
