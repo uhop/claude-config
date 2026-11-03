@@ -4,17 +4,25 @@ One parser for three gates (vault-lease-gate.sh, git-commit-gate.sh,
 destructive-op-gate.sh; D14: a shape added here is a shape all see). Heredoc bodies are data unless a shell
 receives them; segments split on unquoted `;`, `|`, `||`, `&&` and newlines;
 tokens come from shlex with the wrapper prefixes skipped (assignments,
-`command`, `env`, `timeout`, ...); `git_verb` walks git's global options.
-Anything this cannot read, a caller must treat by its own default: the lease
-gate fails open, the commit gate keeps its regex verdict, the destructive-op
-gate falls back to its segment regex and settings.json's prefix deny.
+`command`, `env`, `timeout`, ...); `git_verb` walks git's global options;
+`read_assignment` and `resolve_path` follow a path through the variables the
+command assigns. Anything this cannot read, a caller must treat by its own
+default: the lease gate fails open, the commit gate denies an unknown site and
+keeps its regex verdict with the parser absent, the destructive-op gate falls
+back to its segment regex and settings.json's prefix deny.
 """
+import itertools
 import os
 import re
 import shlex
 
+HOME = os.path.expanduser('~')
 HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 ASSIGN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=')
+VAR_RE = re.compile(r'\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))')
+MKTEMP_RE = re.compile(r'\$\(\s*(?:command\s+)?mktemp\b([^()]*)\)')
+DECLARERS = {'export', 'local', 'readonly', 'declare', 'typeset'}
+_fresh = itertools.count()
 PREFIX = {'command', 'nice', 'time', 'exec', 'sudo', 'doas', 'builtin', 'nohup'}
 SUBST_RE = re.compile(r'\$\(([^()]*)\)|`([^`]*)`')
 SHELLS = {'bash', 'sh', 'zsh', 'dash', 'ksh', 'eval'}
@@ -224,3 +232,92 @@ def git_verb(args):
 def substitutions(text):
     """The bodies of `$(...)` and backtick substitutions: executed, not data."""
     return [m.group(1) or m.group(2) or '' for m in SUBST_RE.finditer(text)]
+
+
+def expand(tok, eff, env):
+    """tok with its variables replaced from env, `$HOME` and `$PWD`; None when one is unknown."""
+    known = {'HOME': HOME, 'PWD': eff, **env}
+    out = VAR_RE.sub(lambda m: known.get(m.group(1) or m.group(2)) or m.group(0), tok)
+    return None if '$' in out or '`' in out else out
+
+
+def resolve_path(tok, eff, env):
+    """tok as an absolute path. None when a variable is unknown, or tok is relative to an unknown eff."""
+    tok = expand(tok, eff, env)
+    if tok is None:
+        return None
+    if tok == '~' or tok.startswith('~/'):
+        tok = HOME + tok[1:]
+    if not tok.startswith('/'):
+        if eff is None:
+            return None
+        tok = os.path.join(eff, tok)
+    return os.path.normpath(tok)
+
+
+def mktemp_path(args, eff, env):
+    """Where `mktemp <args>` creates, under a name of its own, since the real one is random."""
+    try:
+        toks = shlex.split(args)
+    except ValueError:
+        return None
+    parent, template = None, None
+    for prev, t in zip([''] + toks, toks):
+        if prev == '-p':
+            parent = t
+        elif t.startswith('--tmpdir='):
+            parent = t[len('--tmpdir='):]
+        elif not t.startswith('-') and template is None:
+            template = t
+    if parent is not None:
+        base = resolve_path(parent, eff, env)
+    elif template is not None and '-t' not in toks:
+        # GNU mktemp puts a bare template in the current directory.
+        base = resolve_path(os.path.dirname(template) or '.', eff, env)
+    else:
+        base = os.environ.get('TMPDIR') or '/tmp'
+    return None if base is None else os.path.join(base, 'tmp.fresh-%d' % next(_fresh))
+
+
+def read_assignment(seg, eff, env):
+    """Record a segment's `NAME=value`s in env; True when the segment is nothing else.
+    A value it cannot read forgets the name, so a stale value never decides."""
+    def fresh(m):
+        return mktemp_path(m.group(1), eff, env) or m.group(0)
+    text = MKTEMP_RE.sub(fresh, seg).strip().lstrip('({').rstrip(')}').strip()
+    try:
+        toks = shlex.split(text)
+    except ValueError:
+        toks = text.split()
+    if toks and toks[0] in DECLARERS:
+        toks = toks[1:]
+    k = 0
+    while k < len(toks) and ASSIGN.match(toks[k]):
+        k += 1
+    only = 0 < k == len(toks)
+    for t in toks[:k]:
+        name, value = t.split('=', 1)
+        value = expand(value, eff, env) if only else None
+        if value is None:
+            env.pop(name, None)
+        else:
+            env[name] = value
+    return only
+
+
+def checkout_of(path):
+    """(root, linked) of the checkout at or above path; (None, False) when none is. A `.git` file
+    naming `worktrees/` is a linked worktree; one naming `modules/` is a submodule, a repository of its own."""
+    d = path
+    while d and d != '/':
+        g = os.path.join(d, '.git')
+        if os.path.isdir(g):
+            return d, False
+        if os.path.isfile(g):
+            try:
+                with open(g) as f:
+                    return d, '/worktrees/' in f.read()
+            except OSError:
+                return None, False
+        d = os.path.dirname(d)
+    return None, False

@@ -415,8 +415,10 @@ redirections, `sed -i`, `tee`, `cp`/`mv`/`rsync` destinations, `rm`, `mkdir`,
 verbs (never `worktree`, never `apply --check`), and a path-like value of
 `--store`, `--out`, `--output` or `-o` after any command (2026-09-25) — with `cd` tracked and
 heredoc bodies ignored, and blocks when any of those checkouts is held by
-someone else. What it cannot parse it allows (a write inside `python - <<EOF`,
-a path in a variable), so it narrows the gap rather than closing it.
+someone else. It follows a variable the command assigns. What it cannot parse it
+allows (a write inside `python - <<EOF`, a path in a variable the command does
+not assign, a relative path after a `cd` it cannot read), so it narrows the gap
+rather than closing it.
 **Linked worktrees are never blocked**, in any mode: they are the sanctioned
 path, and their remote is the held checkout's. It **fails open** on every
 unknown — no vault env, unreachable server, non-repo path, unclaimed repo —

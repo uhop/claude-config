@@ -251,6 +251,21 @@ else
   [[ $rc -eq 0 ]] && ok || bad "bash: a non-path -o value must pass (rc=$rc)"
   bashrun "command sed -i 's/a/b/' $W/a.txt" /tmp "$S1"
   [[ $rc -eq 0 ]] && ok || bad "bash: the holder's own write must pass (rc=$rc)"
+  # 13b. a variable the command assigns is followed; a directory that stays unknown is allowed (2026-11-02)
+  bashrun "WT=/tmp/xyz-wt && cd \"\$WT\" && prettier --write a.txt" "$W" "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: cd into an assigned scratch path must not read as the cwd (rc=$rc)"
+  bashrun "D=\$(mktemp -d) && cd \"\$D\" && prettier --write a.txt" "$W" "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: cd into a fresh mktemp must not read as the cwd (rc=$rc)"
+  bashrun "cd \"\$UNSET\" && prettier --write a.txt" "$W" "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: a write after an unknown cd must pass (rc=$rc)"
+  bashrun "cd \"\$UNSET\" && command sed -i 's/a/b/' a.txt" "$W" "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: sed -i after an unknown cd must pass (rc=$rc)"
+  bashrun "git -C \"\$UNSET\" add a.txt" "$W" "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: git -C at an unknown directory must pass (rc=$rc)"
+  bashrun "R=$W; cd \"\$R\" && command sed -i 's/a/b/' a.txt" /tmp "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: cd into held through a variable must block (rc=$rc)"
+  bashrun "R=$W; command sed -i 's/a/b/' \"\$R/a.txt\"" /tmp "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: a write into held through a variable must block (rc=$rc)"
   # 14. linked worktrees of a held repo are never blocked — Edit or Bash (the sanctioned path)
   WT=$(mktemp -d) && rmdir "$WT" && git -C "$W" worktree add -q "$WT" -b wt-test 2>/dev/null
   run "$GATE" "$(jq -nc --arg f "$WT/a.txt" --arg s "$S2" '{tool_name:"Edit",tool_input:{file_path:$f},session_id:$s,cwd:"/tmp"}')"

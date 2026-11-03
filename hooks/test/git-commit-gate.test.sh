@@ -67,12 +67,81 @@ check ALLOW "cd $MARKED && git add . ; $V -m x"
 check DENY  "cd $PLAIN && $V -m x" "$MARKED"
 check DENY  "git -C $PLAIN commit -m x" "$MARKED"
 check DENY  "cd $MARKED && $V -m x && cd $PLAIN && $V -m y"
-check ALLOW "cd \"\$W\" && $V -m x" "$MARKED"
+# ── a variable the command assigns is followed (2026-11-02) ──
+check ALLOW "R=$MARKED; cd \"\$R\" && $V -m x"
+check ALLOW "R=$MARKED && git -C \"\$R\" commit -m x"
+check ALLOW "export R=$MARKED; git -C \"\$R\" commit -m x"
+check ALLOW "W=$MARKED; R=\"\$W/sub\"; git -C \"\${R}\" commit -m x"
+check ALLOW "cd \"\$PWD/sub\" && $V -m x" "$MARKED"
+check DENY  "R=$PLAIN; cd \"\$R\" && $V -m x" "$MARKED"
+check DENY  "R=$PLAIN; git -C \"\$R\" commit -m x" "$MARKED"
+# a value it cannot read forgets the name; a prefix assignment is not in force for its own command's words
+check DENY  "R=$MARKED; R=\$(other); git -C \"\$R\" commit -m x"
+check DENY  "R=$MARKED git -C \"\$R\" commit -m x"
+# ── a site that stays unknown is denied, wherever the session started (2026-11-02) ──
+check DENY  "cd \"\$W\" && $V -m x" "$MARKED"
 check DENY  "cd \"\$W\" && $V -m x"
-# ── parser absent: the substring verdict stands ──
+check DENY  "cd \"\$W\" && cd sub && $V -m x" "$MARKED"
+check DENY  "git -C \"\$WT\" commit -m x" "$MARKED"
+check DENY  "cd $PLAIN && git -C \"\$WT\" commit -m x" "$MARKED"
+check DENY  "cd $MARKED && git -C \"\$WT\" commit -m x"
+# ── a scratch repository needs no marker: `git init` in this command, under the temp directory (2026-11-02) ──
+check ALLOW "W=\$(mktemp -d) && R=\"\$W/repo\" && git -C \"\$R\" init -q && git -C \"\$R\" commit -qm one"
+check ALLOW "D=\$(mktemp -d); cd \"\$D\" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -q -m one"
+check ALLOW "WORK=\$(mktemp -d); ( command cd \"\$WORK\" && git init -q && git -c user.name=t commit -q --allow-empty -m zero )"
+check ALLOW "W=\"\$(mktemp -d)\"; git init -q \"\$W/r\" && git -C \"\$W/r\" commit -qm one"
+check ALLOW "W=\$(mktemp -d)/r; git init -q -b main \"\$W\" && cd \"\$W\" && $V -m one"
+check ALLOW "S=\$(mktemp -d); W=\$(mktemp -d -p \"\$S\"); cd \"\$W\" && git init -q && $V -m one"
+check ALLOW "W=\$(mktemp -d -t gate.XXXXXX); cd \"\$W\" && git init -q && $V -m one"
+check ALLOW "W=\$(mktemp -d); git init -q \"\$W\"; cd \"\$W/sub\" && $V -m one"
+check ALLOW "cd /tmp/gate-test-absent && git init -q && $V -m one"
+check ALLOW "W=\$(mktemp -d) && git clone -q --no-hardlinks /src/base \"\$W/clone\" && git -C \"\$W/clone\" commit -qam x"
+check ALLOW "W=\$(mktemp -d) && git clone -q --depth 1 -b main \"\$W/src.git\" \"\$W/dev\" && cd \"\$W/dev\" && $V -m x"
+# ...or on disk
+SCRATCH=$(mktemp -d); git -C "$SCRATCH" init -q
+check ALLOW "git -C $SCRATCH commit -m x"
+check ALLOW "cd $SCRATCH/sub && $V -m x"
+check ALLOW "W=$SCRATCH; cd \"\$W\" && $V -m x"
+# ...and nothing else under the temp directory, and nothing outside it
+OUTSIDE=$(mktemp -d /var/tmp/gate-test.XXXXXX); git -C "$OUTSIDE" init -q
+git -C "$OUTSIDE" -c user.name=t -c user.email=t@t commit -q --allow-empty -m zero
+LINKED=$(mktemp -d); rmdir "$LINKED"; git -C "$OUTSIDE" worktree add -q "$LINKED" -b gate-test 2>/dev/null
+CACHE=$(mktemp -d /var/tmp/gate-cache.XXXXXX); git -C "$CACHE" init -q
+trap 'rm -rf "$PLAIN" "$MARKED" "$SCRATCH" "$OUTSIDE" "$LINKED" "$CACHE"' EXIT
+XDG_CACHE_HOME="$CACHE" check ALLOW "git -C $CACHE commit -m x"
+XDG_CACHE_HOME="$CACHE" check ALLOW "git -C $CACHE/r init -q && git -C $CACHE/r commit -m x"
+XDG_CACHE_HOME="$CACHE" check ALLOW "W=\$(mktemp -d -p $CACHE); cd \"\$W\" && git init -q && $V -m one"
+TMPDIR="$CACHE" check ALLOW "git -C $CACHE commit -m x"
+check ALLOW "cd $OUTSIDE && W=\$(mktemp -d -t gate.XXXXXX); cd \"\$W\" && git init -q && $V -m one"
+check DENY  "git init -q /tmpx/r && git -C /tmpx/r commit -m x"
+check DENY  "git -C $CACHE commit -m x"
+check DENY  "git init -q /tmp/gate-x && git -C /tmp/gate-xy commit -m x"
+check DENY  "W=\$(mktemp -d -p $OUTSIDE); cd \"\$W\" && git init -q && $V -m one"
+check DENY  "W=\$(mktemp -d $OUTSIDE/x.XXXXXX); cd \"\$W\" && git init -q && $V -m one"
+check DENY  "cd $OUTSIDE && W=\$(mktemp -d x.XXXXXX); cd \"\$W\" && git init -q && $V -m one"
+check DENY  "git -C $OUTSIDE init -q && git -C $OUTSIDE commit -m x"
+check DENY  "W=$OUTSIDE; git init \"\$W\" && git -C \"\$W\" commit -m x"
+check DENY  "git clone -q /src/base $OUTSIDE/clone && git -C $OUTSIDE/clone commit -m x"
+check DENY  "W=\$(mktemp -d); git clone -q /src/base && git -C \"\$W\" commit -m x"
+check DENY  "W=\$(mktemp -d); git -C \"\$W\" commit -m x"
+check DENY  "W=\$(mktemp -d); git -C \"\$W\" commit -m x; git -C \"\$W\" init -q"
+check DENY  "W=\$(mktemp -d); git init -q \"\$W\"; $V -m x"
+check DENY  "git -C $LINKED commit -m x"
+check DENY  "W=$LINKED; cd \"\$W\" && $V -m x"
+check DENY  "W=\$(mktemp -d)/wt; git -C $OUTSIDE worktree add \"\$W\" -b t && git -C \"\$W\" commit -m x"
+TMPDIR="$OUTSIDE/tmp" check DENY "git -C $OUTSIDE/tmp/fixture commit -m x"
+# ── parser absent: the substring verdict stands, at the cwd ──
 MISSING=$(mktemp -d); cp "$HOOK" "$MISSING/git-commit-gate.sh"
 jq -nc --arg c "echo \"$V\"" --arg d "$PLAIN" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
 [ $? -eq 2 ] && ((++pass)) || { ((++fail)); echo "FAIL  no lib: quoted words must fall back to DENY"; }
+jq -nc --arg c "$V -m x" --arg d "$MARKED" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
+[ $? -eq 0 ] && ((++pass)) || { ((++fail)); echo "FAIL  no lib: a marked cwd must still pass"; }
+# ── parser failing: the same, at the cwd ──
+mkdir -p "$MISSING/lib"; echo 'raise ValueError' > "$MISSING/lib/shell_segments.py"
+jq -nc --arg c "$V -m x" --arg d "$MARKED" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
+[ $? -eq 0 ] && ((++pass)) || { ((++fail)); echo "FAIL  broken lib: a marked cwd must still pass"; }
+jq -nc --arg c "$V -m x" --arg d "$PLAIN" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
+[ $? -eq 2 ] && ((++pass)) || { ((++fail)); echo "FAIL  broken lib: an unmarked cwd must deny"; }
 rm -rf "$MISSING"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

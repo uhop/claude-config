@@ -51,9 +51,10 @@
 # Each target resolves to the main checkout that contains
 # it; a checkout whose lease someone else holds blocks the call. Measured
 # 2026-09-05: 80 such commands in 21 sessions over 30 days, claude-config the
-# top target. Whatever the extractor does not understand is allowed — a write
-# inside `python - <<EOF`, a path held in a variable, a relative path after a
-# `cd` it could not parse — so the gate narrows the gap; it does not close it.
+# top target. It follows a variable the command assigns. Whatever the extractor
+# does not understand is allowed — a write inside `python - <<EOF`, a path in a
+# variable the command does not assign, a relative path after a `cd` it could
+# not read — so the gate narrows the gap; it does not close it.
 # A cheap pre-filter skips the extractor for commands with no write indicator.
 #
 # Linked worktrees are never blocked (2026-09-06): the protocol sends a
@@ -343,7 +344,7 @@ fi
 roots=$(CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$cwd" "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib" <<'PY' 2>/dev/null
 import os, re, sys
 sys.path.insert(0, sys.argv[2])
-from shell_segments import strip_heredocs, segments, command_tokens, git_verb
+from shell_segments import strip_heredocs, segments, command_tokens, git_verb, read_assignment, resolve_path, checkout_of
 
 cmd = os.environ.get('CMD', '')
 base = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
@@ -364,28 +365,20 @@ OUT_FLAGS = {'--store', '--out', '--output', '-o'}
 # -o takes no value (or no path) here
 NO_VALUE_O = {'grep', 'egrep', 'fgrep', 'rg', 'ug', 'ugrep', 'ls', 'ps', 'find', 'bfs', 'jq', 'git'}
 
+env = {}
+
 def resolve(tok, eff):
     if not tok or tok in ('-', '/dev/null') or tok.startswith(('&', '<')):
-        return None
-    if tok == '~' or tok.startswith('~/'):
-        tok = home + tok[1:]
-    elif tok.startswith(('$HOME/', '${HOME}/')):
-        tok = home + tok[tok.index('/'):]
-    elif tok.startswith(('$PWD/', '${PWD}/')):
-        tok = eff + tok[tok.index('/'):]
-    elif tok in ('$PWD', '.'):
-        tok = eff
-    if '$' in tok:
         return None
     for ch in '*?[':
         if ch in tok:
             tok = tok[:tok.index(ch)]
-    if not tok.startswith('/'):
-        tok = os.path.join(eff, tok)
-    return os.path.normpath(tok)
+    return resolve_path(tok, eff, env)
 
 targets, eff = [], base
 for seg in segs:
+    if read_assignment(seg, eff, env):
+        continue
     toks = command_tokens(seg)
     if not toks:
         continue
@@ -408,9 +401,7 @@ for seg in segs:
     name, args = os.path.basename(toks[0]), toks[1:]
     nonflag = [a for a in args if not a.startswith('-')]
     if name in ('cd', 'pushd'):
-        d = resolve(nonflag[0], eff) if nonflag else home
-        if d:
-            eff = d
+        eff = resolve(nonflag[0], eff) if nonflag else home
     elif name == 'sed':
         if not any(a == '-i' or a.startswith('-i') or a.startswith('--in-place') for a in args):
             continue
@@ -438,7 +429,7 @@ for seg in segs:
             targets.append(resolve(nonflag[-1], eff))
     elif name == 'git':
         verb, cdir = git_verb(args)
-        d = (resolve(cdir, eff) or eff) if cdir else eff
+        d = resolve(cdir, eff) if cdir else eff
         if verb in MUTATING_GIT and not (verb == 'apply' and '--check' in args):
             targets.append(d)
     elif name in ('npx', 'prettier'):
@@ -458,30 +449,14 @@ for seg in segs:
         if not val.startswith('-') and ('/' in val or '.' in val or val.startswith('~')):
             targets.append(resolve(val, eff))
 
-# 3. Targets → main checkouts. A `.git` file under worktrees/ is a linked
-#    worktree (allowed by protocol); under modules/ it is a submodule, its own
-#    repo with its own remote, checked as its own root.
-def root_of(p):
-    d = p
-    while d and d != '/':
-        if os.path.isdir(d):
-            g = os.path.join(d, '.git')
-            if os.path.isdir(g):
-                return d
-            if os.path.isfile(g):
-                try:
-                    return None if '/worktrees/' in open(g).read() else d
-                except OSError:
-                    return None
-        d = os.path.dirname(d)
-    return None
-
+# 3. Targets → main checkouts. A linked worktree is allowed by protocol; a
+#    submodule, a repo with its own remote, is checked as its own root.
 seen = []
 for t in targets:
     if not t:
         continue
-    r = root_of(t)
-    if r and r not in seen:
+    r, linked = checkout_of(t)
+    if r and not linked and r not in seen:
         seen.append(r)
 print('\n'.join(seen))
 PY
