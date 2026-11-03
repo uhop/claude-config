@@ -65,6 +65,9 @@ untouched.
   temp or cache directory or for a linked worktree (2026-11-02). The script's header comment
   documents the why and the contract; the per-project marker is intended to be committed alongside
   the project so the opt-in travels with the code.
+- `handed-command-check.sh` — a `Stop` hook: a `<word>` placeholder or a scratch path in a command
+  block of the turn's closing message sends the agent back once, since a command he runs carries no
+  placeholder the session can fill and the scratchpad is no delivery location.
 - `vault-lease-gate.sh` — enforces the agent-coordination repo lease on
   `Edit`/`Write`/`NotebookEdit` and on write-shaped `Bash`: resolves the edited file's repo (or, for
   Bash, every repository the command's write targets name: redirections, `sed -i`, `tee`, `cp`/`mv`

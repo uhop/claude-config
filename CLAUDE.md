@@ -1282,13 +1282,14 @@ whether those reasons still hold; mark each historical claim checked or recalled
   a value to send back says which field shows it. Restate the step in full each time you ask for it,
   never "the request I gave you earlier": that message is far up his scroll, the same reason a work
   stop re-names its unit. Look up what you do not know (an admin console's URL, a menu path) before
-  handing the step over. A command he runs carries no placeholder the session can fill: look the
-  value up first (an account id, a key's name, a path). When only he can know it, the block reads it
-  itself or its first line says where it comes from; `ACCOUNT='<account>'` handed to him is a lookup
-  the agent skipped. (Origin: apodictum-web 2026-10-04 — four steps in two sessions came back as
-  questions: _"where is it? What system? URL?"_, _"what exactly should I do with that?"_, _"What
-  email should I use?"_, _"What do you need from me on the mailbox?"_; the placeholder clause:
-  reflect 2026-10-22 P3.)
+  handing the step over. A command he runs carries no placeholder the session can fill
+  (`hooks/handed-command-check.sh` sends back a `<word>` or a scratch path in a command block): look
+  the value up first (an account id, a key's name, a path). When only he can know it, the block
+  reads it itself or its first line says where it comes from; `ACCOUNT='<account>'` handed to him is
+  a lookup the agent skipped. (Origin: apodictum-web 2026-10-04 — four steps in two sessions came
+  back as questions: _"where is it? What system? URL?"_, _"what exactly should I do with that?"_,
+  _"What email should I use?"_, _"What do you need from me on the mailbox?"_; the placeholder
+  clause: reflect 2026-10-22 P3.)
 - **A command that must wait for something says so before the command.** When a handed command works
   only after another step has run (a pull, a deploy, a daily update), lead with that order in one
   direct sentence naming what must run and on which machines, and hand the command once, where it
