@@ -92,7 +92,7 @@ cutting the first one early.
 ~/.claude/skills/release-check/release-digest.mjs        # from the project root
 ```
 
-One JSON report, 19 checks, each `ok | action | skip | error`; exit 1 when
+One JSON report, 20 checks, each `ok | action | skip | error`; exit 1 when
 anything needs attention (run it solo or `|| true` in parallel Bash batches).
 `--no-network` skips the `npm outdated` registry call and the read of CI's runs
 and lists both under `summary.unchecked`, so an offline digest is never clean:
@@ -110,7 +110,8 @@ each item carries `reason: "installed_behind" | "declared_floor_behind"` and
 the `declared` range; see [[topics/dep-version-freshness]]),
 lockfile-version sync, which test gates exist, what a push to this branch fires
 and what CI says of the pushed commit (`ci`), what changed for users since the
-last tag (`type_surface`, `test_assertions`), and the
+last tag (`type_surface`, `test_assertions`), the paths a wiki page's code
+names (`wiki_paths`), and the
 `npm pack --dry-run` tarball diff (required contents present, authoring-side
 files absent — see [[topics/tarball-ai-docs-convention]] and
 [[topics/full-path-imports-for-runtime-portability]] for the rules the
@@ -134,6 +135,12 @@ digest and each is yours to judge:
   that breaks our own tests, which is what calling it breaking means
   ([[topics/semver-and-release-cadence]]): name the behavior it pinned, or say
   why it pinned none.
+- `wiki_paths` reads the code in `wiki/*.md`, old versions' pages and release
+  notes aside. `unresolved` is a path under one of the repository's directories
+  that resolves to nothing, and `partial_listings` is a page naming three or more
+  files of a directory and leaving others out. A page can show a path in the
+  reader's own project, so judge each: a stale one is a docs-currency finding,
+  and an example needs nothing.
 
 **Report every `action` as a finding**, with three judgment notes:
 

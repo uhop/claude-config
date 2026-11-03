@@ -713,6 +713,82 @@ const ASSERTION =
   }
 }
 
+// --- the paths a wiki page's code names ----------------------------------------
+// For the agent to judge: a page can show a path in the reader's own project, as in `tests/test-foo.js`.
+const wikiCode = text => {
+  const code = [];
+  let fence = null;
+  text.split('\n').forEach((raw, index) => {
+    const mark = raw.trim().match(/^(`{3,}|~{3,})/)?.[1];
+    const line = index + 1;
+    if (fence) {
+      if (mark?.[0] === fence[0] && mark.length >= fence.length) fence = null;
+      else code.push({line, text: raw});
+    } else if (mark) fence = mark;
+    else for (const span of raw.matchAll(/`([^`]+)`/g)) code.push({line, text: span[1]});
+  });
+  return code;
+};
+
+{
+  const wiki = ['wiki', 'external_wiki'].find(exists);
+  const pages = wiki
+    ? readdirSync(path.join(root, wiki)).filter(
+        // Release notes and an old version's pages are history.
+        name => name.endsWith('.md') && !/^(?:release-notes|v\d|.*\d+\.\d+\.x)/i.test(name)
+      )
+    : [];
+  if (!wiki) check('wiki_paths', {status: 'skip', reason: 'no wiki'});
+  else if (!pages.length) check('wiki_paths', {status: 'skip', reason: 'no wiki pages'});
+  else {
+    const files = run('git', ['ls-files']).out.split('\n');
+    const tracked = new Set(files);
+    const tops = new Set(files.filter(file => file.includes('/')).map(file => file.split('/')[0]));
+    const SUFFIXES = ['.js', '.mjs', '.cjs', '.ts', '.d.ts', '.json'];
+    const resolves = name => exists(name) || SUFFIXES.some(suffix => exists(name + suffix));
+    const unresolved = [];
+    const partial = [];
+    let read = 0;
+    for (const page of pages.sort()) {
+      const named = new Map();
+      for (const {line, text} of wikiCode(readFileSync(path.join(root, wiki, page), 'utf8'))) {
+        for (const [, token] of text.matchAll(
+          /(?:^|[\s'"`(=:,[])((?:\.\/)?[\w.@*<>${}-]+(?:\/[\w.@*<>${},-]+)+\/?)/g
+        )) {
+          const name = token.replace(/^\.\//, '').replace(/[/.]+$/, '');
+          if (/[*<>${}]/.test(name) || !tops.has(name.split('/')[0])) continue;
+          ++read;
+          if (!resolves(name)) unresolved.push({page, line, path: name});
+          else if (tracked.has(name)) {
+            const dir = path.posix.dirname(name);
+            named.set(dir, (named.get(dir) ?? new Set()).add(name));
+          }
+        }
+      }
+      for (const [dir, names] of named) {
+        const kids = files.filter(file => path.posix.dirname(file) === dir);
+        if (names.size >= 3 && names.size < kids.length)
+          partial.push({
+            page,
+            dir,
+            named: names.size,
+            of: kids.length,
+            missing: kids.filter(file => !names.has(file))
+          });
+      }
+    }
+    check('wiki_paths', {
+      status: 'ok',
+      review: unresolved.length + partial.length > 0,
+      pages_read: pages.length,
+      paths_read: read,
+      unresolved_count: unresolved.length,
+      unresolved: unresolved.slice(0, 30),
+      partial_listings: partial
+    });
+  }
+}
+
 // --- tarball contents (npm pack --dry-run is the ground truth) --------------
 {
   const pack = run('npm', ['pack', '--dry-run', '--json']);

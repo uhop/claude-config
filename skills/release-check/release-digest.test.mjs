@@ -861,3 +861,214 @@ test('rewritten assertions are for review, never unclean', t => {
   assert.ok(d.summary.review.includes('test_assertions'));
   assert.ok(!d.summary.action.includes('test_assertions'));
 });
+
+// The paths a wiki page's code names.
+const wikiPaths = c => c.full().checks.wiki_paths;
+const fence = body => '```bash\n' + body + '\n```\n';
+
+test('no wiki, or a wiki with no pages, skips the check', t => {
+  const c = tagged(t);
+  assert.equal(wikiPaths(c).reason, 'no wiki');
+  mkdirSync(path.join(c.dir, 'wiki'));
+  assert.equal(wikiPaths(c).reason, 'no wiki pages');
+});
+
+test('a command naming a file that never existed is listed, by page and line', t => {
+  const c = tagged(t);
+  c.save('bench/parser-jsonc.js', 'x\n');
+  c.save('wiki/Benchmarks.md', '# B\n\n' + fence('npm run bench -- bench/parser-jsonc.mjs'));
+  const w = wikiPaths(c);
+  assert.equal(w.review, true);
+  assert.equal(w.status, 'ok');
+  assert.deepEqual(w.unresolved, [
+    {page: 'Benchmarks.md', line: 4, path: 'bench/parser-jsonc.mjs'}
+  ]);
+  const d = c.full();
+  assert.ok(d.summary.review.includes('wiki_paths'));
+  assert.ok(!d.summary.action.includes('wiki_paths'));
+});
+
+test('a path that resolves is not listed, however it is spelled', t => {
+  const c = tagged(t);
+  c.save('bench/a.js', 'x\n');
+  c.save('src/b.mjs', 'x\n');
+  c.save('src/c.d.ts', 'x\n');
+  const spellings = [
+    'bench/a.js',
+    './bench/a.js',
+    'bench/',
+    'bench',
+    'src/b',
+    'src/c',
+    './src/b.mjs',
+    'bench/a.js.'
+  ];
+  c.save('wiki/P.md', fence(spellings.map(p => `run ${p}`).join('\n')));
+  assert.deepEqual(wikiPaths(c).unresolved, []);
+  assert.equal(wikiPaths(c).review, false);
+});
+
+test('a path that does not resolve is listed however it opens', t => {
+  const c = tagged(t);
+  c.save('bench/a.js', 'x\n');
+  c.save('wiki/P.md', fence('./bench/gone.js'));
+  assert.deepEqual(
+    wikiPaths(c).unresolved.map(u => u.path),
+    ['bench/gone.js']
+  );
+});
+
+test('an inline span is read, and prose is not', t => {
+  const c = tagged(t);
+  c.save('bench/a.js', 'x\n');
+  c.save('wiki/P.md', 'Plain bench/prose.js here, and `bench/span.js` there.\n');
+  assert.deepEqual(
+    wikiPaths(c).unresolved.map(u => u.path),
+    ['bench/span.js']
+  );
+});
+
+test('each fence is read, and the text past its end is prose again', t => {
+  const c = tagged(t);
+  c.save('bench/a.js', 'x\n');
+  c.save(
+    'wiki/P.md',
+    '~~~\nbench/tilde.js\n~~~\nbench/after.js\n````\n```\nbench/inner.js\n````\n  ```\n  bench/indented.js\n  ```\n'
+  );
+  assert.deepEqual(
+    wikiPaths(c).unresolved.map(u => u.path),
+    ['bench/tilde.js', 'bench/inner.js', 'bench/indented.js']
+  );
+});
+
+test('one kind of fence is not closed by the other', t => {
+  const c = tagged(t);
+  c.save('bench/a.js', 'x\n');
+  c.save('wiki/P.md', '```\n~~~\nbench/mix.js\n```\n');
+  assert.deepEqual(
+    wikiPaths(c).unresolved.map(u => u.path),
+    ['bench/mix.js']
+  );
+});
+
+test('only the pages are read', t => {
+  const c = tagged(t);
+  c.save('bench/a.js', 'x\n');
+  c.save('wiki/notes.txt', '`bench/text.js`\n');
+  c.save('wiki/P.md', 'nothing\n');
+  assert.deepEqual(wikiPaths(c).unresolved, []);
+});
+
+test('what is no path in this repository is not listed', t => {
+  const c = tagged(t);
+  c.save('bench/a.js', 'x\n');
+  const others = [
+    'other/x.js',
+    'https://github.com/o/r/blob/main/bench/url.js',
+    'git@github.com:o/bench.git',
+    '@scope/bench/x.js',
+    'node_modules/bench/x.js',
+    'bench/test-*.js',
+    'bench/<name>.js',
+    'bench/{a,b}.js',
+    '$W/bench/x.js',
+    '${W}/bench/y.js',
+    '/abs/bench/z.js',
+    '../bench/up.js'
+  ];
+  c.save('wiki/P.md', fence(others.join('\n')));
+  assert.deepEqual(wikiPaths(c).unresolved, []);
+});
+
+test('a path after each kind of opener is read', t => {
+  const c = tagged(t);
+  c.save('bench/a.js', 'x\n');
+  c.save(
+    'wiki/P.md',
+    fence(
+      `f('bench/q.js')\ng("bench/d.js")\nh(bench/p.js)\nm=bench/e.js\nk:bench/c.js\n[bench/s.js]\nx,bench/k.js`
+    )
+  );
+  assert.deepEqual(
+    wikiPaths(c).unresolved.map(u => u.path),
+    [
+      'bench/q.js',
+      'bench/d.js',
+      'bench/p.js',
+      'bench/e.js',
+      'bench/c.js',
+      'bench/s.js',
+      'bench/k.js'
+    ]
+  );
+});
+
+test('release notes and pages for an old version are history, and go unread', t => {
+  const c = tagged(t);
+  c.save('bench/a.js', 'x\n');
+  for (const page of ['Release-notes.md', 'V1-Home.md', 'README-0.6.x.md'])
+    c.save(`wiki/${page}`, fence('bench/old.js'));
+  c.save('wiki/Version-notes.md', fence('bench/current.js'));
+  const w = wikiPaths(c);
+  assert.equal(w.pages_read, 1);
+  assert.deepEqual(
+    w.unresolved.map(u => u.path),
+    ['bench/current.js']
+  );
+});
+
+test('a file on disk that git ignores resolves', t => {
+  const c = tagged(t);
+  c.save('bench/a.js', 'x\n');
+  c.write('bench/built.js', 'x\n');
+  c.save('.gitignore', 'bench/built.js\n');
+  c.save('wiki/P.md', fence('bench/built.js'));
+  assert.deepEqual(wikiPaths(c).unresolved, []);
+});
+
+test('a page naming three files of a directory is checked against the rest', t => {
+  const c = tagged(t);
+  for (const n of 'abcde') c.save(`bench/${n}.js`, 'x\n');
+  c.save('bench/deep/f.js', 'x\n');
+  c.save('wiki/P.md', fence('bench/a.js bench/b.js bench/c.js'));
+  const w = wikiPaths(c);
+  assert.equal(w.review, true);
+  assert.deepEqual(w.partial_listings, [
+    {page: 'P.md', dir: 'bench', named: 3, of: 5, missing: ['bench/d.js', 'bench/e.js']}
+  ]);
+});
+
+test('a directory named beside two files does not make three', t => {
+  const c = tagged(t);
+  for (const n of 'abcd') c.save(`bench/${n}.js`, 'x\n');
+  c.save('bench/deep/f.js', 'x\n');
+  c.save('wiki/P.md', fence('bench/a.js bench/b.js bench/deep/'));
+  assert.deepEqual(wikiPaths(c).partial_listings, []);
+});
+
+test('two files are a citation, and a whole directory is no gap', t => {
+  const c = tagged(t);
+  for (const n of 'abcde') c.save(`bench/${n}.js`, 'x\n');
+  c.save('wiki/Cite.md', fence('bench/a.js bench/b.js'));
+  c.save('wiki/Whole.md', fence('bench/a.js bench/b.js bench/c.js bench/d.js bench/e.js'));
+  assert.deepEqual(wikiPaths(c).partial_listings, []);
+  assert.equal(wikiPaths(c).review, false);
+});
+
+test('a page counts each file once, and each page on its own', t => {
+  const c = tagged(t);
+  for (const n of 'abcd') c.save(`bench/${n}.js`, 'x\n');
+  c.save('wiki/A.md', fence('bench/a.js bench/a.js bench/a.js bench/b.js'));
+  c.save('wiki/B.md', fence('bench/c.js'));
+  assert.deepEqual(wikiPaths(c).partial_listings, []);
+});
+
+test('a long list is cut, and the count still says all of it', t => {
+  const c = tagged(t);
+  c.save('bench/a.js', 'x\n');
+  c.save('wiki/P.md', fence(Array.from({length: 50}, (_, i) => `bench/gone-${i}.js`).join('\n')));
+  const w = wikiPaths(c);
+  assert.equal(w.unresolved_count, 50);
+  assert.equal(w.unresolved.length, 30);
+  assert.equal(w.paths_read, 50);
+});
