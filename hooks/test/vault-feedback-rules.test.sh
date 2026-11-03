@@ -35,7 +35,8 @@ if [[ -n $url && -d $target/.git ]]; then
   out=$(cd "$target" && bash "$HOOK" 2>/dev/null); rc=$?
   [[ $rc -eq 0 ]] && ok || bad "live run must exit 0 (rc=$rc)"
   [[ "$(head -n1 <<<"$out")" == "[vault] vault-storage's feedback rules, "* ]] && ok || bad "the header names the project (out=$(head -n1 <<<"$out"))"
-  [[ "$out" == *$'\n- Commit policy: autonomous, no destructive ops'* ]] && ok || bad "a rule per line (out=${out:0:300})"
+  n=$(head -n1 <<<"$out" | sed -E 's/.*feedback rules, ([0-9]+).*/\1/')
+  [[ $(grep -c '^- ' <<<"$out") -eq $n ]] && ok || bad "a rule per line, as many as the header counts (n=$n out=${out:0:300})"
   (( ${#out} <= 10000 )) && ok || bad "within a hook's 10,000 characters (${#out})"
 else
   echo "SKIP  live: no PROGRAM_CLERK_URL or no vault-storage checkout"
