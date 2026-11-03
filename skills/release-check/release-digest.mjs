@@ -87,12 +87,19 @@ const check = (name, value) => (digest.checks[name] = value);
 
 // --- git: last released tag + changes since (input to the step-0 judgment) --
 {
-  const tag = run('git', ['describe', '--tags', '--abbrev=0']);
+  // A package below the repository root releases as `<dir>-<version>` and answers for its own
+  // directory alone; the root package never takes such a tag for its own.
+  const prefix = run('git', ['rev-parse', '--show-prefix']).out;
+  const scope = prefix ? ['--', '.'] : [];
+  const tagFilter = prefix
+    ? ['--match', `${path.basename(prefix)}-[0-9]*`]
+    : ['--exclude', '*-[0-9]*'];
+  const tag = run('git', ['describe', '--tags', '--abbrev=0', ...tagFilter]);
   const lastTag = tag.ok ? tag.out : null;
   const range = lastTag ? [`${lastTag}..HEAD`] : ['HEAD'];
-  const log = run('git', ['log', '--format=%h\t%s', ...range]);
+  const log = run('git', ['log', '--format=%h\t%s', ...range, ...scope]);
   const commits = log.ok && log.out ? log.out.split('\n').map(line => line.replace('\t', ' ')) : [];
-  const dirty = run('git', ['status', '--porcelain']).out !== '';
+  const dirty = run('git', ['status', '--porcelain', ...scope]).out !== '';
   check('git', {
     status: 'ok',
     last_tag: lastTag,

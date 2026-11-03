@@ -48,7 +48,7 @@ Run these after the last edit, and read each command's exit status instead of fi
 
 ```bash
 npx prettier --check .
-node --test $(git ls-files '*.test.mjs')
+node --test $(git ls-files --cached --others --exclude-standard '*.test.mjs')
 for t in hooks/test/*.test.sh; do bash "$t" || echo "FAILED: $t"; done
 ```
 

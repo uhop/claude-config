@@ -33,7 +33,9 @@ dependency syncs, fleet-conventions sweeps, internal refactors) accumulate
 **without** triggering a release — downloading the new version would make no
 difference to anyone. Internal-only ≠ patch; internal-only = **no release**.
 
-The digest's `git.commits_since` block (step 1) is the change list. If no commit
+The digest's `git.commits_since` block (step 1) is the change list. Run from a
+package below the repository root, it reads that directory's history since the
+directory's own `<dir>-<version>` tag. If no commit
 is user-observable, the verdict is "nothing to release" — say so and stop; do
 not reach for a patch to justify the run. The note's § Negative form is the
 checklist for this.
