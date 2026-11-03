@@ -851,6 +851,12 @@ speculation was refuted and the whole defense read as excuse-making. Setup claus
 vault-storage capacity figure quoted without its fake embedder and auto-commit off, and apodict's
 "about 250 loops" counted in code the census never reads; the side agent caught both.)
 
+**A project's record is evidence too.** Before proposing a change to something the project may have
+ruled on (an access grant, a cache key, a negotiation scheme, a schema), a fix included, search its
+decisions note and the topics that note cites for that surface, and say in the proposal what the
+search found, or that it found nothing ([[projects/agent-workflow/feedback]] § A project's record is
+evidence before a change).
+
 **A claim of absence or completeness names what was enumerated, or is marked a guess.** Before a
 sentence says _only_, _none_, _no other_, _the one place_, _covers the class_, _harmless_, _never
 tested_, or puts a size on work (_takes weeks_, the cost of an option), run the enumeration and cite
