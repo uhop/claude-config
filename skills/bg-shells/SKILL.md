@@ -1,6 +1,6 @@
 ---
 name: bg-shells
-description: List, peek, or kill background shells from the current Claude Code session. The "N shells" indicator in the Claude Code status line counts `Bash(run_in_background: true)` processes the harness has registered for the current session — they are NOT findable via `ps`. Use when the user mentions "N shells", "background shells", "kill the shell", "what's running", "1 shell running", or invokes /bg-shells. Backed by `bg-shells.mjs` (transcript walker, which also reads each shell's completion notification) + Claude Code's `TaskStop` tool and a Read of the shell's output file; `hooks/bg-shells-open.sh` (Stop) raises any shell still live before a turn ends.
+description: "List, peek, or kill background shells from the current Claude Code session. The \"N shells\" indicator in the Claude Code status line counts `Bash(run_in_background: true)` processes the harness has registered for the current session — they are NOT findable via `ps`. Use when the user mentions \"N shells\", \"background shells\", \"kill the shell\", \"what's running\", \"1 shell running\", or invokes /bg-shells. Backed by `bg-shells.mjs` (transcript walker, which also reads each shell's completion notification) + Claude Code's `TaskStop` tool and a Read of the shell's output file; `hooks/bg-shells-open.sh` (Stop) raises any shell still live before a turn ends."
 user_invocable: true
 ---
 

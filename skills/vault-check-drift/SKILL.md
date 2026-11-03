@@ -1,6 +1,6 @@
 ---
 name: vault-check-drift
-description: Detect drift between a project's current state (git + npm) and the baseline recorded in the vault's `projects/<name>/state.md`. Flags: new commits / tags / publishes since the baseline, local branch ahead/behind upstream, working-tree mods / stash entries / untracked files, git-tag ↔ npm-version mismatches. Used automatically by `/vault resume` and standalone via `/vault check`.
+description: "Detect drift between a project's current state (git + npm) and the baseline recorded in the vault's `projects/<name>/state.md`. Flags: new commits / tags / publishes since the baseline, local branch ahead/behind upstream, working-tree mods / stash entries / untracked files, git-tag ↔ npm-version mismatches. Used automatically by `/vault resume` and standalone via `/vault check`."
 user_invocable: true
 ---
 

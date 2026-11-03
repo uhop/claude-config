@@ -1,6 +1,6 @@
 ---
 name: release-check
-description: Read-only release-readiness assessment for AI-doc-style projects (the AGENTS.md / llms.txt convention) across the fleet. Answers "are we ready to publish?" — runs the bundled `release-digest.mjs`, judges whether anything here is worth releasing, picks the tier, and audits docs currency, then reports a verdict and stops. Writes nothing: no version bump, no release notes, no dep bumps, no lockfile. Use when the user asks whether a project is ready to ship, invokes /release-check, or wants to know what a release would involve. The mutating half is /release-prep; companion to /ai-docs-update.
+description: "Read-only release-readiness assessment for AI-doc-style projects (the AGENTS.md / llms.txt convention) across the fleet. Answers \"are we ready to publish?\" — runs the bundled `release-digest.mjs`, judges whether anything here is worth releasing, picks the tier, and audits docs currency, then reports a verdict and stops. Writes nothing: no version bump, no release notes, no dep bumps, no lockfile. Use when the user asks whether a project is ready to ship, invokes /release-check, or wants to know what a release would involve. The mutating half is /release-prep; companion to /ai-docs-update."
 ---
 
 # Release Check

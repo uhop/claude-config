@@ -1,6 +1,6 @@
 ---
 name: writing-style
-description: House prose style for everything the agent writes: README, wiki, dev-docs, AGENTS.md and llms.txt, release notes, GitHub issue and PR text, vault notes, and chat replies. Based on the Google developer documentation style guide (developers.google.com/style), with the Microsoft Writing Style Guide as the fallback reference. Read before writing or editing any prose; use when asked to review, edit, or polish writing, or when the user mentions Google style, Microsoft style, tech-writing style, or "the style guide".
+description: "House prose style for everything the agent writes: README, wiki, dev-docs, AGENTS.md and llms.txt, release notes, GitHub issue and PR text, vault notes, and chat replies. Based on the Google developer documentation style guide (developers.google.com/style), with the Microsoft Writing Style Guide as the fallback reference. Read before writing or editing any prose; use when asked to review, edit, or polish writing, or when the user mentions Google style, Microsoft style, tech-writing style, or \"the style guide\"."
 ---
 
 # Writing style
