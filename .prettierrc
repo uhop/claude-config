@@ -9,6 +9,10 @@
     {
       "files": ["agents/*.md", "skills/writing-style/references/word-list.md"],
       "options": {"proseWrap": "preserve"}
+    },
+    {
+      "files": "settings.json",
+      "options": {"printWidth": 1}
     }
   ]
 }

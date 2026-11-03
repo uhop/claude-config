@@ -67,8 +67,10 @@ both. Several tests have a live half that reaches the real vault when `PROGRAM_C
   `curl`, and `python3` are what the scripts call.
 - Formatting comes from `.editorconfig` and `.prettierrc`. An override there keeps
   `proseWrap: preserve` for `word-list.md`, which agents grep, so each entry stays on one line, and
-  for `agents/*.md`, whose `description:` stays on one line, like the one in a `SKILL.md`.
-  `.prettierignore` holds what must keep its exact text, and its comments say why.
+  for `agents/*.md`, whose `description:` stays on one line, like the one in a `SKILL.md`. Another
+  gives `settings.json` a `printWidth` of 1, the form the plugin CLI writes through its symlink, so
+  a CLI write leaves the checkout clean and `git pull --ff-only` unblocked. `.prettierignore` holds
+  what must keep its exact text, and its comments say why.
 - The rest of the house style is in `CLAUDE.md` § Code.
 
 ## Third-party plugins
