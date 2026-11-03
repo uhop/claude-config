@@ -1251,7 +1251,8 @@ whether those reasons still hold; mark each historical claim checked or recalled
   Eugene ruled this line and one in apodict's `AGENTS.md`, the scripts left as the fleet convention
   spells them.) The same run comes before any git work, staging included: Eugene, 2026-11-02, _"I do
   it as a matter of policy: stuff works, I run all tests to confirm that, including linting, then
-  start working with git."_
+  start working with git."_ CI only confirms other environments, and a failure there is reproduced
+  and fixed locally before the commit that CI then confirms ([[topics/ci-scope-convention]]).
 - **State the cost of a long run before starting it.** When a run will take more than a few minutes
   (a simulation, a census, a benchmark sweep), give its estimated wall time in the message that
   starts it, and make it write a progress line as it goes. A Stop-hook reply about a run still going
