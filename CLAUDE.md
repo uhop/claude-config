@@ -2,6 +2,8 @@
 
 ## Git / npm gates
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/git-npm-gates]].
+
 `git commit`, `git push`, `git tag`, `npm publish` — only on the **literal verb** in the current
 turn. Reject synonyms (`land`, `ship`, `go`, `proceed`). Stop at staged diff and wait. Full:
 [[topics/agent-stops-at-staged-diff]].
@@ -18,8 +20,6 @@ question by changing state is the failure the check/prep split exists to prevent
 infer the decision from an unreleased changeset on `main`, from a docket/task list (even one the
 agent wrote), or from a generic "deal with it"; surface "main has unreleased work" as information,
 not as a task. He decides _when_ — he may deliberately batch more items before cutting a version.
-(Origin: 2026-07-08 — an agent-authored "housekeeping" docket label turned "deal with both
-housekeeping items" into an unrequested 1.2.0 prep.)
 
 Asking is also useless because of the gate itself: `hooks/git-commit-gate.sh` blocks `git commit`
 unless `.claude/git-commit-allowed` exists at or above the directory the commit runs in — the cwd
@@ -42,10 +42,7 @@ notice Your package is being processed and may take a few minutes to become avai
 `npm view`, `--prefer-online`, and a direct registry read all show the previous version for minutes
 afterwards, and `check-drift.sh`'s "tag X: no matching npm publish" says the same. When he says a
 version is published, record it as published and do the bookkeeping; a registry that disagrees is
-the processing window, never a reason to ask whether the publish failed. (Origin: console-toolkit
-1.5.0, 2026-09-26 — the agent read the lag as a possible failed publish and sent him to check his
-output; Eugene: _"I told you already that how `npm` works has changed … if I said 'published' I mean
-'published', not 'I tried and failed'."_)
+the processing window, never a reason to ask whether the publish failed.
 
 Read-only / local-only `git` / `gh` / `aws` run freely; outward-facing or irrecoverable ops are the
 user's (his legal responsibility, not a fleeting agent's). `hooks/destructive-op-gate.sh` enforces
@@ -60,9 +57,7 @@ exact coverage — don't reproduce the verb list here. Driver: an agent once fil
 `state.md`, logs, decision notes — are never gated by it; move a shipped item when it ships. And a
 deferral stated once is a _claim about current state_, not a standing position: re-check it before
 restating it. "I held off because you hadn't pushed yet" is inertia once the push has happened, and
-it reads as deference. (Origin: reflect 2026-08-03 — three shipped `vault-storage` queue items were
-flagged as un-archived three times in one session on a reason that expired at the first `git push`;
-Eugene: _"Why don't you?"_)
+it reads as deference.
 
 Git is the system of record — don't keep a prose ledger of it. Run `git status` / `git log` the
 moment a decision needs the state, use the answer, discard it; never carry "N ahead/behind, commit X
@@ -82,15 +77,7 @@ its repository: past-tense verb first, sentence case, a closing period, **50 cha
 never past 72** (git's subject convention), and **no body** — _"I usually use just a title. For the
 rest --- read the diff."_ The name serves the review, the subject serves the commit, and the review
 is why the rule exists. Naming the unit is not offering to commit; the verb gate above is untouched.
-(Origin: vault-storage 2026-09-18 — _"when stopping present me with a short cluster description for
-a commit message"_ — recorded in that project's `feedback.md` and nowhere else, so apodict asked
-three more times over the next day and corrected the answer twice, on the body and on the length.
-Eugene, 2026-09-19, on why: _"the original impulse was to skip long scrolls up to see what was
-worked on"_, _"an agent lists was was changed in what files, but no name of the arc --- these are
-different levels of abstraction"_, and _"especially I need a description when a task name is a
-non-descript 'Arc 8b'"_. Shape: [[topics/commit-message-cliff-notes]]; boundary:
-[[topics/agent-stops-at-staged-diff]]. The label: vault-storage 2026-10-29, _"Which commit message
-is which?"_ over two bare subjects; the 2026-10-30 reflect report, P6.)
+(Shape: [[topics/commit-message-cliff-notes]]; boundary: [[topics/agent-stops-at-staged-diff]].)
 
 Pushed history is immutable: no `--amend`, `rebase`, force-push, or moving published tags. Fix
 forward with a new commit.
