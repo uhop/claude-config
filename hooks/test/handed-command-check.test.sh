@@ -75,6 +75,16 @@ blocks 'a macOS temp directory' "$(block bash 'node /var/folders/ab/T/tmp.yEX7YT
 blocks 'a quoted scratch path' "$(block bash 'cat "/tmp/tmp.abc123/x"')" '/tmp/tmp.abc123/x'
 run "$(block bash 'S=/tmp/tmp.abc123/x; node /tmp/tmp.abc123/y; cat /tmp/tmp.abc123/z)')"
 [[ "$out" == *'path, /tmp/tmp.abc123/x, /tmp/tmp.abc123/y, /tmp/tmp.abc123/z: copy'* ]] && ok || bad "a path is named without the shell around it (out=$out)"
+passes 'a scratch path on a `!` line' "$(block '' '! node /tmp/tmp.abc123/x')"
+passes 'and in a variable on one' "$(block bash '!S=/tmp/claude-1000/-home-x/abc/scratchpad/y; cat "$S"')"
+passes 'and on a later line of a `!` block' "$(block bash '! W=/tmp/tmp.abc123
+ls /tmp/tmp.abc123/x')"
+passes 'and on a `!` line after another' "$(block '' 'git status
+! node /tmp/tmp.abc123/x')"
+blocks 'a scratch path on a plain line after a `!` line' "$(block '' 'git status
+! echo run
+git apply /tmp/tmp.abc123/x.patch')" 'x.patch'
+blocks 'a placeholder on a `!` line still counts' "$(block '' '! deploy <host>')" '<host>'
 passes 'a cache path' "$(block bash 'git apply ~/.cache/claude-config/a.patch')"
 passes 'a mktemp the block makes' "$(block bash 'W=$(mktemp -d) && echo "$W"')"
 passes 'a plain /tmp path' "$(block bash 'ls /tmp/fixture')"

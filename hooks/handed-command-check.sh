@@ -5,7 +5,7 @@
 # (§ Scratch files). claude-config D46.
 #
 # It reads shell-labeled fences and unlabeled ones, where handed commands also land, and leaves
-# heredoc bodies alone. A quoted `<word>` counts, since `ACCOUNT='<account>'` is the measured form,
+# heredoc bodies alone. A scratch path on a `!` line passes: it runs at once, in this session. A quoted `<word>` counts, since `ACCOUNT='<account>'` is the measured form,
 # so a block that greps for `'<title>'` costs one extra turn: the re-entry carries
 # `stop_hook_active: true`, on which this hook exits 0.
 #
@@ -54,12 +54,17 @@ for m in FENCE.finditer(os.environ.get('MESSAGE', '')):
     if lang not in LANGS:
         continue
     text, _ = strip_heredocs(m.group('body'))
-    for line in text.split('\n'):
+    lines = text.split('\n')
+    # `!` runs the block at once in this session, where a scratch path exists (D46).
+    at_once = lines[0].lstrip().startswith('!')
+    for line in lines:
         # An unlabeled block can be a tool's --help, whose lines start at an option.
         if not lang and line.lstrip().startswith('-'):
             continue
         for p in PLACEHOLDER.finditer(line):
             note('placeholder', p.group(1))
+        if at_once or line.lstrip().startswith('!'):
+            continue
         for s in SCRATCH.findall(line):
             note('scratch', s)
 
