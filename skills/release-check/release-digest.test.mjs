@@ -32,7 +32,7 @@ const repo = t => {
     const r = spawnSync('node', [DIGEST, path.join(dir, sub), '--no-network'], {encoding: 'utf8'});
     return JSON.parse(r.stdout).checks.git;
   };
-  git('init', '-q');
+  git('init', '-q', '-b', 'main');
   write('package.json', '{"name": "root", "version": "1.0.0"}\n');
   write('mcp/package.json', '{"name": "sub", "version": "1.0.0"}\n');
   git('add', '-A');
