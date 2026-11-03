@@ -346,6 +346,29 @@ check DENY  'aws --cli-error-format json s3 rm s3://b/k'
 check DENY  'aws --cli-error-format json ec2 terminate-instances --instance-ids i-1'
 check ALLOW 'aws --cli-error-format json s3 ls'
 check ALLOW 'aws --cli-error-format json ec2 describe-instances'
+
+# ── a written file is code when the command runs it, and data when it only reads it (2026-11-03) ──
+for v in 'git tag v1' 'git push origin main' 'npm publish' 'gh issue create -t x' 'aws s3 rm s3://b/k'; do
+  body=$'cat > s.sh <<\'EOF\'\n'"$v"$'\nEOF\n'
+  for run in 'bash s.sh' 'sh s.sh' 'bash -x s.sh' 'source s.sh' '. ./s.sh' 'chmod +x s.sh; ./s.sh' 's.sh' 'bash < s.sh' 'cat s.sh | bash' 'sudo bash s.sh' 'timeout 5 bash s.sh' 'xargs bash s.sh' 'bash -c "bash s.sh"' 'ssh host < s.sh' 'cd /tmp; bash /tmp/s.sh'; do
+    check DENY  "$body$run"
+  done
+  note=$'cat > x.md <<\'EOF\'\nThe spelling `'"$v"$'` is refused.\nEOF\n'
+  for read in 'q file p --body-file x.md' 'wc -l x.md' 'grep -c y x.md' 'jq . x.md' 'npx prettier --check x.md' 'rm x.md' 'cat x.md' 'cat x.md | grep y' 'vault-curl /x --data-binary @x.md' 'node x.md' 'python3 x.md'; do
+    check ALLOW "$note$read"
+  done
+  check DENY  $'W=/tmp/w; cat > "$W/s.sh" <<\'EOF\'\n'"$v"$'\nEOF\nbash "$W/s.sh"'
+  check ALLOW $'W=/tmp/w; cat > "$W/x.md" <<\'EOF\'\nThe spelling `'"$v"$'` is refused.\nEOF\nq --body-file "$W/x.md"'
+done
+check DENY  'echo "x gh issue create -t y" > s.sh; bash s.sh'
+check ALLOW 'echo "x gh issue create -t y" > x.md; q --body-file x.md'
+check ALLOW $'cat > x.md <<\'EOF\'\ngit tag v1\nEOF\nbash other.sh'
+check ALLOW $'cat > /dev/null <<\'EOF\'\ngit tag v1\nEOF\nbash other.sh 2>/dev/null'
+check ALLOW $'cat > s.sh <<\'EOF\'\ngit tag v1\nEOF\ncat s.sh | grep y; echo z | bash'
+check DENY  $'cat > /tmp/w/s.sh <<\'EOF\'\ngit tag v1\nEOF\ncd /tmp/w; bash s.sh'
+check DENY  $'cat > /tmp/w/s.sh <<\'EOF\'\ngit tag v1\nEOF\ncd /tmp/w; ./s.sh'
+check DENY  $'cat > "s.sh" <<\'EOF\'\ngit tag v1\nEOF\nbash s.sh'
+check DENY  $'tee s.sh <<\'EOF\'\ngit tag v1\nEOF\n. s.sh'
 check DENY  'env aws s3 cp "a > b" s3://b/k'
 check DENY  'aws ec2 terminate-instances help 2>&1 --instance-ids i-1'
 check ALLOW 'aws cloudfront create-cache-policy help>out'

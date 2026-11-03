@@ -42,6 +42,7 @@ _fresh = itertools.count()
 PREFIX = {'command', 'nice', 'time', 'exec', 'sudo', 'doas', 'builtin', 'nohup'}
 SUBST_RE = re.compile(r'\$\(([^()]*)\)|`([^`]*)`')
 SHELLS = {'bash', 'sh', 'zsh', 'dash', 'ksh', 'eval'}
+FILE_RUNNERS = SHELLS | {'source', '.', 'ssh'}
 # Commands that run what they are handed, so a word in their text can be a call.
 RUNNERS = {'xargs', 'find', 'parallel', 'watch', 'ssh', 'env', 'time', 'timeout', 'nice', 'nohup',
            'sudo', 'doas', 'command', 'exec', 'builtin'}
@@ -312,20 +313,28 @@ def runs_its_text(seg):
 REDIRECT_RE = re.compile(r"""(?:>>?|\btee\s+(?:-a\s+)?)\s*("[^"]*"|'[^']*'|[^\s;|&<>]+)""")
 
 
-def names_what_it_writes(line, text):
-    """Whether the rest of the command names a file this line writes. A script written
-    and run by one command is code, whatever its text looked like when it was written."""
-    others = text.replace(line, '', 1)
+def runs_what_it_writes(line, text):
+    """Whether the rest of the command runs a file this line writes: by its name, as what a shell
+    or `ssh` reads, or piped into a shell. A script written and run by one command is code, whatever
+    its text looked like when it was written; a file it only reads is data, and what an interpreter
+    runs stays unread (D42)."""
     targets = (m.group(1).strip('\'"') for m in REDIRECT_RE.finditer(line))
-    return any(t in others for t in targets if not t.startswith('/dev/'))
+    written = [t for t in targets if not t.startswith('/dev/')]
+    segs = segments(text.replace(line, '', 1))
+    for base in map(os.path.basename, written):
+        for seg, after in zip(segs, segs[1:] + ['']):
+            toks = run_tokens(seg) if base in seg else []
+            if toks and (os.path.basename(toks[0]) in FILE_RUNNERS | {base} or command_name(after) in SHELLS):
+                return True
+    return False
 
 
 def heredoc_runs(prefix, rest, text):
     """Whether the heredoc's body can run: a shell or a runner receives it (`bash <<X`,
-    `a && bash <<X`, `cat <<X | bash`), or it goes to a file the command names again."""
+    `a && bash <<X`, `cat <<X | bash`), or it goes to a file the command runs."""
     return (runs_its_text(segments(prefix)[-1])
             or any(runs_its_text(s) for s in segments(rest)[1:])
-            or names_what_it_writes(prefix + rest, text))
+            or runs_what_it_writes(prefix + rest, text))
 
 
 def mask_quoted(seg):

@@ -296,7 +296,7 @@ parser_records() {
   CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import parse_heredocs, heredoc_runs, runs_its_text, names_what_it_writes, mask_quoted, segments, command_tokens, substitutions, without_redirects, bare, SHELLS
+from shell_segments import parse_heredocs, heredoc_runs, runs_its_text, runs_what_it_writes, mask_quoted, segments, command_tokens, substitutions, without_redirects, bare, SHELLS
 
 def leaves(cmd, nested, depth=0):
     if depth > 3:
@@ -314,7 +314,7 @@ def leaves(cmd, nested, depth=0):
     for seg in segments(text):
         b = bare(seg)
         if b:
-            keep = not command_tokens(b) or runs_its_text(b) or names_what_it_writes(b, text)
+            keep = not command_tokens(b) or runs_its_text(b) or runs_what_it_writes(b, text)
             out.append((nested, bare(without_redirects(b if keep else mask_quoted(b))), b))
         toks = command_tokens(seg)
         if toks and os.path.basename(toks[0]) in SHELLS:
