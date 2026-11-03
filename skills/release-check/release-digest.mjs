@@ -568,6 +568,151 @@ const readRuns = sha => {
   }
 }
 
+// --- what changed for users since the last tag --------------------------------
+// Each list is for the agent to judge, so none of it stops a clean digest: a README may
+// name a theme and not its items, and an assertion can change with no behavior changing.
+const TEST_PLACES = ['tests', 'test', 'ts-test', 'ts-tests', '__tests__'];
+const TYPE_PATHS = [
+  ':(glob)**/*.d.ts',
+  ...TEST_PLACES.map(place => `:(exclude,glob)**/${place}/**`)
+];
+const TEST_PATHS = [...TEST_PLACES.map(place => `:(glob)**/${place}/**`), ':(glob)**/*.test.*'];
+const DIFF_FLAGS = [
+  '--relative',
+  '--no-color',
+  '--unified=0',
+  '-M',
+  '--src-prefix=a/',
+  '--dst-prefix=b/'
+];
+
+const changedLines = args => {
+  const lines = [];
+  let from = null,
+    to = null;
+  for (const line of run('git', args).out.split('\n')) {
+    const header = line.match(/^(---|\+\+\+) (?:[ab]\/(.*)|\/dev\/null)$/);
+    if (header) {
+      if (header[1] === '---') from = header[2] ?? null;
+      else to = header[2] ?? null;
+    } else if (line.startsWith('+')) lines.push({added: true, file: to, text: line.slice(1)});
+    else if (line.startsWith('-')) lines.push({added: false, file: from, text: line.slice(1)});
+  }
+  return lines;
+};
+
+const declared = text => {
+  const line = text.trim();
+  if (line.endsWith(',')) return [];
+  const list = line.match(/^export\s+(?:type\s+)?\{([^}]*)\}|^export\{([^}]*)\}/);
+  if (list)
+    return (list[1] ?? list[2])
+      .split(',')
+      .map(part =>
+        part
+          .trim()
+          .split(/\s+as\s+/)
+          .pop()
+      )
+      .filter(Boolean);
+  const named = line.match(
+    /^(?:export\s+)?(?:declare\s+)?(?:default\s+)?(?:abstract\s+)?(?:async\s+)?(?:function\*?|class|interface|type|const|let|var|enum|namespace|module)\s+([\w$]+)/
+  );
+  if (named) return [named[1]];
+  const member = line.match(
+    /^(?:(?:public|protected|readonly|static|abstract|async|get|set)\s+)*([\w$]+)\??\s*(?:<[^>]*>)?\s*[(:]/
+  );
+  return member ? [member[1]] : [];
+};
+
+const namesOn = (lines, added) =>
+  new Set(lines.filter(line => line.added === added).flatMap(line => declared(line.text)));
+
+// The new release's text in both tiers: its section in the wiki, its bullet in the README.
+const notesFor = version => {
+  const named = new RegExp(`(?:^|[^\\d.])${version.replaceAll('.', '\\.')}(?![\\d.])`);
+  const wiki = ['wiki', 'external_wiki'].find(exists);
+  const read = rel => (exists(rel) ? readFileSync(path.join(root, rel), 'utf8').split('\n') : []);
+  const kept = [];
+  for (const rel of [...(wiki ? [`${wiki}/Release-notes.md`] : []), 'README.md']) {
+    let level = 0;
+    for (const line of read(rel)) {
+      const heading = line.match(/^(#{1,6})\s/)?.[1].length ?? 0;
+      if (heading && level && heading <= level) level = 0;
+      if (heading && !level && named.test(line)) level = heading;
+      if (level || (/^\s*[-*]\s/.test(line) && named.test(line))) kept.push(line);
+    }
+  }
+  return new Set(kept.join('\n').match(/[\w$]+/g) ?? []);
+};
+
+const ASSERTION =
+  /^(?:await\s+|return\s+)?(?:t\.(?!test\b|comment\b|plan\b|skip\b|todo\b|diagnostic\b)\w+\(|assert(?:\.\w+)?\(|expect\(|eval\(\s*(?:\w+\.)?TEST\b)/;
+
+{
+  const tag = digest.checks.git.last_tag;
+  if (!tag) {
+    check('type_surface', {status: 'skip', reason: 'no tag'});
+    check('test_assertions', {status: 'skip', reason: 'no tag'});
+  } else {
+    const typeLines = changedLines(['diff', ...DIFF_FLAGS, tag, '--', ...TYPE_PATHS]);
+    const plus = namesOn(typeLines, true);
+    const minus = namesOn(typeLines, false);
+    const added = [...plus].filter(name => !minus.has(name));
+    const changed = [...plus].filter(name => minus.has(name));
+    const removed = [...minus].filter(name => !plus.has(name));
+    const notes = tag.endsWith(pkg.version) ? new Set() : notesFor(pkg.version);
+    const unmentioned = [...plus].filter(name => !notes.has(name));
+    const fixes = [];
+    const log = run('git', ['log', '--format=%h%x09%s', `${tag}..HEAD`, '--', ...TYPE_PATHS]).out;
+    for (const entry of log ? log.split('\n') : []) {
+      const [sha, subject] = entry.split('\t');
+      if (!/\b(?:bug)?fix/i.test(subject)) continue;
+      const lines = changedLines(['show', '--format=', ...DIFF_FLAGS, sha, '--', ...TYPE_PATHS]);
+      const gone = namesOn(lines, false);
+      const fresh = [...namesOn(lines, true)].filter(name => !gone.has(name));
+      if (fresh.length) fixes.push({commit: sha, subject, added: fresh});
+    }
+    check('type_surface', {
+      status: 'ok',
+      review: Boolean(unmentioned.length || removed.length || fixes.length),
+      added,
+      changed,
+      removed,
+      unmentioned,
+      fix_commits_adding_surface: fixes
+    });
+
+    const testLines = changedLines(['diff', ...DIFF_FLAGS, tag, '--', ...TEST_PATHS]);
+    const same = text => text.trim().replace(/\s+/g, ' ');
+    const unmatched = new Map();
+    for (const line of testLines)
+      if (line.added) unmatched.set(same(line.text), (unmatched.get(same(line.text)) ?? 0) + 1);
+    const rewritten = [];
+    let moved = 0;
+    for (const line of testLines) {
+      const text = same(line.text);
+      if (line.added || !ASSERTION.test(text)) continue;
+      if (unmatched.get(text)) {
+        unmatched.set(text, unmatched.get(text) - 1);
+        ++moved;
+      } else rewritten.push({file: line.file, text});
+    }
+    const addedCount =
+      testLines.filter(line => line.added && ASSERTION.test(same(line.text))).length - moved;
+    const byFile = new Map();
+    for (const {file, text} of rewritten.slice(0, 30))
+      byFile.set(file, [...(byFile.get(file) ?? []), text]);
+    check('test_assertions', {
+      status: 'ok',
+      review: rewritten.length > 0,
+      removed_count: rewritten.length,
+      added_count: addedCount,
+      removed: [...byFile].map(([file, lines]) => ({file, lines}))
+    });
+  }
+}
+
 // --- tarball contents (npm pack --dry-run is the ground truth) --------------
 {
   const pack = run('npm', ['pack', '--dry-run', '--json']);
@@ -628,6 +773,9 @@ digest.summary = {
   total: Object.keys(digest.checks).length,
   action: actions.map(([name]) => name),
   unchecked,
+  review: Object.entries(digest.checks)
+    .filter(([, c]) => c.review)
+    .map(([name]) => name),
   clean: actions.length === 0 && unchecked.length === 0
 };
 

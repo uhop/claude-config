@@ -94,6 +94,12 @@ different audiences ([[topics/two-tier-release-notes]]):
   releases" (don't backfill detail you don't have), then trim the README entry
   to cliff-notes density. Never update only the README.
 
+Write the notes with the digest's `type_surface` and `test_assertions` open. Each
+name in `added` or `changed` goes in the wiki entry, or under a theme the entry
+states, and each entry in `test_assertions.removed` is either a behavior change
+the notes call breaking or one you can say pinned no behavior. A prep that drops
+one says so in its report, with the reason.
+
 Fix the docs-currency findings the check reported here too — the falsified
 absolutes and the under-reporting enumerations. They are release-blocking in
 the sense that they ship wrong the moment the tag lands.
@@ -147,7 +153,8 @@ re-run. (Hit 2026-08-18.)
 After all edits, the digest must come back clean (`summary.clean: true`) —
 this re-verifies the tarball against the bumped version and the regenerated
 lockfile in one shot. `ci` is the one check a prep cannot clean, since it reads
-a remote: step 10 reports it.
+a remote: step 10 reports it. `summary.review` is not part of clean: read
+`type_surface.unmentioned` against the notes you wrote.
 
 ## Step 9 — Project-specific release steps
 

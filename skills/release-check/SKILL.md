@@ -92,7 +92,7 @@ cutting the first one early.
 ~/.claude/skills/release-check/release-digest.mjs        # from the project root
 ```
 
-One JSON report, 17 checks, each `ok | action | skip | error`; exit 1 when
+One JSON report, 19 checks, each `ok | action | skip | error`; exit 1 when
 anything needs attention (run it solo or `|| true` in parallel Bash batches).
 `--no-network` skips the `npm outdated` registry call and the read of CI's runs
 and lists both under `summary.unchecked`, so an offline digest is never clean:
@@ -109,7 +109,8 @@ stale declared range floors, which `npm outdated` structurally cannot see —
 each item carries `reason: "installed_behind" | "declared_floor_behind"` and
 the `declared` range; see [[topics/dep-version-freshness]]),
 lockfile-version sync, which test gates exist, what a push to this branch fires
-and what CI says of the pushed commit (`ci`), and the
+and what CI says of the pushed commit (`ci`), what changed for users since the
+last tag (`type_surface`, `test_assertions`), and the
 `npm pack --dry-run` tarball diff (required contents present, authoring-side
 files absent — see [[topics/tarball-ai-docs-convention]] and
 [[topics/full-path-imports-for-runtime-portability]] for the rules the
@@ -117,6 +118,22 @@ files absent — see [[topics/tarball-ai-docs-convention]] and
 
 The digest is itself read-only — it probes and reports, so running it costs
 nothing but time.
+
+**Read every check `summary.review` names**, since none of them stops a clean
+digest and each is yours to judge:
+
+- `type_surface` diffs the package's `.d.ts` files since the last tag: `added`,
+  `changed`, and `removed` names, and `unmentioned`, the names the new release's
+  notes do not carry, every one of them until the notes are written. An addition
+  is material for 0a and a minor for 0b, and a removal is breaking. A README may
+  name a theme and not its items ([[topics/two-tier-release-notes]]), so judge
+  whether a name is covered. `fix_commits_adding_surface` names a commit whose
+  subject says fix and whose diff adds public surface: say so in the verdict.
+- `test_assertions` lists existing assertions removed or rewritten since the last
+  tag, apart from added ones and moved ones. Each is a candidate for a change
+  that breaks our own tests, which is what calling it breaking means
+  ([[topics/semver-and-release-cadence]]): name the behavior it pinned, or say
+  why it pinned none.
 
 **Report every `action` as a finding**, with three judgment notes:
 

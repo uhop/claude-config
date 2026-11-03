@@ -468,3 +468,396 @@ test('a sub-package reads the workflows at the repository root', t => {
   const ci = c.ci('mcp', ['--no-network']).checks.ci;
   assert.equal(ci.workflows.length, 1);
 });
+
+// What changed for users, read from a tagged repository.
+const tagged = t => {
+  const r = repo(t);
+  const full = (sub = '.') => {
+    const out = spawnSync('node', [DIGEST, path.join(r.dir, sub), '--no-network'], {
+      encoding: 'utf8'
+    });
+    return JSON.parse(out.stdout);
+  };
+  const save = (rel, text, subject = 'change') => {
+    r.write(rel, text);
+    r.git('add', '-A');
+    r.git('commit', '-qm', subject);
+  };
+  return {...r, full, save};
+};
+const surface = (c, sub) => c.full(sub).checks.type_surface;
+const tests = (c, sub) => c.full(sub).checks.test_assertions;
+
+test('with no tag there is no change to read', t => {
+  const c = tagged(t);
+  assert.equal(surface(c).reason, 'no tag');
+  assert.equal(tests(c).reason, 'no tag');
+});
+
+test('a release that touches no types has nothing to review', t => {
+  const c = tagged(t);
+  c.git('tag', '1.0.0');
+  c.save('src/a.js', 'x\n');
+  const d = c.full();
+  assert.equal(d.checks.type_surface.review, false);
+  assert.deepEqual(d.checks.type_surface.added, []);
+  assert.deepEqual(d.summary.review, []);
+});
+
+test('each way of declaring a name is read', t => {
+  const c = tagged(t);
+  c.save('index.d.ts', 'export declare function kept(): void;\n');
+  c.git('tag', '1.0.0');
+  c.save(
+    'index.d.ts',
+    [
+      'export declare function kept(): void;',
+      'export declare function fnA(a: string): void;',
+      'export function fnB(): void;',
+      'export async function fnC(): void;',
+      'export default function fnD(): void;',
+      'export class ClsA {',
+      '  method<T>(a: T): void;',
+      '  prop: number;',
+      '  optional?: string;',
+      '  readonly ro: string;',
+      '  static st(): void;',
+      '  get gt(): string;',
+      '  private hidden: number;',
+      '  multi(',
+      '    param: string,',
+      '    other?: number,',
+      '  ): void;',
+      '}',
+      'export abstract class ClsB {}',
+      'export interface IfaceA {}',
+      'export type TypeA = string;',
+      'export const constA: number;',
+      'export declare const constB: number;',
+      'export enum EnumA {}',
+      'export namespace NsA {}',
+      'declare function ambient(): void;',
+      "export {reA, reB as reC} from './x.js';",
+      '/** A comment that names commentWord: and more. */',
+      ' * starWord: in a comment',
+      '// slashWord: in a comment',
+      "import type {Hidden} from './y.js';",
+      ''
+    ].join('\n')
+  );
+  const added = surface(c).added;
+  const want = [
+    'fnA',
+    'fnB',
+    'fnC',
+    'fnD',
+    'ClsA',
+    'method',
+    'prop',
+    'optional',
+    'ro',
+    'st',
+    'gt',
+    'multi',
+    'ClsB',
+    'IfaceA',
+    'TypeA',
+    'constA',
+    'constB',
+    'EnumA',
+    'NsA',
+    'ambient',
+    'reA',
+    'reC'
+  ];
+  assert.deepEqual([...added].sort(), [...want].sort());
+});
+
+test('a signature that changed is changed, and one that went is removed', t => {
+  const c = tagged(t);
+  c.save(
+    'index.d.ts',
+    'export function same(a: string): void;\nexport function gone(): void;\nexport function kept(): void;\n'
+  );
+  c.git('tag', '1.0.0');
+  c.save(
+    'index.d.ts',
+    'export function same(a: string, b: number): void;\nexport function kept(): void;\n'
+  );
+  const s = surface(c);
+  assert.deepEqual(s.added, []);
+  assert.deepEqual(s.changed, ['same']);
+  assert.deepEqual(s.removed, ['gone']);
+  assert.equal(s.review, true);
+});
+
+test('a removal alone is for review', t => {
+  const c = tagged(t);
+  c.save('index.d.ts', 'export function gone(): void;\nexport function kept(): void;\n');
+  c.git('tag', '1.0.0');
+  c.save('index.d.ts', 'export function kept(): void;\n');
+  const s = surface(c);
+  assert.deepEqual(s.unmentioned, []);
+  assert.deepEqual(s.removed, ['gone']);
+  assert.equal(s.review, true);
+});
+
+test('a name moved between files is neither added nor removed', t => {
+  const c = tagged(t);
+  c.save('src/a.d.ts', 'export function moved(): void;\n');
+  c.git('tag', '1.0.0');
+  c.save('src/a.d.ts', 'export {};\n');
+  c.save('src/b.d.ts', 'export function moved(): void;\n');
+  const s = surface(c);
+  assert.deepEqual(s.added, []);
+  assert.deepEqual(s.removed, []);
+  assert.deepEqual(s.changed, ['moved']);
+});
+
+test('types under a test directory are not the public surface', t => {
+  const c = tagged(t);
+  c.git('tag', '1.0.0');
+  for (const dir of ['tests', 'test', 'ts-test', 'ts-tests', '__tests__'])
+    c.save(`${dir}/x.d.ts`, 'export function hidden(): void;\n');
+  assert.deepEqual(surface(c).added, []);
+});
+
+test('a sub-package answers for its own types', t => {
+  const c = tagged(t);
+  c.git('tag', 'mcp-1.0.0');
+  c.save('other.d.ts', 'export function outside(): void;\n');
+  c.save('mcp/in.d.ts', 'export function inside(): void;\n');
+  assert.deepEqual(surface(c, 'mcp').added, ['inside']);
+});
+
+test('an uncommitted edit counts, since the release carries it', t => {
+  const c = tagged(t);
+  c.git('tag', '1.0.0');
+  c.write('index.d.ts', 'export function fresh(): void;\n');
+  c.git('add', '-A');
+  assert.deepEqual(surface(c).added, ['fresh']);
+});
+
+test('before the bump, every added name is unmentioned, and is for review, never unclean', t => {
+  const c = tagged(t);
+  c.git('tag', '1.0.0');
+  c.save('index.d.ts', 'export function fresh(): void;\n');
+  c.save('wiki/Release-notes.md', '# Release notes\n\n## 1.0.0\n\n`fresh` from long ago.\n');
+  const d = c.full();
+  assert.deepEqual(d.checks.type_surface.unmentioned, ['fresh']);
+  assert.equal(d.checks.type_surface.status, 'ok');
+  assert.ok(d.summary.review.includes('type_surface'));
+  assert.ok(!d.summary.action.includes('type_surface'));
+});
+
+test('a name in either tier of the new release is mentioned, and one in an older release is not', t => {
+  const c = tagged(t);
+  c.git('tag', '1.0.0');
+  c.save(
+    'index.d.ts',
+    'export function inWiki(): void;\nexport function inReadme(): void;\nexport function inOld(): void;\nexport function inNeither(): void;\n$dollar: string;\n'
+  );
+  c.save('package.json', '{"name": "root", "version": "1.1.0"}\n');
+  c.save(
+    'wiki/Release-notes.md',
+    '# Release notes\n\n## 1.1.0 &mdash; 2026-11-03\n\n**`inWiki()`** is new, and so is `$dollar`.\n\n### Added\n\nStill this release: nothing else.\n\n## 1.0.0\n\n`inOld` shipped here.\n'
+  );
+  c.save(
+    'README.md',
+    '# R\n\n## Release History\n\n- 1.1.0 _New `inReadme`._\n- 1.0.0 _`inOld` too._\n'
+  );
+  assert.deepEqual(surface(c).unmentioned, ['inOld', 'inNeither']);
+});
+
+test('a heading names a version only as a whole version', t => {
+  const c = tagged(t);
+  c.git('tag', '1.0.0');
+  c.save('index.d.ts', 'export function near(): void;\n');
+  c.save('package.json', '{"name": "root", "version": "1.1.0"}\n');
+  c.save(
+    'wiki/Release-notes.md',
+    '# Release notes\n\n## 11.1.0\n\n`near`\n\n## 1.1.01\n\n`near`\n'
+  );
+  assert.deepEqual(surface(c).unmentioned, ['near']);
+});
+
+test('a release section ends at the next heading of its level', t => {
+  const c = tagged(t);
+  c.git('tag', '1.0.0');
+  c.save('index.d.ts', 'export function inSub(): void;\nexport function past(): void;\n');
+  c.save('package.json', '{"name": "root", "version": "1.1.0"}\n');
+  c.save(
+    'wiki/Release-notes.md',
+    '# N\n\n## 1.1.0\n\n### Added\n\n`inSub`\n\n## 1.0.9\n\n`past`\n'
+  );
+  assert.deepEqual(surface(c).unmentioned, ['past']);
+});
+
+test('a fix commit that adds public surface is flagged on its own', t => {
+  const c = tagged(t);
+  c.save('index.d.ts', 'export function old(a: string): void;\n');
+  c.git('tag', '1.0.0');
+  c.save('index.d.ts', 'export function old(a: string, b: string): void;\n', 'Fixed a thing.');
+  c.save(
+    'index.d.ts',
+    'export function old(a: string, b: string): void;\nexport function open(): void;\n',
+    'Added open.'
+  );
+  c.save(
+    'index.d.ts',
+    'export function old(a: string, b: string): void;\nexport function open(): void;\nexport function sly(): void;\n',
+    'Bugfix: edge cases.'
+  );
+  c.save('src/a.js', 'x\n', 'fix: no types here');
+  const flagged = surface(c).fix_commits_adding_surface;
+  assert.equal(flagged.length, 1);
+  assert.match(flagged[0].subject, /Bugfix: edge cases/);
+  assert.deepEqual(flagged[0].added, ['sly']);
+});
+
+test('a commit that says fixed and adds surface is flagged like one that says bugfix', t => {
+  const c = tagged(t);
+  c.git('tag', '1.0.0');
+  c.save('index.d.ts', 'export function sly(): void;\n', 'Fixed the edge cases.');
+  assert.deepEqual(surface(c).fix_commits_adding_surface[0].added, ['sly']);
+});
+
+test('an indented assertion is read, as real tests write them', t => {
+  const c = tagged(t);
+  c.save('tests/a.js', "test('x', t => {\n    t.ok(before);\n});\n");
+  c.git('tag', '1.0.0');
+  c.save('tests/a.js', "test('x', t => {\n    t.ok(after);\n});\n");
+  const a = tests(c);
+  assert.equal(a.removed_count, 1);
+  assert.equal(a.added_count, 1);
+  assert.deepEqual(a.removed[0].lines, ['t.ok(before);']);
+});
+
+test('one added copy answers for one removed copy', t => {
+  const c = tagged(t);
+  c.save('tests/a.js', 't.ok(twin);\nt.ok(twin);\n');
+  c.git('tag', '1.0.0');
+  c.save('tests/a.js', 'x\n');
+  c.save('tests/b.js', 't.ok(twin);\n');
+  assert.equal(tests(c).removed_count, 1);
+});
+
+test('a rewritten assertion is listed apart from the added ones', t => {
+  const c = tagged(t);
+  c.save('tests/a.js', "t.ok(caught instanceof Stop, 'propagates');\nt.equal(other, 1);\n");
+  c.git('tag', '1.0.0');
+  c.save('tests/a.js', "t.equal(caught, undefined, 'ends');\nt.equal(other, 1);\nt.ok(extra);\n");
+  const a = tests(c);
+  assert.equal(a.review, true);
+  assert.equal(a.removed_count, 1);
+  assert.equal(a.added_count, 2);
+  assert.deepEqual(a.removed, [
+    {file: 'tests/a.js', lines: ["t.ok(caught instanceof Stop, 'propagates');"]}
+  ]);
+});
+
+test('each assertion spelling the fleet uses is read', t => {
+  const lines = [
+    't.ok(a);',
+    'await t.rejects(b);',
+    'return t.equal(c, 1);',
+    'assert.equal(d, 1);',
+    'assert(e);',
+    'expect(f).toBe(1);',
+    'eval(TEST("g"));',
+    'eval(t.TEST("h"));'
+  ];
+  const c = tagged(t);
+  c.save('tests/a.js', lines.join('\n') + '\n');
+  c.git('tag', '1.0.0');
+  c.save('tests/a.js', 'x\n');
+  assert.equal(tests(c).removed_count, lines.length);
+});
+
+test('what is no assertion is not listed', t => {
+  const c = tagged(t);
+  c.save(
+    'tests/a.js',
+    [
+      "t.test('x', () => {});",
+      "t.comment('y');",
+      't.plan(2);',
+      't.skip();',
+      'const v = 1;',
+      "test('z', t => {});",
+      '// t.ok(commented);'
+    ].join('\n') + '\n'
+  );
+  c.git('tag', '1.0.0');
+  c.save('tests/a.js', 'x\n');
+  assert.equal(tests(c).removed_count, 0);
+  assert.equal(tests(c).review, false);
+});
+
+test('a moved or reindented assertion is no rewrite', t => {
+  const c = tagged(t);
+  c.save('tests/a.js', 't.ok(moved);\n  t.ok(indented);\n');
+  c.git('tag', '1.0.0');
+  c.save('tests/a.js', '    t.ok(indented);\n');
+  c.save('tests/b.js', 't.ok(moved);\n');
+  assert.equal(tests(c).removed_count, 0);
+  assert.equal(tests(c).added_count, 0);
+});
+
+test('assertions outside the tests are not read, and every test place is', t => {
+  const c = tagged(t);
+  c.save('src/a.js', 't.ok(notATest);\n');
+  for (const f of [
+    'tests/a.js',
+    'test/a.js',
+    'ts-test/a.ts',
+    'ts-tests/a.ts',
+    '__tests__/a.js',
+    'src/b.test.js'
+  ])
+    c.save(f, `t.ok(${path.basename(path.dirname(f)).replace(/\W/g, '')});\n`);
+  c.git('tag', '1.0.0');
+  c.save('src/a.js', 'x\n');
+  for (const f of [
+    'tests/a.js',
+    'test/a.js',
+    'ts-test/a.ts',
+    'ts-tests/a.ts',
+    '__tests__/a.js',
+    'src/b.test.js'
+  ])
+    c.save(f, 'x\n');
+  assert.equal(tests(c).removed_count, 6);
+});
+
+test('a sub-package answers for its own tests', t => {
+  const c = tagged(t);
+  c.save('tests/a.js', 't.ok(outside);\n');
+  c.save('mcp/tests/a.js', 't.ok(inside);\n');
+  c.git('tag', 'mcp-1.0.0');
+  c.save('tests/a.js', 'x\n');
+  c.save('mcp/tests/a.js', 'y\n');
+  assert.deepEqual(tests(c, 'mcp').removed, [{file: 'tests/a.js', lines: ['t.ok(inside);']}]);
+});
+
+test('a long list is cut, and the count still says all of it', t => {
+  const c = tagged(t);
+  const many = Array.from({length: 40}, (_, i) => `t.ok(${i});`).join('\n') + '\n';
+  c.save('tests/a.js', many);
+  c.git('tag', '1.0.0');
+  c.save('tests/a.js', 'x\n');
+  const a = tests(c);
+  assert.equal(a.removed_count, 40);
+  assert.equal(a.removed[0].lines.length, 30);
+});
+
+test('rewritten assertions are for review, never unclean', t => {
+  const c = tagged(t);
+  c.save('tests/a.js', 't.ok(a);\n');
+  c.git('tag', '1.0.0');
+  c.save('tests/a.js', 'x\n');
+  const d = c.full();
+  assert.equal(d.checks.test_assertions.status, 'ok');
+  assert.ok(d.summary.review.includes('test_assertions'));
+  assert.ok(!d.summary.action.includes('test_assertions'));
+});
