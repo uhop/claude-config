@@ -59,8 +59,10 @@ cwd=$(jq -r '.cwd // ""' <<<"$payload")
 # all, at the cwd.
 sites=
 [[ "$cmd" =~ ${word}git[[:space:]]+commit([^a-zA-Z0-9_-]|$) ]] && sites='?'
-if [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
-  sites=$(CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" "$cwd" <<'PY' 2>/dev/null || echo '?'
+# In a function, since Bash 3.2 can fail to parse a heredoc inside `$( … )`
+# (hook-syntax.test.mjs).
+commit_sites() {
+  CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" "$cwd" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
 from shell_segments import strip_heredocs, segments, command_tokens, git_verb, substitutions, SHELLS
@@ -118,7 +120,9 @@ def sites(cmd, eff, depth=0):
 for site in sites(os.environ.get('CMD', ''), sys.argv[2]):
     print(site if site else '?')
 PY
-  )
+}
+if [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
+  sites=$(commit_sites || echo '?')
 fi
 [[ -z "$sites" ]] && exit 0
 

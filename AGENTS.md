@@ -71,6 +71,8 @@ both. Several tests have a live half that reaches the real vault when `PROGRAM_C
   gives `settings.json` a `printWidth` of 1, the form the plugin CLI writes through its symlink, so
   a CLI write leaves the checkout clean and `git pull --ff-only` unblocked. `.prettierignore` holds
   what must keep its exact text, and its comments say why.
+- Hooks run under macOS's `/bin/bash` 3.2 on one fleet host: no `mapfile`, and a heredoc goes in a
+  function, never directly inside `$( … )` (`hook-syntax.test.mjs`).
 - The rest of the house style is in `CLAUDE.md` § Code.
 
 ## Third-party plugins

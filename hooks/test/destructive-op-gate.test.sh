@@ -142,5 +142,76 @@ check ALLOW 'npm --prefix /tmp/x test'
 check ALLOW 'npm view pkg publish'
 check ALLOW 'npm --silent view pkg publish'
 
+# ── words that never run: a quoted string, a heredoc body, another command's flag (2026-11-02) ──
+check ALLOW 'echo "run gh issue create yourself"'
+check ALLOW 'git commit -m "see gh api repos/o/r/issues -f title=x"'
+check ALLOW 'echo "a && gh issue create --title x"'
+check ALLOW 'printf "%s\n" "aws s3 rm s3://b/k"'
+check ALLOW '/usr/bin/time -f "gh %es" gh api users/x --silent'
+check ALLOW 'time -f x gh api repos/o/r/issues'
+check ALLOW $'python3 - <<\'EOF\'\nprint("aws ssm put-parameter --name x")\nEOF'
+check ALLOW $'cat > notes.md <<\'EOF\'\ngh issue create --title x\nEOF'
+check ALLOW $'cat > notes.md <<EOF\naws s3 rm s3://b/k\nEOF'
+# ── what those exemptions must not open: a command that runs its text, or text that still runs ──
+check DENY  'xargs gh issue create --title x'
+check DENY  'find . -name x -exec gh issue close 1 \;'
+check DENY  'parallel gh issue close ::: 1 2'
+check DENY  'watch gh issue create --title x'
+check DENY  'xargs sh -c "cd /tmp && gh issue create --title x"'
+check DENY  '/usr/bin/time gh issue create --title x'
+check DENY  '/usr/bin/time -f x gh api repos/o/r/issues -f title=y'
+check DENY  'env FOO=1 gh issue create --title x'
+check DENY  'echo "$(gh issue create --title x)"'
+check DENY  'git commit -m "x" && gh pr merge 1'
+check DENY  'gh issue create --title "quoted value"'
+check DENY  'echo "unbalanced && gh issue create --title x'                 # unreadable: the words stay in view
+check DENY  $'cat <<EOF | bash\ngh issue create --title x\nEOF'
+check DENY  $'cat <<\'EOF\' | sh\naws s3 rm s3://b/k\nEOF'
+check DENY  $'ssh host <<EOF\ngh issue create --title x\nEOF'
+check DENY  $'x | bash <<EOF\ngh issue create --title x\nEOF'
+check DENY  $'cd /tmp && bash <<EOF\ngh issue create --title x\nEOF'
+check DENY  $'cat > f <<EOF\n$(gh issue create --title x)\nEOF'
+check DENY  $'cat <<EOF | bash\ngit push\nEOF'
+check DENY  $'echo "x <<EOF"\ngh issue create --title x'                   # a quoted marker opens no heredoc
+check DENY  $'jq . <<<y\ngh issue create --title x'                         # a here-string opens no heredoc
+# ── a file the command writes and names again may run: what it wrote is code ──
+check DENY  $'cat > s.sh <<\'EOF\'\ngh issue create --title x\nEOF\nbash s.sh'
+check DENY  $'cat > "$W/s.sh" <<EOF\naws s3 rm s3://b/k\nEOF\nchmod +x "$W/s.sh" && "$W/s.sh"'
+check DENY  $'tee s.sh <<EOF\ngh pr merge 1\nEOF\n. s.sh'
+check DENY  'echo "x; gh issue create --title y" > s.sh; bash s.sh'
+check DENY  $'cat > s.sh <<EOF\ngit push\nEOF\nsh s.sh'
+check ALLOW $'cat > notes.md <<EOF\ngh issue create --title x\nEOF\nwc -l other.md'
+check ALLOW 'echo "run gh issue create now" > /dev/null; echo done > /dev/null'
+# ── aws: what sends nothing to AWS, read from awscli's generatecliskeleton.py (2026-11-02) ──
+check ALLOW 'aws cognito-idp create-user-pool help'
+check ALLOW 'aws ec2 terminate-instances help'
+check ALLOW 'aws s3 rm help'
+check ALLOW 'aws cognito-idp update-user-pool --generate-cli-skeleton'
+check ALLOW 'aws cognito-idp update-user-pool --generate-cli-skeleton input'
+check ALLOW 'aws cognito-idp update-user-pool --generate-cli-skeleton=output'
+check ALLOW 'aws --region us-east-1 dynamodb put-item --generate-cli-skeleton yaml-input'
+check DENY  'aws s3 rm s3://b/k --profile help'                             # a value, not the help page
+check DENY  'aws ec2 terminate-instances --instance-ids help'
+check DENY  'aws ec2 terminate-instances --instance-ids i-1 help'
+check DENY  'aws ec2 terminate-instances help --instance-ids i-1'
+check DENY  'aws ec2 terminate-instances --instance-ids i-1 --description "--generate-cli-skeleton"'
+check DENY  'aws s3 cp f s3://b/k'
+
+# ── a parser that dies has read nothing: the raw split still decides, and errs toward denying ──
+broken=$(mktemp -d)
+mkdir "$broken/lib"
+cp "$HOOK" "$broken/destructive-op-gate.sh"
+printf 'this is not python\n' > "$broken/lib/shell_segments.py"
+real_hook=$HOOK
+HOOK="$broken/destructive-op-gate.sh"
+check DENY  'gh issue create --title x'
+check DENY  'aws s3 rm s3://b/k'
+check DENY  'git clean -fd'
+check DENY  'echo "run gh issue create yourself"'
+check ALLOW 'gh pr view 1'
+check ALLOW 'ls -l'
+HOOK=$real_hook
+rm -rf "$broken"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

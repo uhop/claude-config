@@ -9,6 +9,7 @@ Anything this cannot read, a caller must treat by its own default: the lease
 gate fails open, the commit gate keeps its regex verdict, the destructive-op
 gate falls back to its segment regex and settings.json's prefix deny.
 """
+import os
 import re
 import shlex
 
@@ -17,32 +18,61 @@ ASSIGN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=')
 PREFIX = {'command', 'nice', 'time', 'exec', 'sudo', 'doas', 'builtin', 'nohup'}
 SUBST_RE = re.compile(r'\$\(([^()]*)\)|`([^`]*)`')
 SHELLS = {'bash', 'sh', 'zsh', 'dash', 'ksh', 'eval'}
+# Commands that run what they are handed, so a word in their text can be a call.
+RUNNERS = {'xargs', 'find', 'parallel', 'watch', 'ssh', 'env', 'time', 'timeout', 'nice', 'nohup',
+           'sudo', 'doas', 'command', 'exec', 'builtin'}
 
 
-def strip_heredocs(cmd):
+def _outside_quotes(line, pos):
+    q = None
+    for c in line[:pos]:
+        if q:
+            if c == q:
+                q = None
+        elif c in '\'"':
+            q = c
+    return q is None
+
+
+def _heredoc_at(line):
+    """The first heredoc operator: a `<<<` here-string or a quoted `<<` opens none,
+    and taking either for one would hide the lines after it from every gate."""
+    for m in HEREDOC_RE.finditer(line):
+        if line[m.start() - 1:m.start()] != '<' and _outside_quotes(line, m.start()):
+            return m
+    return None
+
+
+def parse_heredocs(cmd):
     """(text, bodies): the command without its heredoc bodies, and one
-    (line_before_operator, body, quoted_terminator) per heredoc. An
-    unquoted terminator means the body still expands `$(...)`."""
+    (line_before_operator, body, quoted_terminator, line_after_operator) per
+    heredoc. An unquoted terminator means the body still expands `$(...)`."""
     lines, bodies, cur = [], [], []
-    term = prefix = None
+    term = prefix = rest = None
     quoted = False
     for line in cmd.split('\n'):
         if term is not None:
             if line.strip() == term:
-                bodies.append((prefix, '\n'.join(cur), quoted))
+                bodies.append((prefix, '\n'.join(cur), quoted, rest))
                 term, cur = None, []
             else:
                 cur.append(line)
             continue
-        m = HEREDOC_RE.search(line)
+        m = _heredoc_at(line)
         if m:
-            term, quoted, prefix = m.group(2), bool(m.group(1)), line[:m.start()]
-            lines.append(line[:m.start()] + line[m.end():])
+            term, quoted, prefix, rest = m.group(2), bool(m.group(1)), line[:m.start()], line[m.end():]
+            lines.append(prefix + rest)
             continue
         lines.append(line)
     if term is not None:
-        bodies.append((prefix, '\n'.join(cur), quoted))
+        bodies.append((prefix, '\n'.join(cur), quoted, rest))
     return '\n'.join(lines), bodies
+
+
+def strip_heredocs(cmd):
+    """parse_heredocs with each body as (line_before_operator, body, quoted_terminator)."""
+    text, bodies = parse_heredocs(cmd)
+    return text, [b[:3] for b in bodies]
 
 
 def segments(text):
@@ -110,6 +140,60 @@ def command_tokens(seg):
         while toks and (ASSIGN.match(toks[0]) or toks[0].startswith('-')):
             toks = toks[1:]
     return toks
+
+
+def command_name(seg):
+    toks = command_tokens(seg)
+    return os.path.basename(toks[0]) if toks else ''
+
+
+def runs_its_text(seg):
+    return command_name(seg) in SHELLS | RUNNERS
+
+
+REDIRECT_RE = re.compile(r"""(?:>>?|\btee\s+(?:-a\s+)?)\s*("[^"]*"|'[^']*'|[^\s;|&<>]+)""")
+
+
+def names_what_it_writes(line, text):
+    """Whether the rest of the command names a file this line writes. A script written
+    and run by one command is code, whatever its text looked like when it was written."""
+    others = text.replace(line, '', 1)
+    targets = (m.group(1).strip('\'"') for m in REDIRECT_RE.finditer(line))
+    return any(t in others for t in targets if not t.startswith('/dev/'))
+
+
+def heredoc_runs(prefix, rest, text):
+    """Whether the heredoc's body can run: a shell or a runner receives it (`bash <<X`,
+    `a && bash <<X`, `cat <<X | bash`), or it goes to a file the command names again."""
+    return (runs_its_text(segments(prefix)[-1])
+            or any(runs_its_text(s) for s in segments(rest)[1:])
+            or names_what_it_writes(prefix + rest, text))
+
+
+def mask_quoted(seg):
+    """The segment with the text of its quoted strings removed, the quotes kept. A word left
+    is one the shell would see as a word, so a whitespace reading cannot mistake a string for a call."""
+    out, q, i = [], None, 0
+    while i < len(seg):
+        c = seg[i]
+        if q:
+            if c == '\\' and q == '"':
+                i += 2
+                continue
+            if c == q:
+                q = None
+                out.append(c)
+        elif c in '\'"':
+            q = c
+            out.append(c)
+        elif c == '\\':
+            out.append(seg[i:i + 2])
+            i += 2
+            continue
+        else:
+            out.append(c)
+        i += 1
+    return ''.join(out)
 
 
 GIT_VALUE_OPTS = {'-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env'}

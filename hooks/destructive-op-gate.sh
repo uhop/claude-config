@@ -30,7 +30,9 @@
 # mutating verb anywhere in the chain is caught, not just the leading one.
 # A command nested in a subshell `( … )`, a `bash -c` argument, a `$(…)` or
 # backtick substitution, or a heredoc fed to a shell is found by the shared
-# parser and analyzed the same way (2026-10-30).
+# parser and analyzed the same way (2026-10-30). Words that never run do not
+# count: a quoted string handed to a command that does not run its text, and
+# a heredoc body no shell receives (2026-11-02).
 #
 # push / tag / npm publish live in settings.json's absolute deny, which
 # matches a literal prefix: `git -C <dir> push` passes it (2026-09-30). So
@@ -71,12 +73,12 @@ EOF
 # which can change between this check and the run, even by the same command;
 # a `$` or backtick outside single quotes; a call nested in another command,
 # whose shell may expand it first.
-graphql_verdict() {
-  if (( nested_seg )); then echo no; return; fi
-  local lib v
-  lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
-  [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]] || { echo no; return; }
-  v=$(SEG="$1" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
+#
+# Every heredoc in this file sits in a function, never in `$( … )` or `<( … )`
+# directly: Bash 3.2, macOS's /bin/bash, can fail to parse one there depending on
+# its text, and a syntax error exits 2, which reads as a block on every call.
+graphql_query_reads() {
+  SEG="$1" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$2" <<'PY' 2>/dev/null
 import os, re, sys
 sys.path.insert(0, sys.argv[1])
 from shell_segments import command_tokens
@@ -142,14 +144,21 @@ def verdict(seg):
 
 print(verdict(os.environ.get('SEG', '')))
 PY
-  )
+}
+
+graphql_verdict() {
+  if (( nested_seg )); then echo no; return; fi
+  local lib v
+  lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
+  [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]] || { echo no; return; }
+  v=$(graphql_query_reads "$1" "$lib")
   echo "${v:-no}"
 }
 
 # Analyze ONE shell segment (no &&/||/;/| inside). Calls deny() (which
 # exits 2) on a reserved op; returns normally otherwise.
 analyze_segment() {
-  local seg="$1"
+  local seg="$1" raw="${2:-$1}"
 
   # ── git clean (only git op git can't undo) ──
   if [[ "$seg" =~ (^|[^[:alnum:]_./-])git[[:space:]]+clean([[:space:]]|$) ]]; then
@@ -170,6 +179,8 @@ analyze_segment() {
     local i=0 n=${#_t[@]} ghcmd="" ghsub="" ghhelp=0
     while (( i < n )) && [[ "${_t[i]}" != "gh" ]]; do ((i++)); done
     ((i++))
+    # Only what follows `gh` is its own: `time -f … gh api` has no body field.
+    local ghrest=" ${_t[*]:i} "
     while (( i < n )); do
       local t="${_t[i]}"; ((i++))
       # A help flag never mutates, wherever it sits: `gh gist edit --help`
@@ -184,16 +195,16 @@ analyze_segment() {
       :
     elif [[ "$ghcmd" == "api" ]]; then
       local is_get=0
-      [[ "$seg" =~ (-X|--method)[[:space:]=]*(GET|get) ]] && is_get=1
-      if [[ "$seg" =~ (-X|--method)[[:space:]=]*(POST|PUT|PATCH|DELETE|post|put|patch|delete) ]]; then
+      [[ "$ghrest" =~ (-X|--method)[[:space:]=]*(GET|get) ]] && is_get=1
+      if [[ "$ghrest" =~ (-X|--method)[[:space:]=]*(POST|PUT|PATCH|DELETE|post|put|patch|delete) ]]; then
         deny "gh api write (non-GET method)" "Mutating the GitHub API is reserved."
       fi
       local gq=other
-      [[ "$ghsub" == "graphql" ]] && gq=$(graphql_verdict "$seg")
+      [[ "$ghsub" == "graphql" ]] && gq=$(graphql_verdict "$raw")
       if [[ "$gq" == no ]]; then
         deny "gh api graphql (not a verified read)" \
              "A GraphQL call passes only when every query is inline and has no \`mutation\`, no \`\$\` or backtick outside single quotes can change it, and no other command wraps it."
-      elif [[ "$gq" == other && $is_get -eq 0 && "$seg" =~ (^|[[:space:]])(-f|-F|--field|--raw-field|--input)([[:space:]]|=) ]]; then
+      elif [[ "$gq" == other && $is_get -eq 0 && "$ghrest" =~ (^|[[:space:]])(-f|-F|--field|--raw-field|--input)([[:space:]]|=) ]]; then
         deny "gh api write (body fields imply POST)" "gh api auto-POSTs when fields are present — reserved."
       fi
     else
@@ -225,7 +236,18 @@ analyze_segment() {
       op="$t"; break
     done
 
-    if [[ "$svc" == "s3" ]]; then
+    # awscli sends nothing for either: `help` as the operation's only argument
+    # (elsewhere it is a value), and --generate-cli-skeleton, whose `output` form
+    # runs on a stubbed client (awscli/customizations/generatecliskeleton.py).
+    local local_only=0 k
+    [[ "${_a[i+1]:-}" == help ]] && (( i + 2 == n )) && local_only=1
+    for ((k=i+1; k<n; k++)); do
+      [[ "${_a[k]}" == --generate-cli-skeleton || "${_a[k]}" == --generate-cli-skeleton=* ]] && local_only=1
+    done
+
+    if (( local_only )); then
+      :
+    elif [[ "$svc" == "s3" ]]; then
       case "$op" in
         rm|mv|rb|mb|website)
           deny "aws s3 $op (destructive)" "Removing/moving/creating S3 buckets or objects is reserved." ;;
@@ -249,38 +271,27 @@ analyze_segment() {
   fi
 }
 
-# Split into segments on shell operators (&& || ; | & and newlines) and
-# analyze each. Pipe/&& boundaries become spaces' worth of separators; we
-# replace operator runs with newlines, then iterate lines.
-nested_seg=0
-seglist=$(printf '%s' "$cmd" | sed -E 's/\|\||&&|;|\||&/\n/g')
-while IFS= read -r seg; do
-  [[ -z "${seg// /}" ]] && continue
-  analyze_segment "$seg"
-done <<< "$seglist"
-
-# The whitespace tokens above never see `gh` in `(gh …)` or `bash -c "gh …"`.
-# Each record is "<nested>\t<segment>", NUL-terminated; nested is 1 for a
-# command inside another, 0 for a top-level segment with its `(`/`{` removed.
+# The parser's reading: a segment the shell would split, with a heredoc body no
+# shell receives left out. Each record is "<nested>\037<words>\037<segment>",
+# NUL-terminated; nested is 1 for a command inside another, 0 for a top-level
+# segment with its `(`/`{` removed; <words> is the segment with its quoted text
+# masked unless the command runs its text. It prints once it has read the whole
+# command, so one that dies prints nothing, and the raw split below still decides.
 word='(^|[^[:alnum:]_-])'
 lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
-if [[ "$cmd" =~ ${word}(gh|aws)([^[:alnum:]_-]|$) && -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
-  while IFS=$'\t' read -r -d '' nested_seg seg; do
-    [[ -z "${seg// /}" ]] && continue
-    analyze_segment "$seg"
-  done < <(CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
+parser_records() {
+  CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import strip_heredocs, segments, command_tokens, substitutions, SHELLS
+from shell_segments import parse_heredocs, heredoc_runs, runs_its_text, names_what_it_writes, mask_quoted, segments, command_tokens, substitutions, SHELLS
 
 def leaves(cmd, nested, depth=0):
     if depth > 3:
         return []
     out = []
-    text, bodies = strip_heredocs(cmd)
-    for prefix, body, quoted in bodies:
-        toks = command_tokens(prefix)
-        if toks and os.path.basename(toks[0]) in SHELLS:
+    text, bodies = parse_heredocs(cmd)
+    for prefix, body, quoted, rest in bodies:
+        if heredoc_runs(prefix, rest, text):
             out += leaves(body, 1, depth + 1)
         if not quoted:
             for s in substitutions(body):
@@ -290,7 +301,8 @@ def leaves(cmd, nested, depth=0):
     for seg in segments(text):
         bare = seg.strip().lstrip('({').rstrip(')}').strip()
         if bare:
-            out.append((nested, bare))
+            keep = not command_tokens(bare) or runs_its_text(bare) or names_what_it_writes(bare, text)
+            out.append((nested, bare if keep else mask_quoted(bare), bare))
         toks = command_tokens(seg)
         if toks and os.path.basename(toks[0]) in SHELLS:
             for a in toks[1:]:
@@ -298,20 +310,40 @@ def leaves(cmd, nested, depth=0):
                     out += leaves(a, 1, depth + 1)
     return out
 
-for nested, seg in leaves(os.environ.get('CMD', ''), 0):
-    sys.stdout.write(f'{nested}\t{seg}\0')
+for nested, words, seg in leaves(os.environ.get('CMD', ''), 0):
+    sys.stdout.write(f'{nested}\037{words}\037{seg}\0')
 PY
-  )
-  nested_seg=0
+}
+
+parsed=0
+if [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
+  if [[ "$cmd" =~ ${word}(gh|aws)([^[:alnum:]_-]|$) || ( "$cmd" =~ ${word}git([^[:alnum:]_-]|$) && "$cmd" =~ ${word}clean([^[:alnum:]_-]|$) ) ]]; then
+    while IFS=$'\037' read -r -d '' nested_seg seg raw; do
+      parsed=1
+      [[ -z "${seg// /}" ]] && continue
+      analyze_segment "$seg" "$raw"
+    done < <(parser_records)
+  else
+    parsed=1
+  fi
 fi
 
-if [[ "$cmd" =~ ${word}(git|npm)([^[:alnum:]_-]|$) && "$cmd" =~ ${word}(push|tag|clean|publish)([^[:alnum:]_-]|$) ]]; then
-  found=
-  if [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
-    found=$(CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
+# With no parser, or one that died: split on shell operators (&& || ; | & and
+# newlines) with no idea of quotes, which errs toward denying.
+nested_seg=0
+if (( ! parsed )); then
+  seglist=$(printf '%s' "$cmd" | sed -E 's/\|\||&&|;|\||&/\n/g')
+  while IFS= read -r seg; do
+    [[ -z "${seg// /}" ]] && continue
+    analyze_segment "$seg"
+  done <<< "$seglist"
+fi
+
+reserved_verbs() {
+  CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import strip_heredocs, segments, command_tokens, git_split, substitutions, SHELLS
+from shell_segments import parse_heredocs, heredoc_runs, segments, command_tokens, git_split, substitutions, SHELLS
 
 NPM_VALUE_OPTS = {'-C', '-w'}
 
@@ -337,10 +369,9 @@ def reserved(cmd, depth=0):
     if depth > 3:
         return []
     out = []
-    text, bodies = strip_heredocs(cmd)
-    for prefix, body, quoted in bodies:
-        toks = command_tokens(prefix)
-        if toks and os.path.basename(toks[0]) in SHELLS:
+    text, bodies = parse_heredocs(cmd)
+    for prefix, body, quoted, rest in bodies:
+        if heredoc_runs(prefix, rest, text):
             out += reserved(body, depth + 1)
         if not quoted:
             for s in substitutions(body):
@@ -369,7 +400,12 @@ def reserved(cmd, depth=0):
 
 print('\n'.join(reserved(os.environ.get('CMD', ''))))
 PY
-    )
+}
+
+if [[ "$cmd" =~ ${word}(git|npm)([^[:alnum:]_-]|$) && "$cmd" =~ ${word}(push|tag|clean|publish)([^[:alnum:]_-]|$) ]]; then
+  found=
+  if [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
+    found=$(reserved_verbs)
   fi
   case "${found%%$'\n'*}" in
     'git push')
