@@ -188,6 +188,8 @@ analyze_segment() {
       # was blocked on 2026-09-13, and the usage the agent could not read cost
       # a wrong paste (projects/claude-config/queue-archive, 2026-09-15).
       [[ "$t" == "--help" || "$t" == "-h" ]] && ghhelp=1
+      # The one flag `gh` takes between a group and its subcommand that has a value.
+      if [[ "$t" == "-R" || "$t" == "--repo" ]]; then ((i++)); continue; fi
       [[ "$t" == -* ]] && continue
       if [[ -z "$ghcmd" ]]; then ghcmd="$t"; elif [[ -z "$ghsub" ]]; then ghsub="$t"; fi
     done
@@ -225,7 +227,7 @@ analyze_segment() {
     local i=0 n=${#_a[@]} svc="" op=""
     while (( i < n )) && [[ "${_a[i]}" != "aws" ]]; do ((i++)); done
     ((i++))
-    local gval=" --region --profile --output --endpoint-url --query --page-size --max-items --starting-token --ca-bundle --cli-read-timeout --cli-connect-timeout --cli-binary-format --color "
+    local gval=" --region --profile --output --endpoint-url --query --page-size --max-items --starting-token --ca-bundle --cli-read-timeout --cli-connect-timeout --cli-binary-format --cli-error-format --color "
     while (( i < n )); do
       local t="${_a[i]}"
       if [[ "$t" == --*=* ]]; then ((i++)); continue; fi
@@ -253,14 +255,23 @@ analyze_segment() {
         rm|mv|rb|mb|website)
           deny "aws s3 $op (destructive)" "Removing/moving/creating S3 buckets or objects is reserved." ;;
         cp|sync)
-          # dst = last positional after the op; upload iff it is an s3:// URI.
-          local dst="" j tk
+          # An s3:// word after the first argument is what gets written. A long flag
+          # takes the next word unless awscli says it is boolean: its list comes from
+          # customizations/s3/subcommands.py, s3/syncstrategy/, and data/cli.json.
+          local s3bool=" --dryrun --follow-symlinks --force --force-glacier-transfer --human-readable --ignore-glacier-warnings --no-follow-symlinks --no-guess-mime-type --no-overwrite --no-progress --only-show-errors --progress-multiline --quiet --recursive --summarize --validate-same-s3-paths --delete --exact-timestamps --size-only --debug --cli-auto-prompt --no-cli-auto-prompt --no-cli-pager --no-paginate --no-sign-request --no-verify-ssl "
+          local first=1 written=0 j tk
           for ((j=i+1; j<n; j++)); do
             tk="${_a[j]}"
-            [[ "$tk" == -* ]] && continue
-            dst="$tk"
+            if [[ "$tk" == s3://* ]]; then
+              (( first )) || written=1
+              first=0
+            elif [[ "$tk" == --* ]]; then
+              [[ "$tk" == *=* || "$s3bool" == *" $tk "* || "${_a[j+1]:-}" == s3://* ]] || ((j++))
+            else
+              first=0
+            fi
           done
-          if [[ "$dst" == s3://* ]]; then
+          if (( written )); then
             deny "aws s3 $op upload to S3" "Writing to S3 is reserved; downloads (s3:// → local) are allowed."
           fi
           ;;

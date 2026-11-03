@@ -303,6 +303,49 @@ check ALLOW 'git status <<< "tag v1"'
 check ALLOW 'npm <<< publish'
 check ALLOW 'bash <<< "echo hi"'
 check ALLOW 'bash <<< "git status"'
+
+# ── a flag's value is no argument of the command (2026-11-03) ──
+for f in '--acl private' '--profile p' '--region=r' "--exclude '*.tmp'" '--storage-class STANDARD_IA' '--recursive --acl private' '--quiet' '--newflag v'; do
+  check DENY  "aws s3 cp ./x s3://b/k $f"
+  check DENY  "aws s3 cp $f ./x s3://b/k"
+  check DENY  "aws s3 cp ./x $f s3://b/k"
+  check DENY  "aws s3 sync ./d s3://b/d $f"
+  check DENY  "aws s3 sync $f ./d s3://b/d"
+  check DENY  "aws s3 cp s3://a/k s3://b/k $f"
+  check DENY  "aws s3 cp s3://a/k $f s3://b/k"
+  check ALLOW "aws s3 cp s3://b/k ./x $f"
+  check ALLOW "aws s3 cp $f s3://b/k ./x"
+  check ALLOW "aws s3 cp s3://b/k $f ./x"
+  check ALLOW "aws s3 sync s3://b/d ./d $f"
+  check ALLOW "aws s3 sync $f s3://b/d ./d"
+done
+# awscli's own list: customizations/s3/subcommands.py, s3/syncstrategy/, data/cli.json
+for b in --dryrun --follow-symlinks --force --force-glacier-transfer --human-readable --ignore-glacier-warnings --no-follow-symlinks --no-guess-mime-type --no-overwrite --no-progress --only-show-errors --progress-multiline --quiet --recursive --summarize --validate-same-s3-paths --delete --exact-timestamps --size-only --debug --cli-auto-prompt --no-cli-auto-prompt --no-cli-pager --no-paginate --no-sign-request --no-verify-ssl; do
+  check DENY  "aws s3 cp $b ./x s3://b/k"
+  check ALLOW "aws s3 cp $b s3://b/k ./x"
+done
+check DENY  'aws s3 cp ./x --newbool s3://b/k'
+check DENY  'aws s3 cp - s3://b/k'
+check DENY  'aws s3 cp - --acl private s3://b/k'
+check DENY  'env aws s3 cp ./x s3://b/k --exclude "a b"'
+check DENY  'aws s3 cp ./x s3://b/k 2>/dev/null --acl private'
+check ALLOW 'aws s3 cp s3://b/k -'
+check ALLOW 'aws s3 cp s3://b/k - --profile p'
+check ALLOW 'env aws s3 cp s3://b/k ./x --exclude "a b"'
+check ALLOW 'aws s3 cp help'
+for v in 'issue -R o/r create -t x' 'issue --repo o/r create -t x' 'issue --repo=o/r create -t x' 'pr -R o/r merge 5' 'pr --repo o/r close 5' 'release -R o/r delete v1' 'run -R o/r cancel 1' 'workflow -R o/r disable x' 'label -R o/r create x' 'secret -R o/r set x' 'variable -R o/r delete x' 'cache -R o/r delete 1' 'discussion -R o/r create'; do
+  check DENY  "gh $v"
+done
+check ALLOW 'gh issue -R o/r list'
+check ALLOW 'gh pr --repo o/r view 5'
+check ALLOW 'gh issue -R create list'
+check ALLOW 'gh run -R o/r view 1'
+check ALLOW 'gh issue -R o/r create --help'
+check ALLOW 'gh pr list -R delete'
+check DENY  'aws --cli-error-format json s3 rm s3://b/k'
+check DENY  'aws --cli-error-format json ec2 terminate-instances --instance-ids i-1'
+check ALLOW 'aws --cli-error-format json s3 ls'
+check ALLOW 'aws --cli-error-format json ec2 describe-instances'
 check DENY  'env aws s3 cp "a > b" s3://b/k'
 check DENY  'aws ec2 terminate-instances help 2>&1 --instance-ids i-1'
 check ALLOW 'aws cloudfront create-cache-policy help>out'
