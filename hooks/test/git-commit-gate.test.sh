@@ -226,6 +226,8 @@ check DENY  "touch $M" "$OUTSIDE"
 check DENY  ": > $M" "$OUTSIDE"
 check DENY  "echo x > $M" "$OUTSIDE"
 check DENY  "echo x >> $OUTSIDE/$M"
+check DENY  "echo x >| $OUTSIDE/$M"
+check DENY  "echo x >|$M" "$OUTSIDE"
 check DENY  "printf x | tee $M" "$OUTSIDE"
 check DENY  "cp /tmp/a $M" "$OUTSIDE"
 check DENY  "mv /tmp/a $M" "$OUTSIDE"
@@ -277,6 +279,28 @@ jq -nc --arg c "$V -m x" --arg d "$MARKED" '{tool_name:"Bash", tool_input:{comma
 jq -nc --arg c "$V -m x" --arg d "$PLAIN" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
 [ $? -eq 2 ] && ((++pass)) || { ((++fail)); echo "FAIL  broken lib: an unmarked cwd must deny"; }
 rm -rf "$MISSING"
+
+# ── a redirection is no word of the command, wherever it sits (2026-11-03) ──
+for r in '2>/dev/null' '2>&1' '>/dev/null' '> out' '&>/dev/null' '</dev/null'; do
+  check DENY  "git $r commit -m x"
+  check DENY  "$r git commit -m x"
+  check DENY  "$V -m x $r"
+  check DENY  "($V -m x) $r"
+  check DENY  "git -C /tmp/foo $r commit -m x"
+  check ALLOW "git $r commit -m x" "$MARKED"
+  check ALLOW "$r git commit -m x" "$MARKED"
+done
+check DENY  'bash <<< "git commit -m x"'
+check DENY  'bash <<<"git commit -m x"'
+check DENY  "sh <<<'git commit -m x'"
+check DENY  "xargs sh -c '{}' <<< \"git commit -m x\""
+check DENY  'ssh host <<< "git commit -m x"'
+check ALLOW 'bash <<< "git commit -m x"' "$MARKED"
+check ALLOW 'cat <<< "git commit -m x"'
+check ALLOW 'git <<< commit'
+check ALLOW 'bash -c "echo hi" > "git commit -m x"'
+check ALLOW 'git log > commit'
+check ALLOW 'git status 2> commit'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

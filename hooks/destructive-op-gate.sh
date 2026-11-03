@@ -32,7 +32,8 @@
 # backtick substitution, or a heredoc fed to a shell is found by the shared
 # parser and analyzed the same way (2026-10-30). Words that never run do not
 # count: a quoted string handed to a command that does not run its text, and
-# a heredoc body no shell receives (2026-11-02).
+# a heredoc body no shell receives (2026-11-02). Nor does a redirection, wherever
+# it sits, save a here-string handed to what runs its input (2026-11-03).
 #
 # push / tag / npm publish live in settings.json's absolute deny, which
 # matches a literal prefix: `git -C <dir> push` passes it (2026-09-30). So
@@ -275,15 +276,16 @@ analyze_segment() {
 # shell receives left out. Each record is "<nested>\037<words>\037<segment>",
 # NUL-terminated; nested is 1 for a command inside another, 0 for a top-level
 # segment with its `(`/`{` removed; <words> is the segment with its quoted text
-# masked unless the command runs its text. It prints once it has read the whole
-# command, so one that dies prints nothing, and the raw split below still decides.
+# masked unless the command runs its text, and its redirections removed. It prints
+# once it has read the whole command, so one that dies prints nothing, and the raw
+# split below still decides.
 word='(^|[^[:alnum:]_-])'
 lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
 parser_records() {
   CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import parse_heredocs, heredoc_runs, runs_its_text, names_what_it_writes, mask_quoted, segments, command_tokens, substitutions, SHELLS
+from shell_segments import parse_heredocs, heredoc_runs, runs_its_text, names_what_it_writes, mask_quoted, segments, command_tokens, substitutions, without_redirects, bare, SHELLS
 
 def leaves(cmd, nested, depth=0):
     if depth > 3:
@@ -299,10 +301,10 @@ def leaves(cmd, nested, depth=0):
     for s in substitutions(text):
         out += leaves(s, 1, depth + 1)
     for seg in segments(text):
-        bare = seg.strip().lstrip('({').rstrip(')}').strip()
-        if bare:
-            keep = not command_tokens(bare) or runs_its_text(bare) or names_what_it_writes(bare, text)
-            out.append((nested, bare if keep else mask_quoted(bare), bare))
+        b = bare(seg)
+        if b:
+            keep = not command_tokens(b) or runs_its_text(b) or names_what_it_writes(b, text)
+            out.append((nested, bare(without_redirects(b if keep else mask_quoted(b))), b))
         toks = command_tokens(seg)
         if toks and os.path.basename(toks[0]) in SHELLS:
             for a in toks[1:]:
@@ -328,11 +330,12 @@ if [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
   fi
 fi
 
-# With no parser, or one that died: split on shell operators (&& || ; | & and
-# newlines) with no idea of quotes, which errs toward denying.
+# With no parser, or one that died: drop redirections first, since a word they
+# leave reads as the command's own, then split on shell operators (&& || ; | &
+# and newlines) with no idea of quotes, which errs toward denying.
 nested_seg=0
 if (( ! parsed )); then
-  seglist=$(printf '%s' "$cmd" | sed -E 's/\|\||&&|;|\||&/\n/g')
+  seglist=$(printf '%s' "$cmd" | sed -E 's/[0-9]*&?[<>]+[&|]?[[:space:]]*[^[:space:];|&]*/ /g; s/\|\||&&|;|\||&/\n/g')
   while IFS= read -r seg; do
     [[ -z "${seg// /}" ]] && continue
     analyze_segment "$seg"

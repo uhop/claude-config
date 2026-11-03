@@ -210,8 +210,108 @@ check DENY  'git clean -fd'
 check DENY  'echo "run gh issue create yourself"'
 check ALLOW 'gh pr view 1'
 check ALLOW 'ls -l'
+check DENY  'aws s3 cp ./x s3://b/k 2>/dev/null'
+check DENY  'aws s3 sync ./d s3://b/d 2>&1'
+check DENY  'gh 2>/dev/null issue create -t x'
+check ALLOW 'aws cloudfront create-cache-policy help 2>/dev/null'
+check ALLOW 'aws s3 cp s3://b/k ./x 2>&1'
+check DENY  'aws s3 cp ./x s3://b/k > $(mktemp -d)/a'
+check DENY  'aws &>/dev/null s3 rm s3://b/k'
+check DENY  'aws >| out s3 rm s3://b/k'
+check DENY  'aws 2> out s3 rm s3://b/k'
+check DENY  'aws s3 cp ./x s3://b/k >> out'
+check DENY  'aws s3 cp ./x s3://b/k <<< x'
 HOOK=$real_hook
 rm -rf "$broken"
+
+# ── a redirection is no word of the command, wherever it sits (2026-11-03) ──
+for r in '2>/dev/null' '2>&1' '>out' '> out' '>> "a b.txt"' '&>/dev/null' '&>>log' '>&2' '</dev/null' '< in' '<&3' '<> f' '<<< x' '>| out'; do
+  check DENY  "aws s3 cp ./x s3://b/k $r"
+  check DENY  "aws s3 sync ./d s3://b/d $r"
+  check DENY  "aws $r s3 rm s3://b/k"
+  check DENY  "aws $r ec2 terminate-instances --instance-ids i-1"
+  check DENY  "$r aws ec2 terminate-instances --instance-ids i-1"
+  check DENY  "gh $r issue create -t x"
+  check DENY  "gh issue $r create -t x"
+  check DENY  "$r gh issue create -t x"
+  check DENY  "git $r tag v1"
+  check DENY  "git $r push origin main"
+  check DENY  "git $r clean -f"
+  check DENY  "$r git push origin main"
+  check DENY  "npm $r publish"
+  check DENY  "$r npm publish"
+  check DENY  "$r bash -c \"gh issue create -t x\""
+  check DENY  "(git tag v1) $r"
+  check DENY  "(git push) $r"
+  check DENY  "(npm publish) $r"
+  check ALLOW "aws cloudfront create-cache-policy help $r"
+  check ALLOW "(aws cloudfront create-cache-policy help) $r"
+  check ALLOW "aws s3 cp s3://b/k ./x $r"
+  check ALLOW "aws s3 sync s3://b/d ./d $r"
+  check ALLOW "aws $r s3 ls s3://b"
+  check ALLOW "gh pr view 5 $r"
+  check ALLOW "gh $r issue list"
+  check ALLOW "git $r status"
+  check ALLOW "npm $r view x"
+done
+check DENY  'aws s3 cp ./x s3://b/k>out'
+check DENY  'aws s3 cp ./x s3://b/k > $(mktemp -d)/a'
+check DENY  'aws > $(mktemp -d)/a s3 rm s3://b/k'
+check ALLOW 'aws s3 ls s3://b >| out | head -5'
+check DENY  'aws s3 cp ./x s3://b/k > a\ b'
+check DENY  "aws s3 cp ./x s3://b/k > 'a b'"
+check DENY  'aws s3 cp ./x s3://b/k > "a\" b"'
+check DENY  'aws s3 cp ./x s3://b/k > `mktemp -d`/a'
+check DENY  'aws s3 cp ./x s3://b/k > `printf a b`/c'
+check DENY  'aws s3 cp ./x s3://b/k > $(echo $(mktemp -d))/a'
+check DENY  'aws s3 cp ./x s3://b/k > $(printf "%s" "a b")/c'
+check DENY  'aws s3 cp ./x s3://b/k >out</dev/null'
+check DENY  'aws s3 cp ./x s3://b/k >a&>b'
+check DENY  'aws s3 cp ./x s3://b/k > $( (mktemp -d) )/a'
+check DENY  '(2>&1 git tag v1)'
+check DENY  'aws ec2 terminate-instances help2>x'
+check DENY  'aws ec2 terminate-instances 2 >x help'
+check DENY  "env aws s3 cp 'a > b' s3://b/k"
+check DENY  'env aws s3 cp `a > b` s3://b/k'
+check DENY  'env aws s3 cp "a\" > b" s3://b/k'
+check DENY  'env aws s3 cp a\> s3://b/k'
+check ALLOW 'aws cloudfront create-cache-policy help 12>x'
+check ALLOW "env aws s3 cp s3://b/k 'a > b'"
+check ALLOW 'env aws s3 cp s3://b/k `a > b`'
+check ALLOW 'env aws s3 cp s3://b/k a\>'
+
+# ── a shell runs its here-string; any other command only reads it (2026-11-03) ──
+for v in 'git tag v1' 'git push origin main' 'npm publish' 'git clean -f' 'gh issue create -t x' 'aws s3 rm s3://b/k'; do
+  check DENY  "bash <<< \"$v\""
+  check DENY  "bash <<<\"$v\""
+  check DENY  "sh <<<'$v'"
+  check DENY  "bash -s <<< \"$v\""
+  check DENY  "command bash <<< \"$v\""
+  check DENY  "env FOO=1 bash <<< \"$v\""
+  check DENY  "bash 2>&1 <<< \"$v\""
+  check DENY  "(bash <<< \"$v\") 2>&1"
+  check ALLOW "cat <<< \"$v\""
+  check ALLOW "grep x <<< \"$v\""
+done
+check DENY  "xargs sh -c '{}' <<< \"git tag v1\""
+check DENY  'ssh host <<< "git tag v1"'
+check ALLOW 'xargs echo <<< "git tag v1"'
+check ALLOW 'bash -c "echo hi" > "git tag v1"'
+check ALLOW 'bash <<< "echo hi" > "gh issue create -t x"'
+check ALLOW 'git <<< tag'
+check ALLOW 'git status <<< "tag v1"'
+check ALLOW 'npm <<< publish'
+check ALLOW 'bash <<< "echo hi"'
+check ALLOW 'bash <<< "git status"'
+check DENY  'env aws s3 cp "a > b" s3://b/k'
+check DENY  'aws ec2 terminate-instances help 2>&1 --instance-ids i-1'
+check ALLOW 'aws cloudfront create-cache-policy help>out'
+check ALLOW 'aws cloudfront create-cache-policy help 2>&1 | head -50'
+check ALLOW 'env aws s3 cp s3://b/k "a > b"'
+check ALLOW 'git log > tag'
+check ALLOW 'git status 2> push'
+check ALLOW 'npm view x > publish'
+check ALLOW 'echo "aws s3 rm s3://b/k" > note.txt'
 
 # ── a reserved verb behind shell syntax, `xargs`, or `find -exec` (2026-11-02, D43) ──
 for verb in 'git push origin main' 'git -C /tmp/x push' 'git tag v1' 'git -C /tmp/x tag v1' 'npm publish' 'npm --prefix /tmp/x publish' 'git clean -fd'; do

@@ -3,7 +3,8 @@
 One parser for three gates (vault-lease-gate.sh, git-commit-gate.sh,
 destructive-op-gate.sh; D14: a shape added here is a shape all see). Heredoc bodies are data unless a shell
 receives them; segments split on unquoted `;`, `|`, `||`, `&&` and newlines;
-tokens come from shlex with the wrapper prefixes and the shell syntax heading
+tokens come from shlex with redirections left out, wherever they sit
+(`split_redirects`, a here-string kept for what runs its input), and the wrapper prefixes and the shell syntax heading
 a segment skipped (assignments, `command`, `env`, `timeout`, `do`, `then`, `!`,
 ...); `run_tokens` goes past `xargs`, `parallel`, `watch`, and `find -exec`;
 `write_targets` lists what a command writes; `in_scratch_place` names a fixture's place;
@@ -23,6 +24,7 @@ import shlex
 HOME = os.path.expanduser('~')
 HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 ASSIGN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=')
+REDIRECT_OP = re.compile(r'<<<|&>|>\|?|<')
 VAR_RE = re.compile(r'\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))')
 MKTEMP_RE = re.compile(r'\$\(\s*(?:command\s+)?mktemp\b([^()]*)\)')
 DECLARERS = {'export', 'local', 'readonly', 'declare', 'typeset'}
@@ -98,7 +100,7 @@ def strip_heredocs(cmd):
 
 
 def segments(text):
-    """Split on unquoted ; | || && and newlines. `>&`, `&>` belong to redirects."""
+    """Split on unquoted ; | || && and newlines. `>&`, `<&`, `&>`, `>|` belong to redirects."""
     segs, cur, q, i = [], [], None, 0
     while i < len(text):
         c = text[i]
@@ -121,7 +123,7 @@ def segments(text):
         elif c in ';\n':
             segs.append(''.join(cur))
             cur = []
-        elif c == '|':
+        elif c == '|' and text[i - 1:i] != '>':
             segs.append(''.join(cur))
             cur = []
             if i + 1 < len(text) and text[i + 1] == '|':
@@ -129,7 +131,7 @@ def segments(text):
         elif c == '&':
             prev = text[i - 1] if i else ''
             nxt = text[i + 1] if i + 1 < len(text) else ''
-            if prev == '>' or nxt == '>':
+            if prev in ('<', '>') or nxt == '>':
                 cur.append(c)
             else:
                 segs.append(''.join(cur))
@@ -143,14 +145,95 @@ def segments(text):
     return segs
 
 
-def command_tokens(seg):
+def _word_end(seg, i):
+    """Where the shell word starting at i ends; a `$( … )` in it holds spaces."""
+    q, depth, n = None, 0, len(seg)
+    while i < n:
+        c = seg[i]
+        if q:
+            if c == '\\' and q == '"':
+                i += 1
+            elif c == q:
+                q = None
+        elif c == '\\':
+            i += 1
+        elif c in '\'"`':
+            q = c
+        elif c == '(' and (depth or seg[i - 1:i] == '$'):
+            depth += 1
+        elif c == ')' and depth:
+            depth -= 1
+        elif not depth and (c.isspace() or c in '<>'):
+            break
+        i += 1
+    return i
+
+
+def split_redirects(seg):
+    """(the segment with each redirection and its target removed, wherever it sits, so what is left
+    is the command's own words; the words of its here-strings). Quoted text stays."""
+    out, here, q, i, n = [], [], None, 0, len(seg)
+    while i < n:
+        c = seg[i]
+        if q:
+            if c == '\\' and q == '"':
+                out += seg[i:i + 2]
+                i += 2
+                continue
+            if c == q:
+                q = None
+        elif c in '\'"`':
+            q = c
+        elif c == '\\':
+            out += seg[i:i + 2]
+            i += 2
+            continue
+        else:
+            m = REDIRECT_OP.match(seg, i)
+            if m:
+                j = len(out)
+                while j and out[j - 1].isdigit():
+                    j -= 1
+                # `2>x` names a descriptor; `file2>x` is a word and a redirection.
+                if j == 0 or out[j - 1].isspace():
+                    del out[j:]
+                i = m.end()
+                while i < n and seg[i] in ' \t':
+                    i += 1
+                end = _word_end(seg, i)
+                if m.group() == '<<<':
+                    here.append(seg[i:end])
+                i = end
+                continue
+        out.append(c)
+        i += 1
+    return ''.join(out), here
+
+
+def without_redirects(seg):
+    return split_redirects(seg)[0]
+
+
+def bare(seg):
+    """The segment without the `(`/`{` opening it or the `)`/`}` closing it."""
+    return seg.strip().lstrip('({').rstrip(')}').strip()
+
+
+def command_tokens(seg, redirects=False):
     """shlex tokens of one segment with the wrapper prefixes skipped; [] when
-    empty or unreadable."""
-    seg = seg.strip().lstrip('({').rstrip(')}').strip()
+    empty or unreadable. Redirections are left out unless the caller reads them."""
+    seg, here = bare(seg), []
+    if not redirects:
+        seg, here = split_redirects(seg)
+        seg = bare(seg)
     if not seg:
         return []
     try:
-        return _past_wrappers(shlex.split(seg))
+        toks = _past_wrappers(shlex.split(seg))
+        # What runs its input runs a here-string, as a heredoc's body (`heredoc_runs`).
+        if toks and os.path.basename(toks[0]) in SHELLS | RUNNERS:
+            toks += [' '.join(shlex.split(w)) for w in here]
+        return toks
     except ValueError:
         return []
 
@@ -175,9 +258,9 @@ def _past_wrappers(toks):
     return toks
 
 
-def run_tokens(seg):
+def run_tokens(seg, redirects=False):
     """command_tokens, past `xargs`, `parallel`, `watch`, or `find -exec` to the command they run."""
-    toks = command_tokens(seg)
+    toks = command_tokens(seg, redirects)
     name = os.path.basename(toks[0]) if toks else ''
     if name in RUNNER_VALUE_OPTS:
         k = 1
@@ -440,13 +523,13 @@ def write_targets(cmd, base):
         eff = scope.enter(seg, eff)
         if read_assignment(seg, eff, env):
             continue
-        toks = run_tokens(seg)
+        toks = run_tokens(seg, redirects=True)
         if not toks:
             continue
         rest, j = [], 0
         while j < len(toks):
             t = toks[j]
-            m = re.match(r'^(\d*|&)(>>?)(.*)$', t)
+            m = re.match(r'^(\d*|&)(>>?\|?)(.*)$', t)
             if m:
                 tgt = m.group(3)
                 if not tgt and j + 1 < len(toks):
