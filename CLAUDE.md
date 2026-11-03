@@ -938,6 +938,8 @@ a scope call only he can make, work that would need another repo.
 
 ## Fix the class, not the instance
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/fix-the-class]].
+
 When a defect turns out to be an _instance of a class_ — one of N call sites, one of N ports, one of
 N docs, one of N drafts — **enumerate the class and sweep it before reporting anything done**.
 Naming the denominator ("the doc set is these 17 files", "grep says 7 call sites") is what turns
@@ -948,14 +950,8 @@ of findings says nothing about fraction of space examined), and the report is th
 search gets _enumerated_ rather than felt, which lands one beat after "done", i.e. on the user.
 Corollaries: grep proves its pattern's absence, never the property's presence; and **an additive
 commit touching a file is no evidence the file is current** — it can append a correct new section
-and leave a contradicting example untouched in the same file. (Origin: reflect 2026-08-16, three
-sessions in one window. tape-six: a bail-out verdict fixed at one site drew _"fix the trailer too"_,
-then _"the per-test line too"_, then _"Did you fix the bail-out bug in browser?"_. blog-hugo:
-em-dash fixes drew _"do the other two drafts' dashes too"_, and revised voice rules drew _"could you
-apply my revised voice and rules to the article (v2) too? You already did it for blog post drafts
-recently."_ cognito-toolkit: a pasteable `secure: true` example — the exact footgun the release
-fixed — corrected in `wiki/koa.md` and missed in `llms-full.txt`, because `git show --stat` listed
-that file and "touched" was used as a proxy for "current". Full: [[topics/touched-is-not-current]].)
+and leave a contradicting example untouched in the same file. (Full:
+[[topics/touched-is-not-current]].)
 
 **Sweep means fix, not file.** Enumerating the class and then stopping at the asked instance — "the
 other two have the same bug; filed as a queue item, your call" — is the same defect one step later.
@@ -975,29 +971,19 @@ sibling that is a genuinely different change with its own trade-off — and then
 since a bare "your call" is a deferral, not a decision. Corollary — find the siblings _before_ the
 first fix, not one per verification pass: _"you keep finding problems after every fix you do"_ /
 _"Why does it always happen after, never before?"_ — a search bounded by the asked instance finds
-the next one only when the fix's own test trips over it. (Origin: reflect 2026-08-18 —
-install-artifact-from-github `5bd1f009`, cognito-toolkit `59360439`, articles `5d340e67`.)
+the next one only when the fix's own test trips over it.
 
 **The class can be a measurement's scope, not only a defect's.** When a correction widens what an
 analysis counts, the siblings are the other kinds the system under study already names — and it
 usually names them: a harvester's fragment kinds, a linter's rule categories, a schema's types.
-Enumerate those in the same pass instead of being handed them one at a time. (Origin: reflect
-2026-08-31, apodict `d1c84439` — a value-position blind spot corrected for booleans drew _"It is
-worth saying that the same style can be applied to expressions (e.g., math expressions)"_ and then
-_"Now do the same for concat — strings get named too."_ Boolean, arithmetic and string are the three
-fragment tiers `bin/harvest.js` itself defines.)
+Enumerate those in the same pass instead of being handed them one at a time.
 
 **Apply one criterion across the whole enumeration.** When a sweep prints the siblings it is not
 touching, every excluded group needs the same test applied and stated. Excluding one group on a
 criterion while converting another that meets the same criterion is not a scope call — it is the
-criterion not having been applied, and the user ends up supplying the consistency. (Origin: reflect
-2026-08-20, from the 2026-08-19 apodict dash sweep — `skills/*/SKILL.md` was left raw as "agent-read
-instructions" in the same report that swept `AGENTS.md` and `ARCHITECTURE.md` to HTML entities; all
-three are agent-read. Eugene: _"AGENTS.md is an agent-facing document. Do we want to present it as
-HTML? It is not for humans and agents consume it directly."_ The encoding-per-consumer rule in §
-Writing style is that session's outcome. Note the pull against the paragraph above: sweeping all
-three silently would have been faster and still wrong — the fix is uniformity of the test, not
-maximal coverage.)
+criterion not having been applied, and the user ends up supplying the consistency. (Against the
+paragraph above: sweeping every group silently would be faster and still wrong. The fix is
+uniformity of the test, not maximal coverage.)
 
 **File what you name.** When your own reply labels something a defect, a gap, or a buildable next
 step — "a real defect in the current output", "the blocking gap is", "this licenses oracle work" —
@@ -1007,12 +993,7 @@ the trailer too", and the enumeration is cheaper here than anywhere: the sibling
 you just wrote. The loudest cue is structural, not lexical: a wrap section you head "One thing worth
 following up", "The thing worth carrying out of this exchange", "Next leg", or "One finding that
 isn't mine" is a filing you have already written — put it on the queue in that turn and let the
-prose point at the item, rather than the other way round. (Origin: apodict 2026-08-22 — three times
-in one session, each item named in the agent's preceding reply and filed only on request: _"file the
-dimension-blindness bit on the queue too"_, _"file the licenseValueDelta + read-cost model item
-too"_, _"file the if/switch and inlining-boundary items too"_.; recurred apodict 2026-09-01
-`1bbd5284` — two self-headed carry-forward sections in one session, each filed only on _"file that
-three-boundaries distinction, it's the real finding"_ and _"file it"_.)
+prose point at the item, rather than the other way round.
 
 **"File" means that fleet project's vault `queue.md`.** A fleet project without one gets one in the
 [[topics/project-queue-convention]] shape; an external project gets a paste-ready snippet he files
