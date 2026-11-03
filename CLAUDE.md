@@ -887,33 +887,23 @@ the unrounded figures, in the direction it moved ("46% slower per item"); a shri
 
 ## Deliberate omissions are disclosures
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/deliberate-omissions]].
+
 When a judgment call _omits_ a standard artifact or step — lockfiles, `scripts` blocks, checks, docs
 a convention normally expects — the handoff/wrap-up summary must list the omission with its one-line
 reason, as a decision. Deviations must never be discoverable-by-surprise: the user having to ask
-"why is X missing?" means the report failed, even when the omission itself was right. (Origin:
-/clarify 2026-07-18 — the cognito-toolkit thunk-rollup wrap silently dropped stale lockfiles and
-broken `scripts` blocks from the frozen thunks; the reasoning was accepted once asked, but had to be
-asked for.)
+"why is X missing?" means the report failed, even when the omission itself was right.
 
 **The rule covers steps _you_ put on the record as much as conventional ones** — a "next leg" named
 in a summary, a follow-up promised mid-arc, a secondary suggestion in review feedback you acted
 around. Announcing a step creates the expectation; quietly closing the arc without it is the same
 undisclosed deviation as skipping a lockfile. Do it, or say in the wrap that you dropped it and why.
-(Origin: 2026-08-05/06 — twice in one apodict session the user had to quote the agent's own or a
-reviewer's words back: _"did you do 'Next leg: the streamers and the tail, which should close the
-ledger'?"_ six minutes after a wrap summary declared the arc done, and _"BTW, did you check 'Maybe
-worth casting an eye over related documentation though to make sure nothing contradictory'?"_ on a
-Django reviewer's clause the agent had acted around.)
 
 **A sentence that says something is unchecked is a step not taken.** When you are about to write
 _unchecked_, _not verified_, _I haven't verified_, _partly checked_, or _still open_, and the check
 runs in this session in minutes, run it and report the result instead. An unknown that decides
 whether a deploy, a release, or a migration works is settled before that step, by a read-only query
-where one exists, never by the step. (Origin: the 2026-10-30 report, P2, five sessions in four
-projects: an RDS engine pin deployed on "I haven't verified", refused by RDS and leaving `main`
-undeployable, where `describe-db-engine-versions` answered it first; "Bun, Deno and browsers are
-still unchecked", then _"Check Deno and Bun."_ and a 20-second run; five summaries "partly checked"
-from their ends, none of six holding when read whole; a count announced and never run.)
+where one exists, never by the step.
 
 **A pilot says what it cannot show.** Before a pass over many notes or a cutover, name what the
 pilot or the tests lack that the real run has (a field, a second Unix user, a folder shape), then
@@ -944,20 +934,7 @@ three optional values, one dispatch") is a prediction in a read's grammar — it
 so the disclosure never fires on it. Same principle as § Fix the class ("a search bounded by the
 hypothesis that found the first instance leaves the rest invisible"), arriving as a deferral instead
 of a search. What survives is an omission you genuinely cannot close: a precondition outside reach,
-a scope call only he can make, work that would need another repo. (Origin: reflect 2026-09-01,
-apodict `1bbd5284` — three deferrals in one session, each properly disclosed with its reason, each
-overridden in his next turn: _"Fix the prettier drift in model-sensitivity too"_, _"Do the
-write-site fix too"_, _"Record the sweep baseline"_. The first was a measurement § Tools already
-prescribes and the agent produced on request in one turn; the second was decided by building it —
-gating on the destination rather than the caller took both horns; the third was stated twice as
-belonging with his commit. Recurred apodict 2026-09-02 `4a1d827c`, seven hours after this paragraph
-landed: 53 of 62 budget-stopped fragments left unread because D86's repeated-operand pre-filter
-predicted no factoring; _"Read the other 53 too"_ found an improvable fragment, an atomizer blind
-spot, and two engine defects, at the cost of one four-second enumeration. Recurred again apodict
-2026-09-03 `01682c0a`, six hours after the residue class landed and with it in context: ten false
-survivors of a re-run described in the wrap from the previous pass's labels; _"Read the survivors
-too"_ found no defect but a harvester rule the labels had no name for (the absence test, six of the
-ten), which cut the oracle asks from 98 to 19, in eight minutes.)
+a scope call only he can make, work that would need another repo.
 
 ## Fix the class, not the instance
 
