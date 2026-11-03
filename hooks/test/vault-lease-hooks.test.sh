@@ -86,10 +86,12 @@ else
   S1=aaaa1111beef; S2=bbbb2222beef
   ME1="$(hostname -s)/${S1:0:8}"; ME2="$(hostname -s)/${S2:0:8}"
   hdr=(-H "Authorization: Bearer $live_key")
-  # make sure no leftover from an aborted run
-  curl -s -o /dev/null "${hdr[@]}" -H 'Content-Type: application/json' \
-    --data-binary "$(jq -nc --arg r "$RES" '{resource:$r,holder:"test-cleanup",force:true}')" \
-    "$live_url/leases/release" || true
+  lease_holder() { curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""'; }
+  # A leftover from an aborted run: each session's own release, with the token the hooks kept.
+  run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
+  run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S2" '{session_id:$s,cwd:$c}')"
+  left=$(lease_holder)
+  [[ -z "$left" ]] && ok || bad "setup: $RES is still held by $left, whose token is gone; it lapses at its TTL"
   rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease/$(printf '%s' "$RES" | cksum | tr -d ' ')"*
 
   # 1. session 1 claims its cwd repo
@@ -193,11 +195,10 @@ else
 
   # 12b. --touch tells a session once that its own repo is now held by someone else
   run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
-  printf '0\n%s\nagent\n' "$ME1" >"$(cachefile)"
-  curl -s -o /dev/null "${hdr[@]}" -H 'Content-Type: application/json' \
-    --data-binary "$(jq -nc --arg r "$RES" '{resource:$r,holder:"test-cleanup",force:true}')" \
-    "$live_url/leases/release"
+  run "$RELEASE" "$(jq -nc --arg c "$W" --arg s "$S1" '{session_id:$s,cwd:$c}')"
   run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S2" '{session_id:$s,cwd:$c}')"
+  [[ "$(lease_holder)" == "$ME2" ]] && ok || bad "setup: the lease must pass to session 2 (held by '$(lease_holder)')"
+  printf '0\n%s\nagent\n' "$ME1" >"$(cachefile)"
   printf '0\n' >"$(stampfile "$RES")"
   touch_ "$(jq -nc --arg s "$S1" --arg c "$W" '{session_id:$s,cwd:$c}')"
   note=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$out" 2>/dev/null)
