@@ -204,6 +204,66 @@ check ALLOW "echo \\(; cd $MARKED; echo \\); $V -m x"
 check DENY  $'true && bash <<\'EOF\'\n'"$V"$' -m x\nEOF'
 check DENY  $'cat <<\'EOF\' | bash\n'"$V"$' -m x\nEOF'
 check DENY  $'cat > s.sh <<\'EOF\'\n'"$V"$' -m x\nEOF\nbash s.sh'
+# ── the marker is the person's to write (D47): what stays open first ──
+M='.claude/git-commit-allowed'
+check ALLOW "find ~/Open -maxdepth 3 -path '*/$M'" "$OUTSIDE"
+check ALLOW "test -f $M && echo marked" "$OUTSIDE"
+check ALLOW "command ls $M" "$OUTSIDE"
+check ALLOW "cat $M" "$OUTSIDE"
+check ALLOW "git log -1 -- $M" "$OUTSIDE"
+check ALLOW "git grep -n 'git-commit-allowed'" "$OUTSIDE"
+check ALLOW "echo 'touch $M'" "$OUTSIDE"
+check ALLOW $'cat > note.md <<\'EOF\'\ntouch '"$M"$'\nEOF' "$OUTSIDE"
+check ALLOW "D=\$(mktemp -d); mkdir -p \"\$D/.claude\"; : > \"\$D/$M\"" "$OUTSIDE"
+check ALLOW "touch /tmp/gate-fixture/$M" "$OUTSIDE"
+check ALLOW "touch $PLAIN/$M" "$OUTSIDE"
+check ALLOW "touch $M" "$PLAIN"
+XDG_CACHE_HOME="$CACHE" check ALLOW "touch $CACHE/$M" "$OUTSIDE"
+check ALLOW "touch .claude/other-file" "$OUTSIDE"
+check ALLOW "touch not.claude/git-commit-allowed" "$OUTSIDE"
+# ...and what is refused
+check DENY  "touch $M" "$OUTSIDE"
+check DENY  ": > $M" "$OUTSIDE"
+check DENY  "echo x > $M" "$OUTSIDE"
+check DENY  "echo x >> $OUTSIDE/$M"
+check DENY  "printf x | tee $M" "$OUTSIDE"
+check DENY  "cp /tmp/a $M" "$OUTSIDE"
+check DENY  "mv /tmp/a $M" "$OUTSIDE"
+check DENY  "ln -s /tmp/a $M" "$OUTSIDE"
+check DENY  "rm $M" "$OUTSIDE"
+check DENY  "sed -i s/a/b/ $M" "$OUTSIDE"
+check DENY  "cd .claude && touch git-commit-allowed" "$OUTSIDE"
+check DENY  "A=$OUTSIDE/$M; touch \"\$A\""
+check DENY  "touch \"\$D/$M\"" "$OUTSIDE"
+check DENY  "touch \"\$D/git-commit-allowed\"" "$OUTSIDE"
+check DENY  "cd \"\$D\" && touch git-commit-allowed" "$OUTSIDE"
+check DENY  "for d in a; do touch $M; done" "$OUTSIDE"
+check DENY  "if true; then touch $M; fi" "$OUTSIDE"
+check DENY  "xargs touch $M" "$OUTSIDE"
+check DENY  "(cd $OUTSIDE && touch $M)"
+check DENY  "touch $OUTSIDE/$M" "$MARKED"
+check DENY  "touch $M; git status" "$OUTSIDE"
+# the file tools
+edit_check() {
+  local want="$1" tool="$2" path="$3"
+  jq -nc --arg t "$tool" --arg p "$path" --arg d "$OUTSIDE" '{tool_name:$t, tool_input:{file_path:$p}, cwd:$d}' | bash "$HOOK" >/dev/null 2>&1
+  local rc=$? got=ALLOW
+  [ "$rc" -eq 2 ] && got=DENY
+  if [ "$got" = "$want" ]; then ((++pass)); else ((++fail)); printf 'FAIL  want=%-5s got=%-5s  %s %s\n' "$want" "$got" "$tool" "$path"; fi
+}
+edit_check DENY  Write "$OUTSIDE/$M"
+edit_check DENY  Edit "$OUTSIDE/$M"
+edit_check ALLOW Write "$PLAIN/$M"
+edit_check ALLOW Write "$OUTSIDE/.claude/settings.json"
+edit_check ALLOW Edit "$OUTSIDE/git-commit-allowed.md"
+edit_check ALLOW Read "$PLAIN/a"
+jq -nc --arg p "$OUTSIDE/$M" --arg d "$OUTSIDE" '{tool_name:"NotebookEdit", tool_input:{notebook_path:$p}, cwd:$d}' | bash "$HOOK" >/dev/null 2>&1
+[ $? -eq 2 ] && ((++pass)) || { ((++fail)); echo "FAIL  NotebookEdit on the marker must be refused"; }
+# the refusal says whose it is; the commit denial no longer offers the marker
+out=$(jq -nc --arg c "touch $M" --arg d "$OUTSIDE" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$HOOK" 2>&1 >/dev/null)
+[[ "$out" == *"person creates or removes it"* ]] && ((++pass)) || { ((++fail)); echo "FAIL  the refusal must name who writes the marker: $out"; }
+out=$(jq -nc --arg c "$V -m x" --arg d "$OUTSIDE" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$HOOK" 2>&1 >/dev/null)
+[[ "$out" == *"person's to create"* && "$out" != *"touch "* ]] && ((++pass)) || { ((++fail)); echo "FAIL  the commit denial must not hand over the marker: $out"; }
 # ── parser absent: the substring verdict stands, at the cwd ──
 MISSING=$(mktemp -d); cp "$HOOK" "$MISSING/git-commit-gate.sh"
 jq -nc --arg c "echo \"$V\"" --arg d "$PLAIN" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1

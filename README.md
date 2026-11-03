@@ -54,17 +54,17 @@ untouched.
 `PreToolUse` / `PostToolUse` scripts that gate or react to tool calls. Currently:
 
 - `git-commit-gate.sh` — reinstates the old default-deny for `git commit`, but allows it in projects
-  that opt in by creating `.claude/git-commit-allowed`. Wired in via `settings.json`'s
-  `hooks.PreToolUse`. A free substring pre-filter, then the shared parser
-  (`hooks/lib/shell_segments.py`, the lease gate's) decides whether the verb is executed — heading a
-  segment, behind a shell keyword, `xargs`, `parallel`, `watch`, or `find -exec`, inside `$(...)`,
-  in a `bash -c` string, in a heredoc a shell receives — or is data: a heredoc body `cat` receives,
-  a quoted string, a `git log --grep` argument (2026-09-06). With the parser unavailable the
-  substring verdict stands, since this gate defaults to deny. It follows a variable the command
-  assigns, denies a site that stays unknown, and needs no marker for a scratch repository under the
-  temp or cache directory or for a linked worktree (2026-11-02). The script's header comment
-  documents the why and the contract; the per-project marker is intended to be committed alongside
-  the project so the opt-in travels with the code.
+  that opt in by creating `.claude/git-commit-allowed`, which it refuses an agent's write to outside
+  the temp and cache directories. Wired in via `settings.json`'s `hooks.PreToolUse`. A free
+  substring pre-filter, then the shared parser (`hooks/lib/shell_segments.py`, the lease gate's)
+  decides whether the verb is executed — heading a segment, behind a shell keyword, `xargs`,
+  `parallel`, `watch`, or `find -exec`, inside `$(...)`, in a `bash -c` string, in a heredoc a shell
+  receives — or is data: a heredoc body `cat` receives, a quoted string, a `git log --grep` argument
+  (2026-09-06). With the parser unavailable the substring verdict stands, since this gate defaults
+  to deny. It follows a variable the command assigns, denies a site that stays unknown, and needs no
+  marker for a scratch repository under the temp or cache directory or for a linked worktree
+  (2026-11-02). The script's header comment documents the why and the contract; the per-project
+  marker is intended to be committed alongside the project so the opt-in travels with the code.
 - `handed-command-check.sh` — a `Stop` hook: a `<word>` placeholder or a scratch path in a command
   block of the turn's closing message sends the agent back once, since a command he runs carries no
   placeholder the session can fill and the scratchpad is no delivery location.

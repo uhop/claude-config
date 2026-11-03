@@ -44,6 +44,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/git-commit-gate.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/vault-lease-gate.sh",
             "timeout": 5
           }

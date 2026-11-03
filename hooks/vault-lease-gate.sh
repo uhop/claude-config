@@ -38,7 +38,7 @@
 #
 # Bash (2026-09-06, option 1 of the three put to the operator): a write-shaped
 # Bash command is gated on the repositories its targets name. The extractor
-# (Python, below, through the shared hooks/lib/shell_segments.py) strips heredoc bodies, splits the command on unquoted `;`,
+# (`write_targets` in the shared hooks/lib/shell_segments.py) strips heredoc bodies, splits the command on unquoted `;`,
 # `|`, `&&`, `||` and newlines, tokenizes each segment with shlex, tracks `cd`
 # for the effective directory, and collects the write targets it understands:
 # redirections, `sed -i`, `tee`, `cp`/`mv`/`rsync`/`ln` destinations, `rm`,
@@ -342,113 +342,12 @@ fi
 # ── Bash: the write targets the command names, each to its main checkout ──
 
 roots=$(CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$cwd" "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib" <<'PY' 2>/dev/null
-import os, re, sys
+import os, sys
 sys.path.insert(0, sys.argv[2])
-from shell_segments import strip_heredocs, segments, run_tokens, git_verb, read_assignment, resolve_path, checkout_of, Subshells
+from shell_segments import write_targets, checkout_of
 
-cmd = os.environ.get('CMD', '')
 base = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
-home = os.path.expanduser('~')
-
-# 1-2. Heredoc bodies are data; segments split on unquoted separators — the
-#      shared parser (hooks/lib/shell_segments.py, D14, also the commit gate's).
-text, _ = strip_heredocs(cmd)
-segs = segments(text)
-
-MUTATING_GIT = {'add', 'am', 'apply', 'checkout', 'cherry-pick', 'clean', 'commit', 'merge', 'mv',
-                'pull', 'rebase', 'reset', 'restore', 'revert', 'rm', 'stash', 'switch'}
-ALL_ARGS = {'rm', 'rmdir', 'mkdir', 'touch', 'unlink', 'tee'}
-SKIP_ONE = {'chmod', 'chown', 'truncate'}
-DEST_LAST = {'cp', 'mv', 'rsync', 'ln', 'install'}
-NPM_WRITES = {'install', 'i', 'ci', 'update', 'uninstall', 'link', 'rebuild', 'add', 'remove', 'dedupe'}
-OUT_FLAGS = {'--store', '--out', '--output', '-o'}
-# -o takes no value (or no path) here
-NO_VALUE_O = {'grep', 'egrep', 'fgrep', 'rg', 'ug', 'ugrep', 'ls', 'ps', 'find', 'bfs', 'jq', 'git'}
-
-env = {}
-
-def resolve(tok, eff):
-    if not tok or tok in ('-', '/dev/null') or tok.startswith(('&', '<')) or '{}' in tok:
-        return None
-    for ch in '*?[':
-        if ch in tok:
-            tok = tok[:tok.index(ch)]
-    return resolve_path(tok, eff, env)
-
-targets, eff, scope = [], base, Subshells()
-for seg in segs:
-    eff = scope.enter(seg, eff)
-    if read_assignment(seg, eff, env):
-        continue
-    toks = run_tokens(seg)
-    if not toks:
-        continue
-    rest, j = [], 0
-    while j < len(toks):
-        t = toks[j]
-        m = re.match(r'^(\d*|&)(>>?)(.*)$', t)
-        if m:
-            tgt = m.group(3)
-            if not tgt and j + 1 < len(toks):
-                tgt = toks[j + 1]; j += 1
-            if tgt and not tgt.startswith('&'):
-                targets.append(resolve(tgt, eff))
-            j += 1
-            continue
-        rest.append(t); j += 1
-    toks = rest
-    if not toks:
-        continue
-    name, args = os.path.basename(toks[0]), toks[1:]
-    nonflag = [a for a in args if not a.startswith('-')]
-    if name in ('cd', 'pushd'):
-        eff = resolve(nonflag[0], eff) if nonflag else home
-    elif name == 'sed':
-        if not any(a == '-i' or a.startswith('-i') or a.startswith('--in-place') for a in args):
-            continue
-        files, saw_script, k = [], False, 0
-        while k < len(args):
-            a = args[k]
-            if a in ('-e', '-f', '--expression', '--file'):
-                saw_script = True; k += 2; continue
-            if a.startswith(('--expression=', '--file=')):
-                saw_script = True; k += 1; continue
-            if a.startswith('-'):
-                k += 1; continue
-            files.append(a); k += 1
-        if not saw_script:
-            files = files[1:]
-        targets += [resolve(f, eff) for f in files]
-    elif name in ALL_ARGS:
-        targets += [resolve(a, eff) for a in nonflag]
-    elif name in SKIP_ONE:
-        targets += [resolve(a, eff) for a in nonflag[1:]]
-    elif name in DEST_LAST:
-        if '-t' in args and args.index('-t') + 1 < len(args):
-            targets.append(resolve(args[args.index('-t') + 1], eff))
-        elif len(nonflag) >= 2:
-            targets.append(resolve(nonflag[-1], eff))
-    elif name == 'git':
-        verb, cdir = git_verb(args)
-        d = resolve(cdir, eff) if cdir else eff
-        if verb in MUTATING_GIT and not (verb == 'apply' and '--check' in args):
-            targets.append(d)
-    elif name in ('npx', 'prettier'):
-        if 'prettier' in toks[:2] and ('--write' in args or '-w' in args):
-            targets += [resolve(a, eff) for a in nonflag if a != 'prettier']
-    elif name in ('npm', 'pnpm', 'yarn'):
-        if nonflag and nonflag[0] in NPM_WRITES:
-            targets.append(eff)
-    if name in NO_VALUE_O:
-        continue
-    for k, a in enumerate(args):
-        flag, _, val = a.partition('=')
-        if flag not in OUT_FLAGS:
-            continue
-        if not val and k + 1 < len(args):
-            val = args[k + 1]
-        if not val.startswith('-') and ('/' in val or '.' in val or val.startswith('~')):
-            targets.append(resolve(val, eff))
+targets = [path for _, path in write_targets(os.environ.get('CMD', ''), base)]
 
 # 3. Targets → main checkouts. A linked worktree is allowed by protocol; a
 #    submodule, a repo with its own remote, is checked as its own root.

@@ -37,19 +37,51 @@ set -e
 
 payload=$(cat)
 
-tool=$(jq -r '.tool_name // ""' <<<"$payload")
-[[ "$tool" != "Bash" ]] && exit 0
-
 cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
+edited=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$payload")
+
+lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
+cwd=$(jq -r '.cwd // ""' <<<"$payload")
+[[ -z "$cwd" ]] && cwd="$PWD"
+
+# The marker is the person's to write, since it decides where an agent may commit
+# (D47). A write to it is refused unless it is a fixture under the temp or the
+# cache directory. It fails open with no parser, and it reads what `write_targets`
+# reads, so a script, a whole `.claude` copied in, or a heredoc a shell runs passes.
+marker_writes() {
+  CMD="$cmd" EDITED="$edited" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" "$cwd" <<'PY' 2>/dev/null
+import os, sys
+sys.path.insert(0, sys.argv[1])
+from shell_segments import write_targets, in_scratch_place
+
+edited = os.environ.get('EDITED')
+writes = [(edited, edited)] if edited else write_targets(os.environ.get('CMD', ''), sys.argv[2])
+for tok, path in writes:
+    if path is None:
+        hit = os.path.basename(tok) == 'git-commit-allowed'
+    else:
+        hit = path.endswith('/.claude/git-commit-allowed')
+    if hit and (path is None or not in_scratch_place(path)):
+        print(path or tok)
+PY
+}
+if [[ "$cmd$edited" == *git-commit-allowed* && -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
+  written=$(marker_writes) || written=
+  if [[ -n "$written" ]]; then
+    cat >&2 <<EOF
+BLOCKED by ~/.claude/hooks/git-commit-gate.sh: $written is the commit gate's opt-in marker. The person creates or removes it, since it decides where an agent may commit. Leave it, and tell them what you wanted it for. A fixture under the temp or the cache directory passes.
+EOF
+    exit 2
+  fi
+fi
 
 # Two stages. The word test is the free pre-filter: no `git` and no `commit`
 # both present as words, nothing to decide. What passes it is read as a command by
 # the shared parser (hooks/lib/shell_segments.py, the lease gate's): the verb
 # counts when it heads a segment — after `cd foo &&`, wrappers, assignments,
 # shell keywords, `xargs`, `parallel`, `watch`, `find -exec`, git's own `-C`/`-c`
-# — or sits in an
-# executed context: a `$(...)`, a `bash -c` string, a heredoc a shell receives, an unquoted heredoc's
-# substitution. A heredoc body `cat` receives, a quoted string, a `git log
+# — or sits in an executed context: a `$(...)`, a `bash -c` string, a heredoc a
+# shell receives, an unquoted heredoc's substitution. A heredoc body `cat` receives, a quoted string, a `git log
 # --grep` argument are data and pass (2026-09-06: the substring alone blocked
 # two vault writes whose payload mentioned the verb in prose). If the parser
 # is missing, the old `git commit`-adjacent regex decides; if it fails on a
@@ -58,10 +90,6 @@ word='(^|[^a-zA-Z0-9_-])'
 if [[ ! ( "$cmd" =~ ${word}git([^a-zA-Z0-9_-]|$) && "$cmd" =~ ${word}commit([^a-zA-Z0-9_-]|$) ) ]]; then
   exit 0
 fi
-
-lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
-cwd=$(jq -r '.cwd // ""' <<<"$payload")
-[[ -z "$cwd" ]] && cwd="$PWD"
 
 # The parser prints one line per commit site that needs the marker — the
 # directory the verb runs in, `?` when a variable leaves it unknown — and nothing
@@ -77,18 +105,12 @@ commit_sites() {
 import os, sys
 sys.path.insert(0, sys.argv[1])
 from shell_segments import (parse_heredocs, heredoc_runs, segments, run_tokens, ssh_command, git_split, substitutions,
-                            SHELLS, HOME, read_assignment, resolve_path, checkout_of, Subshells)
+                            SHELLS, HOME, read_assignment, resolve_path, checkout_of, Subshells, in_scratch_place)
 
-PLACES = {os.path.realpath(p) for p in (os.environ.get('TMPDIR'), '/tmp',
-                                        os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache')) if p}
 VALUE_OPTS = {'-b', '-B', '--reason', '--branch', '--initial-branch', '-o', '--origin', '-c', '--config', '--depth', '-j', '--jobs',
               '-u', '--upload-pack', '--reference', '--template', '--separate-git-dir', '--object-format',
               '--ref-format', '--shallow-since', '--shallow-exclude', '--server-option', '--bundle-uri'}
 env, made, added = {}, [], []
-
-def in_place(path):
-    real = os.path.realpath(path)
-    return any(real == p or real.startswith(p + '/') for p in PLACES)
 
 def covers(root, path):
     return path == root or path.startswith(root + '/')
@@ -112,9 +134,9 @@ def needs_no_marker(site):
     root, linked = checkout_of(site)
     if linked or any(covers(a, site) for a in added):
         return True
-    if not in_place(site):
+    if not in_scratch_place(site):
         return False
-    return any(covers(m, site) for m in made) or (root is not None and in_place(root))
+    return any(covers(m, site) for m in made) or (root is not None and in_scratch_place(root))
 
 def sites(cmd, eff, depth=0):
     if depth > 3:
@@ -193,16 +215,10 @@ EOF
 done <<<"$sites"
 [[ -z "$unmarked" ]] && exit 0
 
-root=$(git -C "$unmarked" rev-parse --show-toplevel 2>/dev/null || echo "$unmarked")
 cat >&2 <<EOF
 git commit denied by ~/.claude/hooks/git-commit-gate.sh — no opt-in marker at or above $unmarked.
 
-To allow commits in this project, create the marker:
-
-  touch "$root/.claude/git-commit-allowed"
-
-Then re-run. The marker is intended to be committed alongside the project
-so the opt-in travels with the code.
+The marker is the person's to create, so leave this commit to them.
 
 A scratch repository needs no marker: one under the temp or the cache directory,
 made with \`git init\` or \`git clone\` earlier in this command, or already on disk.
