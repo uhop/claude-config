@@ -1150,6 +1150,8 @@ whether those reasons still hold; mark each historical claim checked or recalled
 
 ## Tools
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/tools]].
+
 - **Re-Read after mutating Bash.** Any Bash that may rewrite a file (`prettier --write`,
   `npm run lint:fix`, a formatting/codemod script, a pre-commit hook — and your own `cat >>`/heredoc
   appends) invalidates the harness's file-tracking. Read the file again before the next `Edit` on
@@ -1162,25 +1164,18 @@ whether those reasons still hold; mark each historical claim checked or recalled
   is the only place this can be caught. Shipping a violation into a pushed commit costs him a
   follow-up "style fixes" commit for nothing. When drift does turn up, check whether it is yours
   before claiming it — `git show <base>:<file> | npx prettier --check -` on the pre-edit version
-  separates your damage from pre-existing. (Origin: reflect 2026-07-20 — two `dev-docs/*.md` edits
-  shipped `*emphasis*` where prettier normalizes to `_emphasis_`, into `c5fd834` and `b044e78`, both
-  pushed before anyone ran `lint`.) **Corpus-wide pre-existing drift is a finding, not a blocker.**
-  When lint fails on files you didn't touch and the failure is systemic rather than yours, don't
-  convert it into a _policy_ objection — whether applying the formatter is safe is an **empirical**
-  question about the rendered artifact. Measure it: build the rendered output, apply the formatter,
-  rebuild, byte-diff, and classify the delta into inert (whitespace the renderer collapses) and
-  substantive. Then report the finding with that evidence. Refusing on principle when a four-minute
-  experiment settles it costs a round-trip and can hide a real bug. Diff the _rendered_ output,
-  never the source — a large source diff can be entirely inert while a small one rewrites every code
-  sample; hash extracted `<pre>` blocks separately, since a whitespace-insensitive diff hides code
-  rewriting and whitespace inside `<pre>` is significant. Method + the code-fence hazard (a
-  formatter reformats the examples _inside_ your prose, and no setting reproduces hand-authored
-  pedagogy): [[topics/prettier-rewrites-fenced-code-examples]]. (Origin: reflect 2026-07-21 —
-  blog-hugo's whole ~190-post corpus failed `prettier --check`; I argued the
-  don't-edit-published-posts rule blocked applying it. Eugene: _"I don't care about the
-  representation, I care about content."_ Measuring showed the run was content-neutral once code
-  fences were exempted, **and** surfaced a latent bug — 1,200 double-escaped URL entities shipping
-  broken `href`s across nine 2005–2009 posts.)
+  separates your damage from pre-existing. **Corpus-wide pre-existing drift is a finding, not a
+  blocker.** When lint fails on files you didn't touch and the failure is systemic rather than
+  yours, don't convert it into a _policy_ objection — whether applying the formatter is safe is an
+  **empirical** question about the rendered artifact. Measure it: build the rendered output, apply
+  the formatter, rebuild, byte-diff, and classify the delta into inert (whitespace the renderer
+  collapses) and substantive. Then report the finding with that evidence. Refusing on principle when
+  a four-minute experiment settles it costs a round-trip and can hide a real bug. Diff the
+  _rendered_ output, never the source — a large source diff can be entirely inert while a small one
+  rewrites every code sample; hash extracted `<pre>` blocks separately, since a
+  whitespace-insensitive diff hides code rewriting and whitespace inside `<pre>` is significant.
+  Method + the code-fence hazard (a formatter reformats the examples _inside_ your prose, and no
+  setting reproduces hand-authored pedagogy): [[topics/prettier-rewrites-fenced-code-examples]].
 - **A wiki page edit rebuilds the wiki's search index, like a code edit runs the tests.** When a
   wiki carries `search-index.json`, it is a build output of the pages: after the last page edit of a
   burst, and after any formatter has run over the pages, run
@@ -1188,15 +1183,11 @@ whether those reasons still hold; mark each historical claim checked or recalled
   rebuilt index beside the pages for his commit. This applies to every wiki edit, not only the ones
   made through `/document-wiki-page`, `/wiki-organize`, or `/release-prep`. Always `@latest`: a bare
   `npx wiki-search-index` runs whatever version npm cached, and on one fleet host that was 0.1.1,
-  whose headings differ from the 0.2.0 output the committed indexes carry. (Origin: console-toolkit
-  2026-09-25 — an `Updater` docs edit left the index stale; Eugene: _"When you update code you run
-  tests and builds if needed. Why can't you run a build for the index when you update the wiki
-  repository? Sounds the same."_ Earlier: dotfiles `06e1aef`, 2026-09-16.)
+  whose headings differ from the 0.2.0 output the committed indexes carry.
 - **Read-the-tool before Edit.** `Edit`/`Write` require the file to have been Read _by the Read
   tool_ this conversation — viewing it via Bash (`grep`/`sed`/`head`/`cat`) does not register it,
   and the Edit 400s with "File has not been read yet". When inspection was Bash-based and an Edit is
-  coming, Read the file (a narrow range suffices) before editing. (Origin: reflect 2026-07-09 — 7×
-  in one double-meh session.)
+  coming, Read the file (a narrow range suffices) before editing.
 - **Don't speculatively `Read` paths.** Before `Read`, if the path was inferred from a listing or
   another output, confirm the path actually appears in that output. `Read` is cheap but failed reads
   inflate context and signal sloppy exploration. Use `Bash test -f`, `Glob`, or the original
@@ -1212,16 +1203,7 @@ whether those reasons still hold; mark each historical claim checked or recalled
   scratch dir, or pass `--help`/`--dry-run`. **A probe flag neutralizes only if the tool implements
   it** — for a CLI you have not read, `--help`/`--version` is still a run, and a parser that ignores
   unknown flags performs the default action, which for a builder means writing into the cwd. Combine
-  the probe with the scratch dir, or read the arg parser first. (2026-08-18:
-  `wiki-search-index --version` from node-re2's root rebuilt `wiki/search-index.json` —
-  byte-identical by luck; the tool now rejects unknown arguments, but most tools don't.) (Origin:
-  2026-07-21 — to check 14 prettier-reformatted scripts still loaded, I `import()`ed them;
-  `reflect-state.mjs` turned out to be a flat top-level script that writes on load, so the "test"
-  performed a real no-arg run, overwrote this host's `/reflect` state and stripped the metadata the
-  proper run had written. `node --check` was already in the same verification batch and would have
-  answered the question with no side effect. Eugene: _"don't import random files without inspecting
-  them first!"_ The 17 claude-config scripts now carry an `import.meta.main` guard that throws on
-  import — but the guard is a backstop, not the rule; most files in the world have none.)
+  the probe with the scratch dir, or read the arg parser first.
 - **Trust the foreground result; don't chase display lag.** A foreground `Bash` result is
   authoritative even when it renders late or looks empty — the value is already captured. Don't
   re-run it as a background task, don't spawn noop "flush"/"nudge" commands to force a redraw, and
@@ -1239,41 +1221,32 @@ whether those reasons still hold; mark each historical claim checked or recalled
   git + shell. **Bare `git tag` is denied even as a read** — the `permissions.deny` pattern matches
   the verb, not the intent, so the listing form trips it too; list tags with
   `git for-each-ref refs/tags --format='%(refname:short) %(creatordate:short)'` (also the
-  release-notes date source). (Origin: 2026-08-06 invariants-sidecar wrap — two listing probes
-  denied in a row, cancelling their co-batched siblings.)
+  release-notes date source).
 - **Kill hung verifications; don't wait them out.** A check running ~10× past its known duration
   (the previous green run) is hung, not slow — tests don't run for minutes. Stop it, inspect (ports,
   processes, partial output), and re-run the failing piece in isolation; the hang itself is a
-  finding worth filing. (Origin: reflect 2026-07-04 — 6+ minutes waiting on a browser suite whose
-  green runs take ~2.6s; the cause was a runner readiness-probe hang, found in seconds once
-  investigated.)
+  finding worth filing.
 - **A check's result is its exit status, read after the last edit.** Before a stop report, rerun
   every check the project names (tests, lint, type checks) after the final edit, and put each one's
   exit status in the report's gates line (`npm run js-check; echo "exit=$?"`). Never read a check
   through a `grep` or a `tail` of its output: a colored or reworded diagnostic defeats the pattern,
-  and a failing tree reads clean. (Origin: apodict 2026-10-16 — `tsc` 7.0.2 colors its diagnostics
-  in a pipe, so `grep 'error TS'` counted 0 while TS2698 stood, and D401 recorded `js-check` clean
-  on a failing tree; learnings had carried the trap since D264 and nobody read it at gate time.
-  Eugene ruled this line and one in apodict's `AGENTS.md`, the scripts left as the fleet convention
-  spells them.) The same run comes before any git work, staging included: Eugene, 2026-11-02, _"I do
-  it as a matter of policy: stuff works, I run all tests to confirm that, including linting, then
-  start working with git."_ CI only confirms other environments, and a failure there is reproduced
-  and fixed locally before the commit that CI then confirms ([[topics/ci-scope-convention]]).
+  and a failing tree reads clean. The same run comes before any git work, staging included: Eugene,
+  2026-11-02, _"I do it as a matter of policy: stuff works, I run all tests to confirm that,
+  including linting, then start working with git."_ CI only confirms other environments, and a
+  failure there is reproduced and fixed locally before the commit that CI then confirms
+  ([[topics/ci-scope-convention]]).
 - **State the cost of a long run before starting it.** When a run will take more than a few minutes
   (a simulation, a census, a benchmark sweep), give its estimated wall time in the message that
   starts it, and make it write a progress line as it goes. A Stop-hook reply about a run still going
   says how far along it is and how long is left, not only that it must keep running. An
   investigation he waits on counts as a long run: every few minutes, say what you have ruled out and
-  what you read next (reflect 2026-10-22 M4). (Origin: reflect 2026-09-25, nano-bench — a 34-minute
-  simulation with no estimate drew _"What are you measuring? It takes quite long time. Is there a
-  progress?"_, and its rerun, still without one, drew _"how long will it take? (estimate)"_.)
+  what you read next (reflect 2026-10-22 M4).
 - **Classifier outage ≠ command failure.** A tool call failing with "_\<model\> is temporarily
   unavailable, so auto mode cannot determine the safety of …_" means the safety classifier is down,
   not that the command is wrong — re-firing the same call in a tight loop burns turns without
   progress. After ~2 spaced retries: switch to work that doesn't need the classifier (reads,
   searches, analysis), batch the blocked mutations, tell the user, and come back after a pause or a
-  model switch. (Origin: reflect 2026-07-09 — 8× identical Bash re-fires against a classifier
-  outage, 2026-07-08.)
+  model switch.
 - **A denied action the task still needs goes to him as an ask: the reasons and a command to run.**
   When a permission gate or the auto-mode classifier refuses a step and the work cannot finish
   without it, finish everything that does not depend on it, then make the ask the message: what was
@@ -1281,11 +1254,7 @@ whether those reasons still hold; mark each historical claim checked or recalled
   fenced block, `!`-prefixed so its output lands in the session. The ask is never one item inside a
   status report, and a report that says "prepared" while a needed step is open reads as finished
   work. Name the checks that wait on the step, and run them the moment it has run. Never retry a
-  variant of the denied command to get around the refusal. (Origin: vault-storage 2026-09-29 — a
-  release prep's lockfile regeneration was denied; the report opened with "prepared, with one step
-  left for you" and listed the command among its findings, he staged six files without the lockfile
-  and asked twice why `package-lock.json` was not updated. Eugene: _"Never leave unfinished work. If
-  you got denied but it is still needed, ask me to do it: reasons + a command to run."_)
+  variant of the denied command to get around the refusal.
 - **A step only he can take arrives complete: the system, where in it, and the exact action or
   value.** A console step names the product and its URL, or the menu path from a named start page; a
   command comes in its own fenced block; a sign-in names the identity when more than one is in play;
@@ -1296,24 +1265,18 @@ whether those reasons still hold; mark each historical claim checked or recalled
   (`hooks/handed-command-check.sh` sends back a `<word>` or a scratch path in a command block): look
   the value up first (an account id, a key's name, a path). When only he can know it, the block
   reads it itself or its first line says where it comes from; `ACCOUNT='<account>'` handed to him is
-  a lookup the agent skipped. (Origin: apodictum-web 2026-10-04 — four steps in two sessions came
-  back as questions: _"where is it? What system? URL?"_, _"what exactly should I do with that?"_,
-  _"What email should I use?"_, _"What do you need from me on the mailbox?"_; the placeholder
-  clause: reflect 2026-10-22 P3.)
+  a lookup the agent skipped.
 - **A command that must wait for something says so before the command.** When a handed command works
   only after another step has run (a pull, a deploy, a daily update), lead with that order in one
   direct sentence naming what must run and on which machines, and hand the command once, where it
   can run; a snippet repeated with its condition left in the surrounding prose reads as "run this
   now" ([[projects/agent-workflow/feedback]] § A command that must wait for something says so before
-  the command). (Origin: vault-storage 2026-10-14 — a restore loop handed in three replies did
-  nothing on four hosts that had not pulled yet; Eugene: _"So why didn't yoiu say so directly?
-  Instead repeating a snippet that doesn't work."_)
+  the command).
 - **TaskCreate ≠ Agent; fix validation errors, don't re-fire.** TaskCreate/TaskUpdate manage the
   session task list (`subject` + `description`); delegating work to a subagent is the Agent tool
   (`prompt`, `subagent_type`). On an `InputValidationError`, the message names the exact parameter
   problem — correct the call shape (or ToolSearch the schema for a deferred tool) instead of
-  re-firing the same arguments. (Origin: reflect 2026-07-12 — 3× identical TaskCreate re-fires with
-  Agent params, tape-six-playwright session 2026-07-11.)
+  re-firing the same arguments.
 - **Inspect a JSON response's shape before filtering it.** `jq` returns empty rather than erroring
   on a missing path, so a wrong filter and a genuinely empty result are indistinguishable in the
   output — an assumed shape that returns nothing reads exactly like a defect in the system being
@@ -1323,29 +1286,17 @@ whether those reasons still hold; mark each historical claim checked or recalled
   (read the envelope, don't assume it). This rule is the _consumer_ half of a general failure class
   — a well-formed empty result masking a query the system never understood; the _producer_ half
   (reject unknown parameters, report unparsed input, echo the effective query) applies wherever you
-  own the read surface. Full: [[topics/silent-empty-result-ambiguity]]. (Origin: reflect 2026-07-20
-  — 3× in one session: a wiki `search-index.json` read as empty (`.pages` vs real
-  `{v, site, docs}`), a vault note read as unindexed (`/search/simple/` returns a bare array of
-  `{filename, matches, score}`, not `{results}`), and vault enrichment coverage read as
-  under-reporting (record typed `meta`, correctly outside the enrichable set); all three were the
-  filter, not the data.) **Same for `grep`/search used as a coverage proof.** A pattern that matches
-  nothing proves that _the pattern_ is absent, never that the property you care about holds. Before
-  writing "no other file does X", check that the pattern actually tests X — searching for a stale
-  _claim_ does not find a stale _prescription_. Either name the pattern in the claim ("nothing still
-  says `No MCP tool exists`") or widen it until it tests the property. (Origin: reflect 2026-08-03 —
-  after the vault skill's MCP rewrite, a grep for six stale-claim phrases came back clean and was
-  reported as "no other skill referenced the split"; nine sibling `SKILL.md`s still prescribed
-  `vault-curl` for reads that had MCP tools, and the next session reproduced the old behaviour
-  straight out of one of them.)
+  own the read surface. Full: [[topics/silent-empty-result-ambiguity]]. **Same for `grep`/search
+  used as a coverage proof.** A pattern that matches nothing proves that _the pattern_ is absent,
+  never that the property you care about holds. Before writing "no other file does X", check that
+  the pattern actually tests X — searching for a stale _claim_ does not find a stale _prescription_.
+  Either name the pattern in the claim ("nothing still says `No MCP tool exists`") or widen it until
+  it tests the property.
 - **A `WebFetch` 403 is the fetcher being blocked, not the source being unavailable.** Some
   documentation sites (cppreference among them) reject the fetcher's user agent and serve fine to a
   browser. Before writing "X returned 403, so the verification came from Y instead", retry once with
   `curl -sSL -A '<a current browser UA>'`; if that fails too, say the source was **not read** rather
-  than presenting the substitute as equivalent. (Origin: reflect 2026-08-31, apodict `6e58951c` —
-  two `WebFetch` calls to `en.cppreference.com` 403'd and the conclusion shipped citing the C++
-  working draft and glibc's header instead; Eugene re-pasted the same URL, `curl` with a browser UA
-  returned 200 in fifteen seconds, and the page corrected an overstatement the shipped text carried
-  — before C++26 the `assert` argument must have scalar type, so no user-defined conversion runs.)
+  than presenting the substitute as equivalent.
 - **Kill background work the moment its decision lands.** Background research exists to inform a
   pending decision; once the user rules, the marginal value of the in-flight run is whatever it adds
   _after_ the fact — usually nothing. Stop it rather than letting it finish "since it's already
@@ -1353,11 +1304,7 @@ whether those reasons still hold; mark each historical claim checked or recalled
   benchmarks, version-dependent facts) is better re-gathered at the moment of need than filed stale
   against a hypothetical future use; and a finished run still has to be read, summarized, and given
   a home, so it keeps costing after the compute stops. Say plainly that the work is abandoned, not
-  paused. (Origin: reflect 2026-07-27 — after Eugene ruled to cut an unsubstantiated claim from a
-  post, I argued to let two research agents finish on the grounds that "unsubstantiated _at this
-  time_" implied revisitability; he asked _"Do we need to do the research in the background now?"_
-  The honest answer was no — ~420K tokens were already spent, and the false all-clear in §
-  Background shells followed directly from not stopping at the ruling.)
+  paused.
 - **A dependency's shipped skill governs its artifact.** Before writing a bench, test, or config a
   dependency ships a skill for (`.claude/skills/`, the package's `skills/`), invoke that skill; one
   found afterward audits the hand-written artifact ([[projects/agent-workflow/feedback]] § Consult
