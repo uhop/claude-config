@@ -146,7 +146,8 @@ re-run. (Hit 2026-08-18.)
 
 After all edits, the digest must come back clean (`summary.clean: true`) —
 this re-verifies the tarball against the bumped version and the regenerated
-lockfile in one shot.
+lockfile in one shot. `ci` is the one check a prep cannot clean, since it reads
+a remote: step 10 reports it.
 
 ## Step 9 — Project-specific release steps
 
@@ -165,18 +166,32 @@ commit, then the parent commit that carries the bump, notes, lockfile, and
 pointer. Do **not** commit, tag, or publish — the user commits, tags, and
 publishes after their own review.
 
-End the report with the order after his commits, because CI runs only on the
-push: push the release commit, wait for its CI run to finish green, and only
-then tag and publish. A red run stops the release before `npm publish`. Hand
-him the wait as a command with the repository filled in, in its own block, to
-run a few seconds after the push, when GitHub has registered the run;
-`--exit-status` makes the watch exit non-zero on a failed run:
+Report CI on what is already pushed, from step 8's `checks.ci.head`. Name every
+entry in `not_green`, with its jobs. While `pending` is true, say the run is
+pending, never green. `no_runs` with a workflow a push fires means no result
+exists for that commit. `unpushed` counts the commits with no result yet. A red
+run stops the release: reproduce it on the failed configuration and fix it
+locally ([[topics/ci-scope-convention]]). (Origin: tape-six 1.18.0, 2026-10-22 —
+a prep began while the run on the commits it released was still going, and a
+side agent flagged it.)
 
-```bash
-gh run watch --exit-status --repo OWNER/REPO "$(gh run list --repo OWNER/REPO --commit "$(git rev-parse HEAD)" --workflow tests.yml --json databaseId --jq '.[0].databaseId')"
-```
+End the report with the order after his commits, taken from `checks.ci`:
+
+- **`wait_commands` holds a command:** push the release commit, wait for each
+  run to finish green, and only then tag and publish. A red run stops the
+  release before `npm publish`. Hand him the commands as the digest wrote them,
+  in one block, to run a few seconds after the push, when GitHub has registered
+  the run; `--exit-status` makes a watch exit non-zero on a failed run. A
+  workflow with `path_filter: true` can fire no run for a release commit outside
+  its paths: read its filter and say which it is.
+- **`wait_commands` is empty:** the push fires no CI run here, as in a repository
+  that runs its tests on pull requests alone. Say so, name the local gates that
+  stand in, from `test_matrix.gates`, and give the order as push, tag, and
+  publish. Offer `dispatch_commands` as a choice when it holds one.
 
 (Origin: tape-six 1.18.0, 2026-10-22 — the CI run on the release commit
 failed on Node 24 macOS after the package was published, and nothing in the
 flow waited for it. Eugene: _"of course, nobody notified me before
-publishing"_.)
+publishing"_. vault-storage's 0.19.0 adapter prep, 2026-10-28 — a handed wait
+failed with `HTTP 404`, since that repository's tests run on pull requests and
+manual dispatch alone. Eugene: _"Do we even have a CI for it?"_)

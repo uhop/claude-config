@@ -92,11 +92,11 @@ cutting the first one early.
 ~/.claude/skills/release-check/release-digest.mjs        # from the project root
 ```
 
-One JSON report, 16 checks, each `ok | action | skip | error`; exit 1 when
+One JSON report, 17 checks, each `ok | action | skip | error`; exit 1 when
 anything needs attention (run it solo or `|| true` in parallel Bash batches).
-`--no-network` skips the `npm outdated` registry call and lists it under
-`summary.unchecked`, so an offline digest is never clean: a skipped check is
-not a pass. It probes: last tag +
+`--no-network` skips the `npm outdated` registry call and the read of CI's runs
+and lists both under `summary.unchecked`, so an offline digest is never clean:
+a skipped check is not a pass. It probes: last tag +
 commits since (step 0's input), `.d.ts` sidecar pairing + `@ts-self-types`
 directives, the retired-artifact removable set (mirrors, uppercase COPILOT,
 `.windsurf/`, promoted-skill `.claude/commands/` copies), AI-docs presence,
@@ -108,7 +108,8 @@ dependency freshness (both `npm outdated`'s installed-behind class **and**
 stale declared range floors, which `npm outdated` structurally cannot see —
 each item carries `reason: "installed_behind" | "declared_floor_behind"` and
 the `declared` range; see [[topics/dep-version-freshness]]),
-lockfile-version sync, which test gates exist, and the
+lockfile-version sync, which test gates exist, what a push to this branch fires
+and what CI says of the pushed commit (`ci`), and the
 `npm pack --dry-run` tarball diff (required contents present, authoring-side
 files absent — see [[topics/tarball-ai-docs-convention]] and
 [[topics/full-path-imports-for-runtime-portability]] for the rules the
@@ -117,10 +118,14 @@ files absent — see [[topics/tarball-ai-docs-convention]] and
 The digest is itself read-only — it probes and reports, so running it costs
 nothing but time.
 
-**Report every `action` as a finding**, with two judgment notes:
+**Report every `action` as a finding**, with three judgment notes:
 
 - `pkg_exports.flagged` entries may be documented project deviations — check
   `decisions.md` before calling one a problem.
+- `ci` reads the pushed commit: name every entry in `head.not_green`, and say a
+  run is pending while `head.pending` is true, never green. A commit pushed after
+  this check changes the answer, and `head.unpushed` counts the commits with no
+  result yet.
 - `bin_modes` is tidy, not load-bearing — npm sets the executable bit on
   install; a `npx` "command not found" is almost never a mode-bit problem
   (usual real cause: running `npx <pkg>@<version>` from inside the package's

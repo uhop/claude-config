@@ -8,8 +8,8 @@
 //
 //   release-digest.mjs [project-dir] [--no-network]
 //
-// --no-network skips `npm outdated` (registry round-trip); the tarball
-// dry-run is local and always runs. Every check reports
+// --no-network skips `npm outdated` (registry round-trip) and the read of the
+// pushed commit's CI runs; the tarball dry-run is local and always runs. Every check reports
 // {status: "ok" | "action" | "skip" | "error", ...detail}. Exit 0 clean,
 // 1 when any check is "action"/"error" or unchecked (skipped by
 // --no-network) — run solo or `|| true` in parallel Bash batches.
@@ -422,6 +422,150 @@ check('ai_docs', {
       s => scripts.includes(s)
     )
   });
+}
+
+// --- CI: what a push to this branch fires, and what CI says of what is pushed --
+// The `on:` block alone, read by indentation: the digest carries no YAML parser.
+const readOn = text => {
+  const words = value =>
+    value
+      .replace(/\s#.*$/, '')
+      .replace(/[[\]'"]/g, '')
+      .split(',')
+      .map(word => word.trim())
+      .filter(Boolean);
+  const lines = text.split('\n');
+  const at = lines.findIndex(line => /^["']?on["']?\s*:/.test(line));
+  if (at < 0) return {};
+  const inline = words(lines[at].slice(lines[at].indexOf(':') + 1));
+  if (inline.length) return Object.fromEntries(inline.map(event => [event, {}]));
+  const on = {};
+  let eventIndent = 0,
+    event = null,
+    key = null;
+  for (const line of lines.slice(at + 1)) {
+    if (!line.trim() || line.trim().startsWith('#')) continue;
+    const indent = line.search(/\S/);
+    if (!indent) break;
+    const item = line.match(/^\s*-\s+(.*)$/);
+    if (item) {
+      if (event && key) on[event][key].push(...words(item[1]));
+      continue;
+    }
+    const entry = line.match(/^\s*([\w-]+)\s*:(.*)$/);
+    if (!entry) continue;
+    eventIndent ||= indent;
+    if (indent === eventIndent) {
+      event = entry[1];
+      on[event] = {};
+      key = null;
+    } else {
+      key = entry[1];
+      on[event][key] = words(entry[2]);
+    }
+  }
+  return on;
+};
+
+const pushFires = (push, branch) => {
+  if (!push) return false;
+  // A `*` in a filter counts as a match: the fleet writes `*`, `**`, or a plain name.
+  const names = list => list.includes(branch) || list.some(name => name.includes('*'));
+  if (push.branches) return names(push.branches);
+  if (push['branches-ignore']) return !push['branches-ignore'].includes(branch);
+  return !push.tags && !push['tags-ignore'];
+};
+
+const readRuns = sha => {
+  const list = run('gh', [
+    'run',
+    'list',
+    '--commit',
+    sha,
+    '--json',
+    'databaseId,workflowName,status,conclusion,url'
+  ]);
+  if (!list.ok) return {message: (list.err || list.out).slice(0, 300)};
+  const green = new Set(['success', 'skipped', 'neutral']);
+  const isGreen = item => green.has(item.conclusion);
+  const runs = JSON.parse(list.out);
+  const notGreen = [];
+  for (const item of runs.filter(item => !isGreen(item))) {
+    const view = run('gh', ['run', 'view', String(item.databaseId), '--json', 'jobs']);
+    if (!view.ok) return {message: (view.err || view.out).slice(0, 300)};
+    notGreen.push({
+      workflow: item.workflowName,
+      status: item.status,
+      conclusion: item.conclusion,
+      url: item.url,
+      jobs: JSON.parse(view.out)
+        .jobs.filter(job => !isGreen(job))
+        .map(job => `${job.name}: ${job.status === 'completed' ? job.conclusion : job.status}`)
+    });
+  }
+  return {
+    runs: runs.map(({workflowName, status, conclusion, url}) => ({
+      workflow: workflowName,
+      status,
+      conclusion,
+      url
+    })),
+    not_green: notGreen,
+    pending: runs.some(item => item.status !== 'completed'),
+    no_runs: runs.length === 0
+  };
+};
+
+{
+  const top = run('git', ['rev-parse', '--show-toplevel']).out;
+  const dir = path.join(top || root, '.github/workflows');
+  const files = existsSync(dir) ? readdirSync(dir).filter(name => /\.ya?ml$/.test(name)) : [];
+  const url = run('git', ['remote', 'get-url', 'origin']).out;
+  const repo = url.match(/github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?$/)?.[1] ?? null;
+  if (!files.length) check('ci', {status: 'skip', reason: 'no workflows'});
+  else if (!repo) check('ci', {status: 'skip', reason: 'no GitHub remote'});
+  else {
+    const branch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD']).out;
+    const workflows = files.sort().map(file => {
+      const on = readOn(readFileSync(path.join(dir, file), 'utf8'));
+      return {
+        file,
+        on_push: pushFires(on.push, branch),
+        path_filter: Boolean(on.push?.paths || on.push?.['paths-ignore']),
+        dispatch: 'workflow_dispatch' in on
+      };
+    });
+    const fired = workflows.filter(workflow => workflow.on_push);
+    const ci = {
+      repo,
+      branch,
+      workflows,
+      wait_commands: fired.map(
+        ({file}) =>
+          `gh run watch --exit-status --repo ${repo} "$(gh run list --repo ${repo} --commit "$(git rev-parse HEAD)" --workflow ${file} --json databaseId --jq '.[0].databaseId')"`
+      ),
+      dispatch_commands: workflows
+        .filter(workflow => workflow.dispatch)
+        .map(({file}) => `gh workflow run ${file} --repo ${repo} --ref ${branch}`),
+      head: null
+    };
+    const upstream = run('git', ['rev-parse', '@{u}']);
+    if (noNetwork) check('ci', {status: 'skip', reason: '--no-network', ...ci});
+    else if (!upstream.ok) check('ci', {status: 'ok', ...ci});
+    else {
+      const read = readRuns(upstream.out);
+      if (read.message) check('ci', {status: 'error', message: read.message, ...ci});
+      else {
+        const unpushed = Number(run('git', ['rev-list', '--count', '@{u}..HEAD']).out);
+        const missing = read.no_runs && fired.length > 0;
+        check('ci', {
+          status: read.not_green.length || missing ? 'action' : 'ok',
+          ...ci,
+          head: {sha: upstream.out, unpushed, ...read}
+        });
+      }
+    }
+  }
 }
 
 // --- tarball contents (npm pack --dry-run is the ground truth) --------------
