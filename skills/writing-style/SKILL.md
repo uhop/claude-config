@@ -456,6 +456,9 @@ When asked to review, edit, or polish prose (the `docs-review` skill delegates h
 - [ ] Cadence within budget: mean sentence ≤ 18 words, em dashes ≤ 1.3 per 100 words, semicolons
       ≤ 2.8, _never_ / _nothing_ / _nobody_ ≤ 0.3, _rather than_ ≤ 0.1, negators ≤ 2.2, "X, not
       Y" closers ≤ 0.05 (`prose-tells --check`).
+- [ ] A block bound for GitHub or another published surface is checked before it goes in the chat:
+      write it to `$WORK/<name>.md` and run `prose-tells --check` on it. The budgets are densities
+      per 100 words, so a short block can exit 1 on one word: act on the lines it names.
 - [ ] Headings sentence case, no _-ing_ opener, no skipped levels; lists introduced, parallel,
       punctuated consistently; procedures one action per step.
 - [ ] Link text descriptive; "For more information, see …"; punctuation outside links.
