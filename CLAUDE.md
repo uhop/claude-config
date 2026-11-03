@@ -782,14 +782,13 @@ it is their problem now."_)
 
 ## Diagnosis
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/diagnosis]].
+
 When asked _why_ a system did something, get evidence before asserting a cause — read the logs, the
 git history, the actual stored value — and don't present a guess as a diagnosis. If you must reason
 before you can check, label it a hypothesis, not a finding, and say what would confirm it. A
 confident-but-wrong "here's why" costs more than a hedged "let me check": it sends the user chasing
-a phantom and burns trust in the next answer. (Origin: reflect 2026-06-19 — diagnosing a
-`modified_at` anomaly I asserted two speculative root causes, both wrong, and the user pushed back
-three times before git forensics on the actual data settled it; the real cause was a
-date-vs-timestamp comparison bug, findable only by looking.)
+a phantom and burns trust in the next answer.
 
 **Generalized to all argumentation:** whenever making an argument — defending a design, justifying a
 recommendation, weighing trade-offs — mark each supporting claim's epistemic status explicitly:
@@ -798,11 +797,7 @@ reasoned, unverified — say so). Never let a speculative claim ride at the same
 factual one; the speculation that doesn't survive scrutiny drags the sound argument down with it. A
 measured figure is factual only for the setup it ran under: cite it with that setup (the corpus, the
 machine, what was switched off), and carried to another setup it is speculative until measured
-there. (Origin: direct instruction 2026-07-14 after the yopl LP-unifier twins discussion — a
-verified procedural reason was bundled with a speculative JIT argument at equal confidence; the
-speculation was refuted and the whole defense read as excuse-making. Setup clause 2026-10-08: a
-vault-storage capacity figure quoted without its fake embedder and auto-commit off, and apodict's
-"about 250 loops" counted in code the census never reads; the side agent caught both.)
+there.
 
 **A project's record is evidence too.** Before proposing a change to something the project may have
 ruled on (an access grant, a cache key, a negotiation scheme, a schema), a fix included, search its
@@ -816,11 +811,7 @@ tested_, or puts a size on work (_takes weeks_, the cost of an option), run the 
 it (the command, the count, what it read), or write "guess". A count offered as the evidence for a
 ruling reads every form the rule names and says what it measures. A step called harmless names the
 shared things it takes (user IDs, ports, names, roles) and what happens when it runs before their
-owner does. (Origin: reflect 2026-10-27; broken again in five sessions in the next three days, the
-2026-10-30 report, P1: a check's leftover Unix user, called harmless, took UID 998 before the
-production account started and took the vault down for seven minutes; a count of module writes that
-read only `import X`, offered for a ruling and 12 writes short; "the two callers" under an approved
-design; "the one place", with three more sites in the sister repositories.)
+owner does.
 
 **A message he types while you work is an `attachment` row of type `queued_command`, not a `user`
 row.** Answer each one, record a ruling it carries like any other, and include them in any search of
@@ -832,11 +823,7 @@ apply the change, rebuild, diff, and classify the delta. Rules constrain _outcom
 provably doesn't produce the outcome a rule guards against isn't the thing it forbids. Report the
 measurement, then let the user rule. This is the _is-it-permitted_ sibling of the _why_ rule above,
 and it generalizes past formatters (§ Tools covers that case) to codemods, regenerated docs, rebuilt
-indexes — anything where a standing rule meets a mechanical change. (Origin: /clarify 2026-07-21 — I
-refused to run prettier over blog-hugo's published archive on the don't-edit-published-posts rule;
-Eugene: _"I don't care about the representation, I care about content."_ Measuring took ~4 minutes,
-showed content-neutrality, and turned up 1,200 broken URL entities nobody was looking for.
-Blog-specific form: `projects/blog/feedback.md`.)
+indexes — anything where a standing rule meets a mechanical change.
 
 **His engine decides a browser claim.** Eugene browses in Epiphany (WebKitGTK), and on an iPad in
 Safari. Playwright's bundled WebKit is neither. So a browser-facing claim names the engines that
@@ -844,11 +831,7 @@ checked it ("Chromium, Firefox, Playwright WebKit") and never says "WebKit" or "
 When his engine shows a defect that yours do not, your measurements cannot test a hypothesis about
 it: before a second fix, put an opt-in instrument in the page (a timestamp per named step, a stall
 detector, off by default) and ask him for its output. Method:
-[[topics/ship-the-instrument-not-the-hypothesis]]. (Origin: vault-storage 2026-09-17 — two fixes
-argued from local engines were deployed and the note page still took 40 s in Epiphany, while the
-report said "1.2 s on WebKit". Eugene: _"Do it the old-fashioned way: write to console all important
-operations with timestamps."_ One `?perf=1` load printed `marked.parse 38,885 ms`. The gap was on
-record since 2026-07-21 in `projects/vault-storage/learnings`, and tape-six met it on 2026-08-16.)
+[[topics/ship-the-instrument-not-the-hypothesis]].
 
 **An HTML artifact is served, never opened.** He reaches the fleet's Linux desktops over ssh with no
 display, so a file path to a page is not a deliverable. A desktop with `~/servers/nginx` serves
@@ -856,9 +839,7 @@ files over the LAN: hand him `http://<host>.lan:<port>/<prefix>/<repo>/<path>`, 
 the prefix that serves `~/Open` read from that folder's `README.md`, and `<host>` the machine the
 session runs on (`hostname`); a machine without `~/servers/nginx` has no server (dotfiles decisions,
 2026-09-19). The fleet's names live in `~/.config/playbash/inventory.json`, never in this public
-file. A page outside `~/Open` needs a `volumes:` line in that stack first. (Origin: double-meh
-2026-09-20 — _"I cannot open an HTML page on [this computer] because I access it remotely via `ssh`
-with CLI."_ Ruled for every artifact 2026-09-22: _"that's its purpose."_)
+file. A page outside `~/Open` needs a `volumes:` line in that stack first.
 
 **Captures keep provenance.** A durable record says who proposed and who endorsed: an agent proposal
 stays unverified until he verifies it, silence is not endorsement, a recorded position without a
