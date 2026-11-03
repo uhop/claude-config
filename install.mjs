@@ -2,8 +2,8 @@
 // install.mjs — symlink claude-config files into ~/.claude/
 // Default: dry-run. Use --apply to execute. Safe to re-run.
 
-import {readdir, mkdir, symlink, lstat, unlink, readlink} from 'node:fs/promises';
-import {dirname, join} from 'node:path';
+import {readdir, mkdir, symlink, lstat, unlink, readlink, rmdir} from 'node:fs/promises';
+import {dirname, join, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {homedir} from 'node:os';
 
@@ -14,7 +14,8 @@ if (!import.meta.main)
 
 const SOURCE = dirname(fileURLToPath(import.meta.url));
 const TARGET = join(homedir(), '.claude');
-const INSTALL = ['CLAUDE.md', 'settings.json', 'commands', 'skills', 'hooks', 'agents'];
+const TREES = ['commands', 'skills', 'hooks', 'agents'];
+const INSTALL = ['CLAUDE.md', 'settings.json', ...TREES];
 
 const APPLY = process.argv.includes('--apply');
 const HELP = process.argv.includes('--help') || process.argv.includes('-h');
@@ -22,7 +23,8 @@ const HELP = process.argv.includes('--help') || process.argv.includes('-h');
 if (HELP) {
   console.log(`Usage: install.mjs [--apply]
 
-  Symlink claude-config files into ~/.claude/.
+  Symlink claude-config files into ~/.claude/, and remove links into this
+  checkout whose target is gone.
   Default mode: dry-run. Pass --apply to execute.
   Idempotent — safe to re-run after a 'git pull'.`);
   process.exit(0);
@@ -75,6 +77,31 @@ const walk = async (srcDir, dstDir, results) => {
   }
 };
 
+// A link into this checkout whose target is gone is the installer's own leftover: a removed or
+// renamed file. Claude Code skips such a link without a word, so nothing else would clear it.
+const prune = async (dir, results) => {
+  const entries = await readdir(dir, {withFileTypes: true});
+  let removed = 0;
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const emptied = await prune(path, results);
+      if (emptied) {
+        if (APPLY) await rmdir(path);
+        ++removed;
+      }
+    } else if (entry.isSymbolicLink()) {
+      const current = await readlink(path);
+      if (current.startsWith(SOURCE + sep) && !(await exists(current))) {
+        if (APPLY) await unlink(path);
+        results.push({action: 'prune', dst: path, current});
+        ++removed;
+      }
+    }
+  }
+  return removed > 0 && removed === entries.length;
+};
+
 const main = async () => {
   console.log(`source: ${SOURCE}`);
   console.log(`target: ${TARGET}`);
@@ -97,6 +124,14 @@ const main = async () => {
     } else {
       results.push(await installFile(src, dst));
     }
+  }
+  for (const name of TREES) {
+    const dst = join(TARGET, name);
+    if (await exists(dst)) await prune(dst, results);
+  }
+
+  for (const r of results) {
+    if (r.action === 'prune') console.log(`  prune           ${r.dst}`);
   }
 
   const counts = {};

@@ -23,9 +23,9 @@ skills/               # One folder per skill: SKILL.md and its helper scripts an
 ## What gets installed
 
 `install.mjs` links `CLAUDE.md` and `settings.json` directly, and every file under `agents/`,
-`commands/`, `hooks/`, and `skills/` one by one, so a new file needs a rerun. The rest of
-`~/.claude/` stays as it is, and the root documents (`AGENTS.md`, this file, `README.md`) stay out
-of it.
+`commands/`, `hooks/`, and `skills/` one by one, so a new file needs a rerun, and a rerun also
+removes a link into this checkout whose target is gone. The rest of `~/.claude/` stays as it is, and
+the root documents (`AGENTS.md`, this file, `README.md`) stay out of it.
 
 ## Hooks
 

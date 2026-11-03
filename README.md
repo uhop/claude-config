@@ -11,7 +11,9 @@ node install.mjs           # dry-run (default)
 node install.mjs --apply   # symlink files into ~/.claude/
 ```
 
-The installer is idempotent — safe to re-run after `git pull`.
+The installer is idempotent — safe to re-run after `git pull`. It also removes a link into this
+checkout whose target is gone, such as a skill that was renamed, and leaves everything else in
+`~/.claude/` alone.
 
 The TypeScript language server is a plugin pinned in `settings.json`, and its install is one step
 per machine. Start any Claude Code session once so it registers the pinned marketplace (one whose
