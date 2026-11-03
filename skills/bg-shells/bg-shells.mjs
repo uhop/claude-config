@@ -21,7 +21,9 @@
 // delivers it — so a shell with one is done whether or not the agent ever
 // read it (2026-09-22). Kill detection accepts both `TaskStop(task_id|shell_id)`
 // (modern) and `KillShell(shell_id)` (legacy). A shell with neither is `live`,
-// and that is the only status a done-claim may not carry.
+// and that is the only status a done-claim may not carry. `launched_this_turn`
+// in the JSON says the shell started after the turn's own input, which the Stop
+// hook leaves alone (claude-config D45).
 //
 // Usage:
 //   bg-shells.mjs                       # list as text
@@ -60,6 +62,13 @@ const TASK_ID_RE = /<task-id>([A-Za-z0-9_-]+)<\/task-id>/;
 const STATUS_RE = /<status>([a-z_-]+)<\/status>/;
 const SUMMARY_RE = /<summary>([^<]*)<\/summary>/;
 const EXIT_RE = /\(exit code (-?\d+)\)/;
+const STOP_FEEDBACK_RE = /^\s*Stop hook feedback/;
+
+const rowText = row => {
+  const c = row.message?.content;
+  if (typeof c === 'string') return c;
+  return Array.isArray(c) ? c.map(b => b?.text ?? '').join('\n') : '';
+};
 
 const cwdToProjectDir = cwd => cwd.replace(/\//g, '-');
 
@@ -128,8 +137,10 @@ for (const sessionPath of sessionPaths) {
   // entries that pick up a shell_id (from the corresponding tool_result) are
   // confirmed as background and emitted.
   const bashByUseId = new Map();
+  // The row of the input that started the current turn: a person's or a wake-up's.
+  let turnStart = -1;
 
-  for (const line of content.split('\n')) {
+  for (const [lineNo, line] of content.split('\n').entries()) {
     if (!line) continue;
 
     // The notification is read off the raw line: it appears in rows of more
@@ -166,6 +177,7 @@ for (const sessionPath of sessionPaths) {
             command: b.input?.command ?? '',
             description: b.input?.description ?? '',
             started_iso: row.timestamp ?? null,
+            line: lineNo,
             shell_id: null
           });
         } else if (
@@ -185,7 +197,10 @@ for (const sessionPath of sessionPaths) {
     if (row.type !== 'user') continue;
     const blocks = Array.isArray(row.message?.content) ? row.message.content : [];
     const trBlock = blocks.find(b => b?.type === 'tool_result' && b.tool_use_id);
-    if (!trBlock) continue;
+    if (!trBlock) {
+      if (!row.isMeta && !STOP_FEEDBACK_RE.test(rowText(row))) turnStart = lineNo;
+      continue;
+    }
     const entry = bashByUseId.get(trBlock.tool_use_id);
     if (!entry) continue;
 
@@ -218,6 +233,7 @@ for (const sessionPath of sessionPaths) {
 
   let shells = [...bashByUseId.values()].filter(e => e.shell_id);
   for (const sh of shells) {
+    sh.launched_this_turn = sh.line > turnStart;
     const note = notified.get(sh.shell_id);
     if (killedIds.has(sh.shell_id)) {
       sh.status = 'killed';

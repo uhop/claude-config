@@ -1417,13 +1417,15 @@ both, and prefer the `Monitor` tool to a hand-rolled polling shell, since the ha
 reaps it. Since 2026-09-22 `hooks/bg-shells-open.sh` (Stop) names any shell the transcript shows
 launched and neither completed nor stopped, once per shell, and the lister marks a shell `done` from
 its completion notification; a `[bg-shells] N background shell(s) still live` block is that
-measurement, and the answer is a `TaskStop` per id or one line saying which must keep running. A
-shell that must keep running is named by its id in the turn's closing message, with why; the hook
-reads that as the declaration and does not block for it (reflect 2026-10-03: 14 firings in a week,
-every one a gate that had to finish). (Origin: reflect 2026-09-22 — the third recurrence of this
-section's origin, apodict `312b0f10`: _"Are you sure that two shells are still working?"_ after
-"both registries are empty" had been claimed from the agent probe alone, three times in one session;
-one `until` loop was waiting on a producer killed an hour earlier.)
+measurement, and the answer is a `TaskStop` per id or one line saying which must keep running. The
+hook stays quiet in the turn that launched a shell and raises it at a later Stop while it is live
+([[projects/claude-config/decisions]] D45). A shell that must keep running past its own turn is
+named by its id in that turn's closing message, with why; the hook reads that as the declaration and
+does not block for it (reflect 2026-10-03: 14 firings in a week, every one a gate that had to
+finish). (Origin: reflect 2026-09-22 — the third recurrence of this section's origin, apodict
+`312b0f10`: _"Are you sure that two shells are still working?"_ after "both registries are empty"
+had been claimed from the agent probe alone, three times in one session; one `until` loop was
+waiting on a producer killed an hour earlier.)
 
 **Herdr panes are a third registry, and this is the one he watches.** Background shells and
 background agents live in a status line; a pane sits in his window. A pane you split is yours to

@@ -9,10 +9,13 @@
 # back to deal with them; the re-entry carries `stop_hook_active: true`, on
 # which this hook exits 0, so a shell that must keep running (a server, a
 # watcher the user asked for) costs exactly one extra turn in its lifetime —
-# the id is recorded per session and never raised again. A shell whose id the
-# turn's closing message already names costs none: that message is the
-# declaration, so the id is recorded without a block (reflect 2026-10-03, 14
-# firings in a week, every one a gate that had to finish). That message is the
+# the id is recorded per session and never raised again. A shell launched in
+# the turn now ending costs none and is left unrecorded: the agent has just
+# started it, and it is raised at a later Stop if it is still live (claude-config
+# D45: 108 of 111 firings were that turn's own shell, and none was forgotten). A
+# shell whose id the turn's closing message already names costs none: that
+# message is the declaration, so the id is recorded without a block (reflect
+# 2026-10-03, 14 firings in a week, every one a gate that had to finish). That message is the
 # payload's `last_assistant_message`: the transcript is written asynchronously
 # and lags the turn (hooks reference), so its tail is only the fallback for a
 # Claude Code before 2.1.47 (reflect 2026-10-04, 5 false blocks after 8548b9b).
@@ -45,11 +48,11 @@ transcript=$(jq -r '.transcript_path // ""' <<<"$payload" 2>/dev/null) || exit 0
 session_id=$(jq -r '.session_id // ""' <<<"$payload" 2>/dev/null) || exit 0
 [[ -n "$session_id" ]] || exit 0
 
-lister="$HOME/.claude/skills/bg-shells/bg-shells.mjs"
+lister="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../skills/bg-shells/bg-shells.mjs"
 [[ -f "$lister" ]] || exit 0
 
 live=$(node "$lister" --json --live --session="$transcript" 2>/dev/null |
-  jq -r '.[].shells[] | "\(.shell_id)\t\(if .description == "" then .command else .description end)"' 2>/dev/null) || exit 0
+  jq -r '.[].shells[] | "\(.shell_id)\t\(.launched_this_turn)\t\(if .description == "" then .command else .description end)"' 2>/dev/null) || exit 0
 [[ -n "$live" ]] || exit 0
 
 state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-bg-shells"
@@ -70,13 +73,14 @@ for (const line of require("fs").readFileSync(0, "utf8").split("\n")) {
 process.stdout.write(last);' 2>/dev/null) || closing=""
 
 new=""
-while IFS=$'\t' read -r id desc || [[ -n "$id" ]]; do
+while IFS=$'\t' read -r id this_turn desc || [[ -n "$id" ]]; do
   [[ -n "$id" ]] || continue
   command grep -qxF "$id" "$marker" && continue
   if [[ -n "$closing" && "$closing" == *"$id"* ]]; then
     printf '%s\n' "$id" >>"$marker"
     continue
   fi
+  [[ "$this_turn" == "true" ]] && continue
   new+="$id"$'\t'"$desc"$'\n'
 done <<<"$live"
 [[ -n "$new" ]] || exit 0
