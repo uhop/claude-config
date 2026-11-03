@@ -61,7 +61,7 @@ Read all three to dedupe; write only to vault + claude-config.
 
    ```json
    {
-     "scan_window": {"since": "...", "start_iso": "...", "end_iso": "..."},
+     "scan_window": {"since": "...", "start_iso": "...", "end_iso": "...", "earliest_row_iso": "..."},
      "totals": {"corrections": N, "confirmations": N, "stuck_loops": N, "repeated_failures": N, "surprises": N, "multi_release": N, "release_alerts": N, "side_notes": N},
      "sessions_scanned": N,
      "automated": {"count": N, "included": false, "sessions": [{project, session_id, entrypoint, rows, first_turn}]},
@@ -237,8 +237,10 @@ Read all three to dedupe; write only to vault + claude-config.
    fixed error line recurs outside the window too: on 2026-09-22 the scan
    showed 3 and 4 occurrences of two signatures, and one `grep -l` over every
    transcript on the host showed 21 and 16 sessions. Before sizing such a
-   failure in the report, grep the host's transcripts for its error line and
-   report both numbers.
+   failure in the report, count its sessions across the host's transcripts and
+   report both numbers: match `tool_result` rows with `is_error`, read their
+   `tool_use` input, and leave out the running session's transcript, since a
+   search writes its own pattern there and the count runs one session high.
 
 3. **Dedupe against existing memory.** For each candidate signal, check whether the rule is already captured. Read in parallel:
    - `~/Open/claude-config/CLAUDE.md` (global rules)

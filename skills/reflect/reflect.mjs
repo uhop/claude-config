@@ -40,7 +40,8 @@ import {
   isSuppressed,
   isAutomatedEntrypoint,
   firstLine,
-  parseSideNote
+  parseSideNote,
+  windowShortfallDays
 } from './reflect-lib.mjs';
 
 if (!import.meta.main)
@@ -192,6 +193,7 @@ const liveSessions = [];
 // windowStartMs and get dropped at the row filter below — a skipped session
 // silently becoming an unreachable one.
 const liveFloorsMs = [];
+let earliestRowMs = null;
 
 // First user/assistant row timestamp, read from the head of the file rather
 // than the whole transcript (these run to tens of MB). null when undetermined.
@@ -410,6 +412,7 @@ for (const t of transcripts) {
     }
     const ts = row.timestamp ? Date.parse(row.timestamp) : null;
     if (ts && ts < windowStartMs) continue;
+    if (ts && (earliestRowMs === null || ts < earliestRowMs)) earliestRowMs = ts;
     // Parallel tool calls are NOT one row: the transcript streams each
     // tool_use as its own assistant row, seconds apart, so neither the row nor
     // the tool_result grouping recovers the batch. What does is contiguity —
@@ -810,7 +813,8 @@ const output = {
   scan_window: {
     since: SINCE,
     start_iso: new Date(windowStartMs).toISOString(),
-    end_iso: new Date(scanMs).toISOString()
+    end_iso: new Date(scanMs).toISOString(),
+    earliest_row_iso: earliestRowMs === null ? null : new Date(earliestRowMs).toISOString()
   },
   filters: {
     project: PROJECT_FILTER,
@@ -843,6 +847,15 @@ if (liveSessions.length > 0) {
       `\nStep 9 MUST pass --watermark="${output.state_watermark_iso}" — advancing ` +
       `past these sessions puts their already-written rows before the next ` +
       `window start, where the row filter drops them.\n`
+  );
+}
+
+const shortfall = windowShortfallDays(windowStartMs, earliestRowMs);
+if (shortfall > 0) {
+  process.stderr.write(
+    `WARNING: the window starts ${output.scan_window.start_iso} and its earliest row is ` +
+      `${output.scan_window.earliest_row_iso}, ${shortfall} days later. Older transcripts ` +
+      `are gone (cleanupPeriodDays) or there were no sessions: state the real span in the report.\n`
   );
 }
 

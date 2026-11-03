@@ -7,8 +7,14 @@
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import process from 'node:process';
 
 import {
+  windowShortfallDays,
   classifyUserTurn,
   errorSignature,
   isSuppressed,
@@ -476,4 +482,71 @@ test('a relayed side-agent note splits into its title, its text, and his own wor
     'Here is a note offered by a side agent: inline, no quote block'
   ])
     assert.equal(parseSideNote(other), null, other);
+});
+
+const DAY = 24 * 60 * 60 * 1000;
+
+test('window shortfall: days between the requested start and the earliest row', () => {
+  const start = Date.UTC(2026, 9, 1);
+  assert.equal(windowShortfallDays(start, null), 0, 'no row says nothing');
+  assert.equal(windowShortfallDays(start, start), 0);
+  assert.equal(windowShortfallDays(start, start + DAY - 1), 0, 'under a day is an idle night');
+  assert.equal(windowShortfallDays(start, start + DAY), 1);
+  assert.equal(windowShortfallDays(start, start + 30.5 * DAY), 30);
+});
+
+const scanOf = (t, ageDays, since, olderDays = null) => {
+  const home = mkdtempSync(path.join(tmpdir(), 'reflect-home-'));
+  t.after(() => rmSync(home, {recursive: true, force: true}));
+  const dir = path.join(home, '.claude/projects/p');
+  mkdirSync(dir, {recursive: true});
+  const at = new Date(Date.now() - ageDays * DAY);
+  const file = path.join(dir, 's.jsonl');
+  const row = {
+    type: 'user',
+    timestamp: at.toISOString(),
+    sessionId: 's',
+    cwd: home,
+    entrypoint: 'cli',
+    message: {role: 'user', content: 'hello'}
+  };
+  const rows = [
+    {...row, timestamp: new Date(at.getTime() + DAY / 2).toISOString()},
+    row,
+    {...row, timestamp: new Date(at.getTime() + DAY / 4).toISOString()}
+  ];
+  if (olderDays !== null)
+    rows.unshift({...row, timestamp: new Date(Date.now() - olderDays * DAY).toISOString()});
+  writeFileSync(file, rows.map(r => `${JSON.stringify(r)}\n`).join(''));
+  const touched = new Date(at.getTime() + DAY / 2);
+  utimesSync(file, touched, touched);
+  const script = new URL('reflect.mjs', import.meta.url).pathname;
+  const r = spawnSync('node', [script, `--since=${since}`], {
+    encoding: 'utf8',
+    env: {...process.env, HOME: home}
+  });
+  return {scan: JSON.parse(r.stdout), stderr: r.stderr, at: at.toISOString()};
+};
+
+test('a window wider than the transcripts on disk says so', t => {
+  const {scan, stderr, at} = scanOf(t, 3, '60d');
+  assert.equal(scan.scan_window.earliest_row_iso, at);
+  assert.match(stderr, /WARNING: the window starts .* earliest row .* 56 days later/);
+});
+
+test('a row older than the window is not the earliest row', t => {
+  const {scan, at} = scanOf(t, 3, '10d', 20);
+  assert.equal(scan.scan_window.earliest_row_iso, at);
+});
+
+test('a window the rows fill stays quiet', t => {
+  const {scan, stderr, at} = scanOf(t, 6.5, '7d');
+  assert.equal(scan.scan_window.earliest_row_iso, at);
+  assert.doesNotMatch(stderr, /earliest row/);
+});
+
+test('an empty window names no earliest row and warns of nothing', t => {
+  const {scan, stderr} = scanOf(t, 30, '1d');
+  assert.equal(scan.scan_window.earliest_row_iso, null);
+  assert.doesNotMatch(stderr, /earliest row/);
 });

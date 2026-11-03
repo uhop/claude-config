@@ -180,6 +180,7 @@
       }
     }
   },
+  "cleanupPeriodDays": 90,
   "effortLevel": "xhigh",
   "modelSettings": {
     "claude-opus-5-5": {

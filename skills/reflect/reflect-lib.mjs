@@ -290,6 +290,10 @@ export const isAutomatedEntrypoint = entrypoint =>
 // LINE, never the turn: a short ask over a long paste is the shape most worth
 // reading (2026-08-30), and a one-paragraph ruling on a single 326-character
 // line must be truncated, not hidden (2026-09-04).
+// Whole days the window asked for and no row reached: under a day is an idle night.
+export const windowShortfallDays = (startMs, earliestMs) =>
+  earliestMs === null ? 0 : Math.floor((earliestMs - startMs) / (24 * 60 * 60 * 1000));
+
 export const USER_TURN_LINE_MAX = 220;
 export const firstLine = (text, cap = USER_TURN_LINE_MAX) => {
   const line = (text ?? '').split('\n', 1)[0].trim();
