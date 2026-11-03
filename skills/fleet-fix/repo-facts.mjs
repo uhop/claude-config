@@ -13,7 +13,8 @@
 //                                           # (shared detector for wiki-organize,
 //                                           # document-wiki-page, ai-docs-update)
 //
-// Exit 0 (facts are facts) · 2 usage. Read-only; no network.
+// Exit 0: facts are facts, and a repository with no package.json has fewer of them.
+// Read-only; no network.
 
 import {execFileSync} from 'node:child_process';
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
@@ -29,11 +30,8 @@ if (!import.meta.main)
 const args = process.argv.slice(2);
 const contextOnly = args.includes('--context');
 const root = path.resolve(args.find(a => !a.startsWith('--')) ?? '.');
-if (!existsSync(path.join(root, 'package.json'))) {
-  console.error(`no package.json in ${root}`);
-  process.exit(2);
-}
-const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+const hasPackage = existsSync(path.join(root, 'package.json'));
+const pkg = hasPackage ? JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) : {};
 
 const run = (cmd, argv) => {
   try {
@@ -50,6 +48,14 @@ const exists = rel => existsSync(path.join(root, rel));
 const read = rel => (exists(rel) ? readFileSync(path.join(root, rel), 'utf8') : null);
 const list = rel => (exists(rel) ? readdirSync(path.join(root, rel)) : []);
 
+// A clone that never ran `git submodule update --init` holds an empty folder, which
+// would read as a project with an empty wiki.
+const isInitialized = rel =>
+  !(run('git', ['submodule', 'status', '--', rel]) ?? '').startsWith('-') && list(rel).length > 0;
+const submodules = [
+  ...(read('.gitmodules') ?? '').matchAll(/path\s*=\s*(.+)\n\s*url\s*=\s*(.+)/g)
+].map(m => ({path: m[1].trim(), url: m[2].trim(), initialized: isInitialized(m[1].trim())}));
+
 // --- context (the shared detector) -------------------------------------------
 const rawRepoUrl =
   pkg.repository?.url ??
@@ -63,7 +69,11 @@ const ownerRepo =
 const defaultBranch =
   run('git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])?.replace(/^origin\//, '') ??
   run('git', ['symbolic-ref', '--short', 'HEAD']);
-const wikiDir = ['wiki', 'external_wiki'].find(exists) ?? null;
+const WIKI_DIRS = ['wiki', 'external_wiki'];
+const wikiDir =
+  WIKI_DIRS.find(exists) ?? WIKI_DIRS.find(d => submodules.some(s => s.path === d)) ?? null;
+const wikiInitialized =
+  wikiDir === null ? null : (submodules.find(s => s.path === wikiDir)?.initialized ?? true);
 
 const context = {
   name: pkg.name ?? null,
@@ -72,6 +82,7 @@ const context = {
   repo_url_raw: rawRepoUrl ?? null,
   default_branch: defaultBranch ?? null,
   wiki_dir: wikiDir,
+  wiki_initialized: wikiInitialized,
   license: pkg.license ?? null,
   private: pkg.private ?? false
 };
@@ -130,9 +141,11 @@ facts.files = {
 }
 
 // --- package.json surfaces ----------------------------------------------------
-{
+if (!hasPackage) facts.pkg = {present: false};
+else {
   const bins = typeof pkg.bin === 'string' ? {[pkg.name]: pkg.bin} : (pkg.bin ?? {});
   facts.pkg = {
+    present: true,
     files: pkg.files ?? null,
     exports: pkg.exports ?? null,
     scripts: Object.keys(pkg.scripts ?? {}),
@@ -198,9 +211,7 @@ facts.git = {
     ])
       ?.split('\n')
       .filter(Boolean) ?? [],
-  submodules: [...(read('.gitmodules') ?? '').matchAll(/path\s*=\s*(.+)\n\s*url\s*=\s*(.+)/g)].map(
-    m => ({path: m[1].trim(), url: m[2].trim()})
-  )
+  submodules
 };
 
 // --- CI workflows ---------------------------------------------------------------
@@ -248,10 +259,13 @@ facts.workflows = list('.github/workflows')
 }
 
 // --- wiki surfaces -----------------------------------------------------------------
-if (wikiDir) {
+if (wikiDir === null) facts.wiki = {dir: null};
+else if (!wikiInitialized) facts.wiki = {dir: wikiDir, initialized: false};
+else {
   const home = read(`${wikiDir}/Home.md`) ?? '';
   facts.wiki = {
     dir: wikiDir,
+    initialized: true,
     home_present: home !== '',
     home_title: home.match(/^#\s+(.+)$/m)?.[1] ?? null,
     home_has_search_section: /^#{1,2}\s+Search\b/m.test(home),
@@ -269,7 +283,7 @@ if (wikiDir) {
       f => f.endsWith('.md') && statSync(path.join(root, wikiDir, f)).mtimeMs > indexMtime
     );
   }
-} else facts.wiki = {dir: null};
+}
 
 // --- LICENSE file ------------------------------------------------------------------
 {

@@ -48,6 +48,11 @@ would drift from the bundle the first time the bundle changes.
    ~/.claude/skills/fleet-fix/repo-facts.mjs   # one JSON fact sheet, read-only, no verdicts
    ```
 
+   `wiki.initialized: false` means the wiki was never checked out on this host, so
+   the sheet could read nothing from it: run `git submodule update --init <wiki.dir>`
+   and collect again before judging the wiki slices. `pkg.present: false` means no
+   `package.json`, so the slices that need one have no precondition.
+
    The sheet carries facts only — file inventory, retired-artifact hits
    (probed per-item), package.json surfaces, sidecar pairing, tags,
    submodule URLs, workflow permissions, dependabot shape, README/wiki
