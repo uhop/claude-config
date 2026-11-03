@@ -266,6 +266,19 @@ else
   [[ $rc -eq 2 ]] && ok || bad "bash: cd into held through a variable must block (rc=$rc)"
   bashrun "R=$W; command sed -i 's/a/b/' \"\$R/a.txt\"" /tmp "$S2"
   [[ $rc -eq 2 ]] && ok || bad "bash: a write into held through a variable must block (rc=$rc)"
+  # 13c. a write behind shell syntax or `xargs` is a write; a subshell's cd ends with it (2026-11-02)
+  bashrun "for f in a; do command sed -i 's/a/b/' a.txt; done" "$W" "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: sed -i in a loop must block (rc=$rc)"
+  bashrun "if true; then command sed -i 's/a/b/' a.txt; fi" "$W" "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: sed -i behind then must block (rc=$rc)"
+  bashrun "xargs command rm $W/a.txt" /tmp "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: rm behind xargs must block (rc=$rc)"
+  bashrun "(cd /tmp && true); command sed -i 's/a/b/' a.txt" "$W" "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: a subshell's cd must not move the write out of held (rc=$rc)"
+  bashrun "(cd $W && true); command sed -i 's/a/b/' a.txt" /tmp "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: a subshell's cd must not move the write into held (rc=$rc)"
+  bashrun "find . -name x -exec rm {} \\;" "$W" "$S2"
+  [[ $rc -eq 0 ]] && ok || bad "bash: find's placeholder names no path (rc=$rc)"
   # 14. linked worktrees of a held repo are never blocked — Edit or Bash (the sanctioned path)
   WT=$(mktemp -d) && rmdir "$WT" && git -C "$W" worktree add -q "$WT" -b wt-test 2>/dev/null
   run "$GATE" "$(jq -nc --arg f "$WT/a.txt" --arg s "$S2" '{tool_name:"Edit",tool_input:{file_path:$f},session_id:$s,cwd:"/tmp"}')"

@@ -213,6 +213,45 @@ check ALLOW 'ls -l'
 HOOK=$real_hook
 rm -rf "$broken"
 
+# ── a reserved verb behind shell syntax, `xargs`, or `find -exec` (2026-11-02, D43) ──
+for verb in 'git push origin main' 'git -C /tmp/x push' 'git tag v1' 'git -C /tmp/x tag v1' 'npm publish' 'npm --prefix /tmp/x publish' 'git clean -fd'; do
+  check DENY "for d in a; do $verb; done"
+  check DENY "if true; then $verb; fi"
+  check DENY "if true; then :; else $verb; fi"
+  check DENY "while true; do $verb; break; done"
+  check DENY "! $verb"
+  check DENY "f() { $verb; }; f"
+  check DENY "case x in x) $verb;; esac"
+  check DENY "xargs $verb"
+  check DENY "find . -exec $verb \\;"
+done
+check DENY  'parallel git push ::: a'
+check DENY  'parallel -j 4 git -C /tmp/x push ::: a'
+check DENY  'watch git push'
+check DENY  'watch -n 5 git -C /tmp/x push'
+check DENY  'watch -d git push'
+check DENY  'ssh host git push'
+check DENY  "ssh host 'git push'"
+check DENY  'ssh host "cd /tmp/x && git push"'
+check DENY  'ssh -i k -p 22 host git -C /tmp/x push'
+check DENY  'ssh host npm publish'
+check ALLOW 'ssh host git log -1'
+check ALLOW "ssh host 'git -C /tmp/x status && git log --grep push'"
+check ALLOW 'ssh -o BatchMode=yes host'
+check ALLOW 'ssh git push'
+check ALLOW 'watch git status'
+check ALLOW 'parallel echo git push ::: a'
+check DENY  'xargs sudo git push'
+check DENY  'xargs -n 1 env A=1 git -C /tmp/x push'
+check DENY  'find . -exec nice git push \\;'
+check ALLOW 'for d in a; do git log -1; done'
+check ALLOW 'if git status; then echo push; fi'
+check ALLOW 'if true; then echo "git push"; fi'
+check ALLOW 'echo do git push'
+check ALLOW 'xargs echo git push'
+check ALLOW "xargs grep -l 'git push'"
+check ALLOW 'find . -name git -exec echo push \\;'
+check ALLOW "find . -name 'git push'"
 # ── the push refusal names the local equivalent (2026-11-02, D43) ──
 jq -nc --arg c 'git -C /tmp/x push /tmp/y main' '{tool_name:"Bash", tool_input:{command:$c}}' | bash "$HOOK" 2>&1 >/dev/null | grep -q 'fetch <src> <ref>:<ref>'
 [ "${PIPESTATUS[2]}" -eq 0 ] && ((++pass)) || { ((++fail)); echo "FAIL  the push refusal must name the fetch"; }

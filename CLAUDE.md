@@ -775,10 +775,10 @@ whether I hold it or am **subordinate** to another cwd session; subordinate mean
 go worktree + handoff, and taking the lease is _his_ act, in the UI only (`/ui/agents.html`, ruled
 2026-09-19): on `"take the lease"`, point him there, never `force` a release yourself. A cwd lease
 unrenewed for an hour passes to the next session that starts in the repo, and the gate says so once
-when it happens to an idle session of mine. Committing in his checkouts and pushing stay his; a
-disposable worktree's commit only carries a handoff's patch ([[projects/claude-config/decisions]]
-D43). **Inside a Herdr session (`HERDR_ENV=1`), open the finished worktree for his review yourself**
-— `herdr worktree open --cwd <repo-root> --branch <topic> --label <topic> --no-focus` — instead of
+when it happens to an idle session of mine. Committing in his main checkouts and pushing stay his;
+work in a local linked worktree is unrestricted ([[projects/claude-config/decisions]] D43). **Inside
+a Herdr session (`HERDR_ENV=1`), open the finished worktree for his review yourself** —
+`herdr worktree open --cwd <repo-root> --branch <topic> --label <topic> --no-focus` — instead of
 handing him the command; `--cwd` must name the _sibling repo_, since herdr resolves worktrees
 against the caller-pane's repo otherwise (hit 2026-08-09: `worktree_not_found` from a blog-hugo
 pane). `--no-focus` so his focus stays put; he switches when ready. (Eugene 2026-08-09: _"you can

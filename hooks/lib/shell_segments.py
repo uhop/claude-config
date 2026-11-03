@@ -3,8 +3,11 @@
 One parser for three gates (vault-lease-gate.sh, git-commit-gate.sh,
 destructive-op-gate.sh; D14: a shape added here is a shape all see). Heredoc bodies are data unless a shell
 receives them; segments split on unquoted `;`, `|`, `||`, `&&` and newlines;
-tokens come from shlex with the wrapper prefixes skipped (assignments,
-`command`, `env`, `timeout`, ...); `git_verb` walks git's global options;
+tokens come from shlex with the wrapper prefixes and the shell syntax heading
+a segment skipped (assignments, `command`, `env`, `timeout`, `do`, `then`, `!`,
+...); `run_tokens` goes past `xargs`, `parallel`, `watch`, and `find -exec`;
+`ssh_command` reads a remote command for the gate it binds; `Subshells` ends a
+subshell's `cd` with it; `git_verb` walks git's global options;
 `read_assignment` and `resolve_path` follow a path through the variables the
 command assigns. Anything this cannot read, a caller must treat by its own
 default: the lease gate fails open, the commit gate denies an unknown site and
@@ -22,6 +25,16 @@ ASSIGN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=')
 VAR_RE = re.compile(r'\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))')
 MKTEMP_RE = re.compile(r'\$\(\s*(?:command\s+)?mktemp\b([^()]*)\)')
 DECLARERS = {'export', 'local', 'readonly', 'declare', 'typeset'}
+KEYWORDS = {'do', 'then', 'else', 'elif', 'if', 'while', 'until', '!', '{', '('}
+CASE_ARM = re.compile(r'^[^()]*\)$')
+REBINDERS = {'read', 'unset'}
+RUNNER_VALUE_OPTS = {
+    'xargs': {'-I', '-n', '-P', '-L', '-s', '-d', '-E', '-a'},
+    'parallel': {'-j', '-n', '-N', '-P', '-a', '-I'},
+    'watch': {'-n', '--interval'},
+}
+SSH_VALUE_OPTS = {'-i', '-p', '-o', '-l', '-J', '-F', '-L', '-R', '-D', '-b', '-c', '-E', '-m', '-O', '-S', '-w', '-W'}
+EXEC_FLAGS = {'-exec', '-execdir', '-ok', '-okdir'}
 _fresh = itertools.count()
 PREFIX = {'command', 'nice', 'time', 'exec', 'sudo', 'doas', 'builtin', 'nohup'}
 SUBST_RE = re.compile(r'\$\(([^()]*)\)|`([^`]*)`')
@@ -136,11 +149,22 @@ def command_tokens(seg):
     if not seg:
         return []
     try:
-        toks = shlex.split(seg)
+        return _past_wrappers(shlex.split(seg))
     except ValueError:
         return []
-    while toks and (ASSIGN.match(toks[0]) or toks[0] in PREFIX):
-        toks = toks[1:]
+
+
+def _past_wrappers(toks):
+    while toks:
+        t = toks[0]
+        if ASSIGN.match(t) or t in PREFIX or t in KEYWORDS or t.endswith('()') or CASE_ARM.match(t):
+            toks = toks[1:]
+        elif t == 'function' or toks[1:2] == ['()']:
+            toks = toks[2:]
+        elif t == 'case' and toks[2:3] == ['in']:
+            toks = toks[3:]
+        else:
+            break
     if toks and toks[0] == 'timeout':
         toks = toks[2:]
     if toks and toks[0] == 'env':
@@ -148,6 +172,48 @@ def command_tokens(seg):
         while toks and (ASSIGN.match(toks[0]) or toks[0].startswith('-')):
             toks = toks[1:]
     return toks
+
+
+def run_tokens(seg):
+    """command_tokens, past `xargs`, `parallel`, `watch`, or `find -exec` to the command they run."""
+    toks = command_tokens(seg)
+    name = os.path.basename(toks[0]) if toks else ''
+    if name in RUNNER_VALUE_OPTS:
+        k = 1
+        while k < len(toks) and toks[k].startswith('-'):
+            k += 2 if toks[k] in RUNNER_VALUE_OPTS[name] else 1
+        return _past_wrappers(toks[k:])
+    if name in ('find', 'bfs'):
+        for k, t in enumerate(toks):
+            if t in EXEC_FLAGS:
+                rest = toks[k + 1:]
+                return _past_wrappers(rest[:-1] if rest and rest[-1] in (';', '+') else rest)
+    return toks
+
+
+def ssh_command(args):
+    """The remote command of `ssh <args>` as one string; '' when it opens a shell."""
+    k = 0
+    while k < len(args) and args[k].startswith('-'):
+        k += 2 if args[k] in SSH_VALUE_OPTS else 1
+    return ' '.join(args[k + 1:])
+
+
+class Subshells:
+    """A walker's directory across segments: a `cd` inside `( … )` ends with it."""
+
+    def __init__(self):
+        self.saved, self.closing = [], 0
+
+    def enter(self, seg, eff):
+        for _ in range(self.closing):
+            if self.saved:
+                eff = self.saved.pop()
+        masked = re.sub(r'\\.', '', mask_quoted(seg))
+        delta = masked.count('(') - masked.count(')')
+        self.saved += [eff] * max(delta, 0)
+        self.closing = max(-delta, 0)
+        return eff
 
 
 def command_name(seg):
@@ -289,6 +355,20 @@ def read_assignment(seg, eff, env):
         toks = shlex.split(text)
     except ValueError:
         toks = text.split()
+    if toks and toks[0] in KEYWORDS:
+        # Conditional: the value may or may not be in force after it.
+        for t in toks[1:]:
+            if not ASSIGN.match(t):
+                break
+            env.pop(t.split('=', 1)[0], None)
+        return False
+    if toks[:1] in (['for'], ['select']) and len(toks) > 1:
+        env.pop(toks[1], None)
+        return False
+    if toks and toks[0] in REBINDERS:
+        for t in toks[1:]:
+            env.pop(t, None)
+        return False
     if toks and toks[0] in DECLARERS:
         toks = toks[1:]
     k = 0

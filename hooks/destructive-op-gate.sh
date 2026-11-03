@@ -343,7 +343,7 @@ reserved_verbs() {
   CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import parse_heredocs, heredoc_runs, segments, command_tokens, git_split, substitutions, SHELLS
+from shell_segments import parse_heredocs, heredoc_runs, segments, run_tokens, ssh_command, git_split, substitutions, SHELLS
 
 NPM_VALUE_OPTS = {'-C', '-w'}
 
@@ -379,7 +379,7 @@ def reserved(cmd, depth=0):
     for s in substitutions(text):
         out += reserved(s, depth + 1)
     for seg in segments(text):
-        toks = command_tokens(seg)
+        toks = run_tokens(seg)
         if not toks:
             continue
         name, args = os.path.basename(toks[0]), toks[1:]
@@ -392,6 +392,8 @@ def reserved(cmd, depth=0):
                 out.append('git clean')
         elif name == 'npm' and npm_verb(args) == 'publish':
             out.append('npm publish')
+        elif name == 'ssh':
+            out += reserved(ssh_command(args), depth + 1)
         elif name in SHELLS:
             for a in args:
                 if not a.startswith('-'):

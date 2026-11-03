@@ -344,7 +344,7 @@ fi
 roots=$(CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$cwd" "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib" <<'PY' 2>/dev/null
 import os, re, sys
 sys.path.insert(0, sys.argv[2])
-from shell_segments import strip_heredocs, segments, command_tokens, git_verb, read_assignment, resolve_path, checkout_of
+from shell_segments import strip_heredocs, segments, run_tokens, git_verb, read_assignment, resolve_path, checkout_of, Subshells
 
 cmd = os.environ.get('CMD', '')
 base = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
@@ -368,18 +368,19 @@ NO_VALUE_O = {'grep', 'egrep', 'fgrep', 'rg', 'ug', 'ugrep', 'ls', 'ps', 'find',
 env = {}
 
 def resolve(tok, eff):
-    if not tok or tok in ('-', '/dev/null') or tok.startswith(('&', '<')):
+    if not tok or tok in ('-', '/dev/null') or tok.startswith(('&', '<')) or '{}' in tok:
         return None
     for ch in '*?[':
         if ch in tok:
             tok = tok[:tok.index(ch)]
     return resolve_path(tok, eff, env)
 
-targets, eff = [], base
+targets, eff, scope = [], base, Subshells()
 for seg in segs:
+    eff = scope.enter(seg, eff)
     if read_assignment(seg, eff, env):
         continue
-    toks = command_tokens(seg)
+    toks = run_tokens(seg)
     if not toks:
         continue
     rest, j = [], 0

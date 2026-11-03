@@ -15,9 +15,9 @@
 #
 # A scratch repository needs no marker: one under the temp or the cache directory
 # that this command's `git init` or `git clone` made, or that is on disk, since a
-# commit there reaches none of Eugene's repositories. Neither does a linked
-# worktree, anywhere (2026-11-02, claude-config D43): the worktree-and-handoff
-# protocol commits there, and the lease gate has never blocked one.
+# commit there reaches none of Eugene's repositories. A linked worktree needs
+# none either, anywhere and on any branch (2026-11-02, claude-config D43): local
+# worktree work is unrestricted, and what stays refused is the push.
 #
 # Background: Claude Code's permissions.deny is absolute (a more-local
 # allow rule never overrides it), so the old `Bash(git commit:*)` deny
@@ -45,8 +45,9 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # both present as words, nothing to decide. What passes it is read as a command by
 # the shared parser (hooks/lib/shell_segments.py, the lease gate's): the verb
 # counts when it heads a segment — after `cd foo &&`, wrappers, assignments,
-# git's own `-C`/`-c` — or sits in an executed context: a `$(...)`, a
-# `bash -c` string, a heredoc a shell receives, an unquoted heredoc's
+# shell keywords, `xargs`, `parallel`, `watch`, `find -exec`, git's own `-C`/`-c`
+# — or sits in an
+# executed context: a `$(...)`, a `bash -c` string, a heredoc a shell receives, an unquoted heredoc's
 # substitution. A heredoc body `cat` receives, a quoted string, a `git log
 # --grep` argument are data and pass (2026-09-06: the substring alone blocked
 # two vault writes whose payload mentioned the verb in prose). If the parser
@@ -74,8 +75,8 @@ commit_sites() {
   CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" "$cwd" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import (strip_heredocs, segments, command_tokens, git_split, substitutions, SHELLS,
-                            HOME, read_assignment, resolve_path, checkout_of)
+from shell_segments import (parse_heredocs, heredoc_runs, segments, run_tokens, git_split, substitutions, SHELLS,
+                            HOME, read_assignment, resolve_path, checkout_of, Subshells)
 
 PLACES = {os.path.realpath(p) for p in (os.environ.get('TMPDIR'), '/tmp',
                                         os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache')) if p}
@@ -118,20 +119,21 @@ def sites(cmd, eff, depth=0):
     if depth > 3:
         return [None]
     out = []
-    text, bodies = strip_heredocs(cmd)
-    for prefix, body, quoted in bodies:
-        toks = command_tokens(prefix)
-        if toks and os.path.basename(toks[0]) in SHELLS:
+    text, bodies = parse_heredocs(cmd)
+    for prefix, body, quoted, rest in bodies:
+        if heredoc_runs(prefix, rest, text):
             out += sites(body, eff, depth + 1)
         if not quoted:
             for s in substitutions(body):
                 out += sites(s, eff, depth + 1)
     for s in substitutions(text):
         out += sites(s, eff, depth + 1)
+    scope = Subshells()
     for seg in segments(text):
+        eff = scope.enter(seg, eff)
         if read_assignment(seg, eff, env):
             continue
-        toks = command_tokens(seg)
+        toks = run_tokens(seg)
         if not toks:
             continue
         name, args = os.path.basename(toks[0]), toks[1:]
