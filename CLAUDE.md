@@ -152,6 +152,10 @@ dry-run the handed command verbatim, and state the expected count beside it
 ([[projects/agent-workflow/feedback]] § A command handed to the user runs in his aliased interactive
 shell).
 
+**`$!` after a backgrounded shell function is a subshell's PID, and `env`, `grep`, `find`, and `du`
+are functions here.** `kill $!` then leaves the real process running, so start a process you will
+signal with `command env … &`, and read `/proc/$P/cmdline` before signaling it (vault-storage D475).
+
 ## Scratch files
 
 Don't hardcode `/tmp/<name>` for scratch — collides with stale files from prior/parallel sessions
@@ -596,6 +600,12 @@ today's before wording its recency at resume; sessions switch several times a da
 - **Experiments, tests, and benchmarks belong to phases:** experiments while finding a shape, tests
   once it exists, benchmarks when the shape is right and the speed is not. Match the proposal to the
   phase ([[projects/agent-workflow/feedback]] § Eugene's three working artifacts).
+- **A Backlog worked from a plan note is re-clustered at a cluster boundary, on a new direction, or
+  when he asks, and you say when one is due.** The plan lives under `projects/<name>/plans/`, and
+  each arc is one commit. Re-read every item he has not postponed in his own words, list a
+  demand-gated item with its trigger, keep the ordering rule the project's own, and replace the plan
+  by supersession (vault skill § Note format; [[projects/vault-storage/feedback]] § Re-cluster and
+  re-order the Backlog).
 - **Collections run by hand or on an event, never on a schedule.** A recurring step goes into a
   playbook he runs (`playbash-daily`, `playbash-weekly`) or fires from the event that needs it; no
   cron entries, no scheduled routines ([[projects/agent-workflow/feedback]] § Collections run by
