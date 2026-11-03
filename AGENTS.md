@@ -36,10 +36,9 @@ node install.mjs --apply   # symlink into ~/.claude/
   such as `host1`.
 - **A skill's mechanical steps are scripts.** A step whose outcome its inputs determine belongs in a
   helper script shipped with the skill, and `SKILL.md` starts where judgment starts.
-- **A gate's edit goes through a scratch copy.** The auto-mode classifier refuses edits to
-  `hooks/destructive-op-gate.sh` and `hooks/git-commit-gate.sh` as self-modification. Build the
-  change on a copy of `hooks/`, and hand Eugene a patch, checked with `git apply --check`, with the
-  pass count to expect.
+- **Edit a gate in place, one working step at a time.** The session's lease permits it, and a hook
+  is live as soon as it changes, so add a function before its call and run `bash -n` and the suite
+  straight after. If the auto-mode classifier refuses an edit, revert what landed and tell Eugene.
 - **Read a script before you import or run it.** Check that one parses with `node --check` or
   `bash -n`. The CLI scripts throw on import (`import.meta.main`).
 

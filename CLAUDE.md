@@ -30,10 +30,11 @@ answers _which_, don't hardcode the list; a scratch repository under the temp or
 a linked worktree need none, and a site the gate cannot read is denied). `push` / `tag` / `publish`
 are in `settings.json`'s absolute `permissions.deny` — a hook can't reopen a deny — and since that
 deny matches a literal prefix, `hooks/destructive-op-gate.sh` denies the spellings it misses (git's
-and npm's global options before the verb: `git -C <dir> tag` ran on 2026-09-29), so they're
-impossible **everywhere, on every repo, always**; `npm publish` also needs interactive 2FA the agent
-doesn't have. So: on the verb, in a marked repo, just commit; otherwise the action can't happen —
-don't narrate the gate, don't ask.
+and npm's global options before the verb: `git -C <dir> tag` ran on 2026-09-29), so a typed one is
+refused **everywhere, on every repo, always**, and the dotfiles' global `pre-push` hook stops an
+agent session's push to a network remote however it starts. Neither is a sandbox. `npm publish` also
+needs interactive 2FA the agent doesn't have. So: on the verb, in a marked repo, just commit;
+otherwise the action can't happen — don't narrate the gate, don't ask.
 
 **"Published" is a fact, and the registry lags it.** A successful `npm publish` now ends with _"npm
 notice Your package is being processed and may take a few minutes to become available"_, so

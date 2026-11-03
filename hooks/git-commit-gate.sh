@@ -11,7 +11,8 @@
 # that the cwd alone decided). A variable the command assigns is followed. A
 # site that stays unknown is denied, since it could be any repository
 # (2026-11-02; before that it fell back to the session's cwd, which let
-# `cd <unmarked> && git -C "$WT" commit` land from a marked one).
+# `cd <unmarked> && git -C "$WT" commit` land from a marked one). A commit over
+# `ssh` is one: no marker on another host can be read from here (D44).
 #
 # A scratch repository needs no marker: one under the temp or the cache directory
 # that this command's `git init` or `git clone` made, or that is on disk, since a
@@ -75,8 +76,8 @@ commit_sites() {
   CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" "$cwd" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import (parse_heredocs, heredoc_runs, segments, run_tokens, git_split, substitutions, SHELLS,
-                            HOME, read_assignment, resolve_path, checkout_of, Subshells)
+from shell_segments import (parse_heredocs, heredoc_runs, segments, run_tokens, ssh_command, git_split, substitutions,
+                            SHELLS, HOME, read_assignment, resolve_path, checkout_of, Subshells)
 
 PLACES = {os.path.realpath(p) for p in (os.environ.get('TMPDIR'), '/tmp',
                                         os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache')) if p}
@@ -152,6 +153,8 @@ def sites(cmd, eff, depth=0):
         elif name in SHELLS:
             for a in nonflag:
                 out += sites(a, eff, depth + 1)
+        elif name == 'ssh':
+            out += [None for _ in sites(ssh_command(args), None, depth + 1)]
     return out
 
 for site in sites(os.environ.get('CMD', ''), sys.argv[2]):
@@ -168,9 +171,9 @@ while IFS= read -r site || [[ -n "$site" ]]; do
   [[ -z "$site" ]] && continue
   if [[ "$site" == '?' ]]; then
     cat >&2 <<EOF
-git commit denied by ~/.claude/hooks/git-commit-gate.sh — a variable this command does not assign names the directory the commit runs in, so it could be any repository.
+git commit denied by ~/.claude/hooks/git-commit-gate.sh — it cannot read the directory the commit runs in, so it could be any repository: a variable this command does not assign, or another host over ssh.
 
-Spell the path, or assign the variable in the same command.
+Spell the path, or assign the variable in the same command. Commit on another host from a session there.
 EOF
     exit 2
   fi
