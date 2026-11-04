@@ -67,6 +67,7 @@ import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import {fileItem as fileQueueItem, SOURCE_HELP, SOURCE_RE} from '../vault/queue-items.mjs';
+import {projectOf} from '../vault/vault-project.mjs';
 import {vaultSettings} from '../vault/vault-settings.mjs';
 
 if (!import.meta.main)
@@ -436,11 +437,7 @@ const resolveCwd = () => {
   if (!remote.ok || !remote.out) return {skipped: true, reason: 'no_remote', root};
   const gh = parseGithubRemote(remote.out);
   if (!gh) return {skipped: true, reason: 'not_github', remote: remote.out, root};
-  let project = opts.project ?? null;
-  const marker = path.join(root, '.claude', 'vault-project');
-  if (!project && existsSync(marker)) project = readFileSync(marker, 'utf8').trim();
-  if (!project) project = path.basename(root);
-  return {owner: gh.owner, name: gh.name, project, root};
+  return {owner: gh.owner, name: gh.name, project: opts.project || projectOf(root), root};
 };
 
 const listFleet = owner => {

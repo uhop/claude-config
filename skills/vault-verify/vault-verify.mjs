@@ -12,14 +12,15 @@
 //   describe other codebases or history and are skipped by default.
 //
 // Project resolves as check-drift does: the argument, else .claude/vault-project,
-// else the repository's directory name. Notes come from /sections under
+// else the main checkout's directory name. Notes come from /sections under
 // projects/<name>/, archives and state.md excluded unless --all. Exit 1 on
 // findings, 0 clean, 2 on a git or API error. Exits non-zero — run it solo or
 // guard with `|| true` in a parallel Bash batch.
 
 import {execFileSync} from 'node:child_process';
 import {existsSync, readFileSync, readdirSync} from 'node:fs';
-import {basename, dirname, join} from 'node:path';
+import {dirname, join} from 'node:path';
+import {checkoutOf, projectOf} from '../vault/vault-project.mjs';
 import {extractClaims, verifyClaims} from './verify-claims.mjs';
 
 if (!import.meta.main)
@@ -57,11 +58,8 @@ try {
   console.error('vault-verify: not inside a git repository — run it from the project directory');
   process.exit(2);
 }
-const projectFile = join(root, '.claude', 'vault-project');
-const PROJECT =
-  projectArg ??
-  (existsSync(projectFile) ? readFileSync(projectFile, 'utf8').trim() : basename(root));
-const SIBLINGS = flag('--siblings', dirname(root));
+const PROJECT = projectArg ?? projectOf(root);
+const SIBLINGS = flag('--siblings', dirname(checkoutOf(root)));
 
 // --- facts from git, one run each ---------------------------------------
 const tracked = new Set(git(root, 'ls-files', '-z').split('\0').filter(Boolean));

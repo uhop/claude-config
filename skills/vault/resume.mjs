@@ -13,13 +13,14 @@ import {execFile} from 'node:child_process';
 import {closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync} from 'node:fs';
 import {readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {homedir, hostname, tmpdir} from 'node:os';
-import {basename, dirname, join} from 'node:path';
+import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
 import {client, expectJson, listItems, owedItems} from './queue-items.mjs';
 import {owedOf} from './resume-owed.mjs';
 import {styledOf, withoutControls} from './resume-style.mjs';
+import {projectOf} from './vault-project.mjs';
 
 const script = relative => fileURLToPath(new URL(relative, import.meta.url));
 const FLEET = script('../fleet-status/fleet-status.mjs');
@@ -550,17 +551,9 @@ const lastMessageOfUnlogged = p => {
   }
 };
 
-/** A linked worktree's folder says nothing of its project, so its main checkout names it. */
-export const checkoutName = (top, commonDir) =>
-  basename(commonDir) === '.git' ? basename(dirname(commonDir)) : basename(top);
-
 const projectOfCwd = async () => {
   const root = await run('git', ['rev-parse', '--show-toplevel']);
-  const top = root.code === 0 ? root.stdout.trim() : process.cwd();
-  const named = join(top, '.claude/vault-project');
-  if (existsSync(named)) return readFileSync(named, 'utf8').trim();
-  const common = await run('git', ['rev-parse', '--path-format=absolute', '--git-common-dir']);
-  return common.code === 0 ? checkoutName(top, common.stdout.trim()) : basename(top);
+  return projectOf(root.code === 0 ? root.stdout.trim() : process.cwd());
 };
 
 const main = async () => {

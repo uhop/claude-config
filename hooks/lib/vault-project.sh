@@ -2,7 +2,7 @@
 # Sourced by the hooks that name a vault project.
 
 # The project of the checkout at $1: `.claude/vault-project`, else its main checkout's folder, since a
-# linked worktree's folder says nothing of its project. `skills/vault/resume.mjs` reads it the same way.
+# linked worktree's folder says nothing of its project. `skills/vault/vault-project.mjs` reads it the same way.
 vault_project_of() {
   local common
   if [[ -f "$1/.claude/vault-project" ]]; then

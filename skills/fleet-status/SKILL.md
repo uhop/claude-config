@@ -87,7 +87,7 @@ WORK=$(mktemp -d)
 ```
 
 - `--cwd` resolves the repository from `origin`, and the vault project from `--project`, a
-  `.claude/vault-project` file at the repository root, or the directory name — the same order
+  `.claude/vault-project` file at the repository root, or the main checkout's directory name — the same order
   `check-drift.sh` uses. **Safety gate:** a remote that isn't github.com, no remote, or a private
   repository the project's `trackers:` does not name (read from the repository metadata; `--fleet`
   applies it at enumeration) writes `{skipped: true, reason}` and exits `0`. Say nothing about it

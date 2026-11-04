@@ -7,7 +7,6 @@ import {statSync, utimesSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {
-  checkoutName,
   collectGithub,
   digestOf,
   intakeOf,
@@ -485,12 +484,6 @@ test('what a digest could not read is a line in Open, and the rest still prints'
   const text = digestOf(inputs({items: null, problems: ['The queue could not be read: 501']}));
   assert.ok(text.includes('## Open\nThe queue could not be read: 501'));
   assert.ok(text.includes('## How we finished'));
-});
-
-test('a linked worktree is named by its main checkout, a plain checkout by its own folder', () => {
-  assert.equal(checkoutName('/cache/wt', '/home/u/Open/claude-config/.git'), 'claude-config');
-  assert.equal(checkoutName('/home/u/Open/x', '/home/u/Open/x/.git'), 'x');
-  assert.equal(checkoutName('/srv/x', '/srv/bare.git'), 'x', 'a bare repository names nothing');
 });
 
 test('the script runs by its path, as the vault skill calls it', () => {

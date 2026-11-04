@@ -33,7 +33,8 @@ existed, a path deleted three weeks ago (agent-workflow queue, filed
 ```
 
 Project name resolves as check-drift's does: the argument, else
-`.claude/vault-project`, else the repository's directory name. Exit `0`
+`.claude/vault-project`, else the main checkout's directory name, which a
+linked worktree shares. Exit `0`
 clean, `1` on findings, `2` on a git or API error. It exits non-zero — run
 it solo or guard with `|| true` in a parallel Bash batch.
 
