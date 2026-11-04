@@ -6,6 +6,8 @@
 
 set -uo pipefail
 
+unset CLAUDE_CODE_ENTRYPOINT
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIGEST="$HERE/vault-resume-digest.sh"
 PREPARE="$HERE/vault-resume-prepare.sh"
@@ -23,7 +25,7 @@ cat >"$stub" <<STUB
 #!/usr/bin/env bash
 echo "\$*" >"$args"
 [[ -z "\${STUB_FAIL:-}" ]] || exit 1
-echo "# the digest"
+echo '{"digest": "# the digest", "styled": "the styled digest"}'
 STUB
 chmod +x "$stub"
 
@@ -51,8 +53,14 @@ for prompt in '/vault resume' '  /vault   resume  '; do
   other=$(HOME="$home" bash "$DIGEST" <<<"$(prompted "$prompt")" 2>/dev/null | jq -r .hookSpecificOutput.additionalContext | grep -o -m1 'vault-digest-[0-9a-f]\{12\}')
   [[ "$other" != "$tag" ]] && ok || bad "'$prompt' must pick a new tag each time ($tag)"
   [[ "$(jq -r .hookSpecificOutput.hookEventName <<<"$out")" == UserPromptSubmit ]] && ok || bad "'$prompt' must name its event (out=$out)"
-  [[ "$(<"$args")" == '--session s1' ]] && ok || bad "'$prompt' must name its session (args=$(<"$args"))"
+  [[ "$(<"$args")" == '--session s1 --json' ]] && ok || bad "'$prompt' must name its session (args=$(<"$args"))"
 done
+
+out=$(CLAUDE_CODE_ENTRYPOINT=cli HOME="$home" bash "$DIGEST" <<<"$(prompted '/vault resume')" 2>/dev/null); rc=$?
+[[ $rc -eq 0 && "$(jq -r .systemMessage <<<"$out")" == 'the styled digest' ]] && ok || bad "a terminal must show the styled digest (rc=$rc out=$out)"
+[[ "$(jq -r .hookSpecificOutput.additionalContext <<<"$out")" == *$'\n# the digest\n'* ]] && ok || bad "a terminal must keep the context plain (out=$out)"
+out=$(CLAUDE_CODE_ENTRYPOINT=other HOME="$home" bash "$DIGEST" <<<"$(prompted '/vault resume')" 2>/dev/null); rc=$?
+[[ $rc -eq 0 && "$(jq -r .systemMessage <<<"$out")" == '# the digest' ]] && ok || bad "another surface must show the plain digest (rc=$rc out=$out)"
 
 out=$(STUB_FAIL=1 HOME="$home" bash "$DIGEST" <<<"$(prompted '/vault resume')" 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad 'a failed script must leave the prompt alone (rc=$rc out=$out)'

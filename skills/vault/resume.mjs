@@ -4,8 +4,9 @@
 // but filing new GitHub threads and advancing their baseline, so a resume is one call and a reply.
 // The hooks run it twice (12d): `--prepare` at session start collects ahead, and `--session` on
 // `/vault resume` takes that collection, so the digest is in the context with no call at all.
+// `--json` prints `{digest, styled}`, the plain form for the context and the styled for the screen.
 //
-//   resume.mjs [project] [--session ID]
+//   resume.mjs [project] [--session ID] [--json]
 //   resume.mjs [project] --prepare --session ID
 
 import {execFile} from 'node:child_process';
@@ -18,6 +19,7 @@ import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
 import {client, expectJson, listItems, owedItems} from './queue-items.mjs';
 import {owedOf} from './resume-owed.mjs';
+import {styledOf, withoutControls} from './resume-style.mjs';
 
 const script = relative => fileURLToPath(new URL(relative, import.meta.url));
 const FLEET = script('../fleet-status/fleet-status.mjs');
@@ -267,8 +269,7 @@ const changeLines = p => {
   return bullets([...capped(lines, CHANGES_SHOWN, n => `and ${n} more`), ...more]);
 };
 
-/** The digest, from everything the script gathered. */
-export const digestOf = ({
+const digestText = ({
   project,
   bundle,
   items,
@@ -292,6 +293,9 @@ export const digestOf = ({
     ...titled('Changed since the last session', changeLines(p))
   ].join('\n');
 };
+
+/** The digest, from everything the script gathered. */
+export const digestOf = gathered => withoutControls(digestText(gathered));
 
 /** Where a collected event's new thread lands: a section of the queue, or nowhere. */
 export const intakeOf = trackers => {
@@ -556,7 +560,7 @@ const projectOfCwd = async () => {
 
 const main = async () => {
   const {values, positionals} = parseArgs({
-    options: {prepare: {type: 'boolean'}, session: {type: 'string'}},
+    options: {json: {type: 'boolean'}, prepare: {type: 'boolean'}, session: {type: 'string'}},
     allowPositionals: true
   });
   const project = positionals[0] ?? (await projectOfCwd());
@@ -607,20 +611,19 @@ const main = async () => {
   const plans = plansFolder.files
     .filter(f => f !== 'archive/' && !f.startsWith('.'))
     .map(f => `projects/${project}/plans/${f.replace(/\/$/, '')}`);
-  console.log(
-    digestOf({
-      project,
-      bundle,
-      items,
-      owed: owedOf(bundle, queue),
-      plans,
-      logBody,
-      lastMessage: p.found ? lastMessageOfUnlogged(p) : null,
-      drift,
-      github,
-      problems: [...problems]
-    })
-  );
+  const digest = digestOf({
+    project,
+    bundle,
+    items,
+    owed: owedOf(bundle, queue),
+    plans,
+    logBody,
+    lastMessage: p.found ? lastMessageOfUnlogged(p) : null,
+    drift,
+    github,
+    problems: [...problems]
+  });
+  console.log(values.json ? JSON.stringify({digest, styled: styledOf(digest)}) : digest);
 };
 
 if (import.meta.main) {

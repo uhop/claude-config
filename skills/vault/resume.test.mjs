@@ -297,6 +297,16 @@ test('a final message that cannot be read says what is unknown, and where it ran
   assert.ok(text.includes('so what it left open is unknown.'));
 });
 
+test('text the digest quotes reaches it with no escape sequence', () => {
+  const text = digestOf(
+    inputs({
+      logBody: '## Open\n\n- \x1b[8mhidden\x1b[28m and \x1b]8;;http://x/\x07a link\x1b]8;;\x07\n'
+    })
+  );
+  assert.ok(text.includes('- hidden and a link'));
+  assert.equal(text.includes('\x1b'), false);
+});
+
 test('with no later session the log stands unflagged', () => {
   const text = digestOf(inputs({logBody: '## Open\n\n- A question?\n'}));
   assert.ok(!text.includes('The latest work has no log'));

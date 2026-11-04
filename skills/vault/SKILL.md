@@ -1216,9 +1216,10 @@ directions after resuming."*).
 
 The digest is usually in your context and on the user's screen already. When the
 user types `/vault resume`, the hook `vault-resume-digest.sh` runs the script,
-shows the user what it prints, and puts the same text in your context under a line
-that starts `[vault] The /vault resume digest`. Make no call. A digest past a
-hook's 10,000 characters arrives as a file path and a preview, so read the file.
+shows the user what it prints, styled in a terminal, and puts the plain text in
+your context under a line that starts `[vault] The /vault resume digest`. Make no
+call. A digest past a hook's 10,000 characters arrives as a file path and a
+preview, so read the file.
 
 With no such line, make one call, from the project directory. It takes about 6 s:
 

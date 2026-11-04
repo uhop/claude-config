@@ -39,8 +39,8 @@ the root documents (`AGENTS.md`, this file, `README.md`) stay out of it.
   `vault-feedback-rules.sh`, and `vault-notices.sh` print the vault's digest;
   `vault-resume-prepare.sh` collects GitHub in the background for a later `/vault resume`; the
   `herdr-*` hooks label the terminal multiplexer's pane.
-- **UserPromptSubmit:** `vault-resume-digest.sh`, on `/vault resume`, shows the user the digest and
-  puts it in the context.
+- **UserPromptSubmit:** `vault-resume-digest.sh`, on `/vault resume`, shows the user the digest,
+  styled in a terminal, and puts it in the context.
 - **SessionEnd:** `vault-lease-release.sh` releases the lease; `vault-session-record.sh` appends the
   session's record.
 - **Stop:** `bg-shells-open.sh` names a background shell still running.
