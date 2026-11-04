@@ -10,11 +10,14 @@
 //   profile.mjs --include-sidechain  # include sub-agent (Task) transcripts
 //   profile.mjs --top N            # cap report rows (default 20)
 //   profile.mjs --json             # emit JSON instead of markdown
+//   profile.mjs --sequences        # repeated call sequences and the values passed between calls
+//   profile.mjs --tools PREFIX     # with --sequences, only tools whose name starts with PREFIX
 //   profile.mjs --root DIR         # transcripts root (default ~/.claude/projects)
 
 import {readdirSync, readFileSync, statSync} from 'node:fs';
 import {basename, join} from 'node:path';
 import {homedir} from 'node:os';
+import {addFile, callsOf, newSequences, reportOf} from './sequences.mjs';
 import {SHORT_WAIT_MS, summarize, waitsOf} from './waits.mjs';
 
 if (!import.meta.main)
@@ -34,6 +37,8 @@ const PROJECT_FILTER = opt('--project') ?? null;
 const INCLUDE_SIDECHAIN = flag('--include-sidechain');
 const TOP = opt('--top') ? Number(opt('--top')) : 20;
 const AS_JSON = flag('--json');
+const SEQUENCES = flag('--sequences');
+const TOOLS = opt('--tools', '');
 
 const ROOT = opt('--root', join(homedir(), '.claude', 'projects'));
 const cutoffMs = DAYS != null ? Date.now() - DAYS * 86400 * 1000 : 0;
@@ -111,6 +116,7 @@ const resultBytes = block => {
 };
 
 const sessionWaits = [];
+const sequences = newSequences(TOOLS);
 
 for (const {path: fp, project, sidechain} of transcriptFiles) {
   const content = readFileSync(fp, 'utf8');
@@ -133,7 +139,7 @@ for (const {path: fp, project, sidechain} of transcriptFiles) {
       continue;
     }
 
-    if (!sidechain) parsed.push(row);
+    if (!sidechain || SEQUENCES) parsed.push(row);
     if (!INCLUDE_SIDECHAIN && row.isSidechain === true) continue;
 
     const ts = row.timestamp ? Date.parse(row.timestamp) : null;
@@ -189,6 +195,9 @@ for (const {path: fp, project, sidechain} of transcriptFiles) {
   if (sessionTouched) {
     if (sidechain) subagentsAnalyzed++;
     else sessionsAnalyzed++;
+  }
+  if (SEQUENCES) {
+    addFile(sequences, fp, callsOf(parsed, {includeSidechain: INCLUDE_SIDECHAIN}));
   }
   const split = sidechain ? null : waitsOf(parsed);
   if (split?.span_ms) {
@@ -258,12 +267,43 @@ if (AS_JSON) {
         total_wall_time_ms: grandTotal,
         total_result_bytes: totalResultBytes,
         rows,
-        waits
+        waits,
+        ...(SEQUENCES && {sequences: reportOf(sequences, TOP)})
       },
       null,
       2
     )
   );
+} else if (SEQUENCES) {
+  const report = reportOf(sequences, TOP);
+  const family = report.tools ? `\`${report.tools}\`` : 'all tools';
+  console.log(`# Repeated sequences, ${family}`);
+  console.log();
+  console.log(
+    `${report.calls} calls in ${report.files} transcripts; a repeat of one call collapsed.`
+  );
+  for (const [length, list] of Object.entries(report.sequences)) {
+    console.log();
+    console.log(`## ${length} calls in a row`);
+    console.log();
+    console.log('| Sequence | Count | Transcripts |');
+    console.log('| -------- | ----- | ----------- |');
+    for (const s of list) console.log(`| ${s.calls.join(' → ')} | ${s.count} | ${s.files} |`);
+  }
+  console.log();
+  console.log('## Values one call passes to the next');
+  console.log();
+  console.log(
+    "A value in a call's input found in one of the previous 12 results and not in that call's own input. A string match bounds causation from above."
+  );
+  console.log();
+  console.log('| From | Through | Field | To | Count | Transcripts |');
+  console.log('| ---- | ------- | ----- | -- | ----- | ----------- |');
+  for (const v of report.values) {
+    console.log(
+      `| ${v.from} | ${v.through ?? ''} | ${v.field} | ${v.to} | ${v.count} | ${v.files} |`
+    );
+  }
 } else {
   const sortedByTotal = [...rows].sort((a, b) => b.total_ms - a.total_ms);
   const sortedByCount = [...rows].sort((a, b) => b.count - a.count);

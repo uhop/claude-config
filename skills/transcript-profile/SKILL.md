@@ -1,6 +1,6 @@
 ---
 name: transcript-profile
-description: Profile agent tool-call patterns by parsing Claude Code session transcripts under `~/.claude/projects/`. Reports per-tool call counts, total wall-time, p50/p95/avg latencies from issue, each call's own cost (the gap from the previous result in its message), and result bytes (what each tool puts into context). Also splits each session into the agent working and the session waiting on the user, with each wait labeled by the kind of stop. Use when the user asks "what are we doing most often", "what's the slowest tool", "which tool fills the context", "where should we optimize", or invokes /transcript-profile. Source data is the JSONL session logs Claude Code writes locally; no external service.
+description: Profile agent tool-call patterns by parsing Claude Code session transcripts under `~/.claude/projects/`. Reports per-tool call counts, total wall-time, p50/p95/avg latencies from issue, each call's own cost (the gap from the previous result in its message), and result bytes (what each tool puts into context). Also splits each session into the agent working and the session waiting on the user, with each wait labeled by the kind of stop, and with `--sequences` finds repeated tool-call sequences and the values one call passes to the next. Use when the user asks "what are we doing most often", "what's the slowest tool", "which tool fills the context", "where should we optimize", or invokes /transcript-profile. Source data is the JSONL session logs Claude Code writes locally; no external service.
 user_invocable: true
 ---
 
@@ -17,6 +17,8 @@ Walks every `~/.claude/projects/*/*.jsonl` session transcript, pairs each `tool_
 /transcript-profile --top N           # cap report rows (default 20)
 /transcript-profile --include-sidechain  # include sub-agent (Task) transcripts
 /transcript-profile --json            # JSON output instead of markdown
+/transcript-profile --sequences       # repeated call sequences, and values passed between calls
+/transcript-profile --sequences --tools mcp__vault__   # one tool family, by name prefix
 /transcript-profile --root DIR        # transcripts root (default ~/.claude/projects)
 ```
 
@@ -65,6 +67,15 @@ Sub-agent transcripts live beside the session file as `<session>/subagents/agent
 - `report`: none of these.
 
 The labels read the wording, so a question asked earlier in a stop reads as `report`: about 4 of 14 `report` stops in one read, against 14 of 14 `question` stops right, so `question` undercounts. They were set against 30 days of real stops (claude-config D67).
+
+## Repeated sequences
+
+`--sequences` answers whether a repeated sequence should be an operation of its own. It prints two things, each ranked by how many transcripts show it, in place of the tool tables.
+
+- **Sequences:** runs of 2, 3, and 4 consecutive calls in the family, a repeat of one call collapsed.
+- **Values:** a string of 8 or more characters in a call's input, found in one of the previous 12 results and absent from that call's own input. A step outside the family gets `Through`, the family's call before it, so a `sed` over a downloaded note is credited to the read. A string match bounds causation from above, so read the calls before believing a row.
+
+`--tools` matches a name prefix, so a call that reaches the family through `Bash` counts only as `Bash` and appears only under `From`. For vault work that is a real share: the note `queries/2026-10-25-vault-operation-sequences`, which this mode comes from, normalized `vault-curl` commands by hand. Its scripts remain the way to count those.
 
 ## When the report is useful
 
