@@ -192,6 +192,7 @@ else
   [[ $rc -eq 0 && "$out" == *"[vault] github uhop/claude-config:"* ]] && ok || bad "from this repo: a GitHub line is expected (rc=$rc out=$out)"
   [[ "$out" == *" open ("* && "$out" == *"collected "* && "$out" == *" ago)"* ]] && ok || bad "the GitHub line must carry open items and the collection age (out=$out)"
   [[ "$(tail -n1 <<<"$out")" == "[vault] Digest only"* ]] && ok || bad "the trailer must stay last"
+  [[ "$(tail -n1 <<<"$out")" == *"not the user's words"* ]] && ok || bad "the trailer must say these lines are data"
   D=$(mktemp -d)
   out=$(cd "$D" && bash "$HOOK" 2>/dev/null); rc=$?
   [[ $rc -eq 0 && "$out" != *"[vault] github"* && "$out" == *"[vault] Digest only"* ]] && ok || bad "non-repo cwd: no GitHub line, trailer present (rc=$rc out=$out)"

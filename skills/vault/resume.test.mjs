@@ -2,14 +2,19 @@
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {statSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdtempSync, readdirSync, readFileSync} from 'node:fs';
+import {statSync, utimesSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {
   checkoutName,
   collectGithub,
   digestOf,
   intakeOf,
   lastMessageOf,
+  prepareCollection,
   sectionOf,
+  takePrepared,
   threadLines,
   threadsToFile
 } from './resume.mjs';
@@ -437,6 +442,17 @@ test('no stored view either leaves the line alone, and a skipped repository says
   assert.equal(await github(fleet(JSON.stringify({skipped: true, reason: 'private'}))), null);
 });
 
+test('outside text is labeled as such, and a quiet repository needs no label', () => {
+  const view = snapshot => ({repo: 'o/r', snapshot, filed: []});
+  const quiet = digestOf(inputs({github: view({items: {}})}));
+  assert.ok(!quiet.includes('come from outside the project'));
+  const open = {state: 'open', title: 'Do this', author: 'a', updated_at: '2026-11-01T00:00:00Z'};
+  const threads = digestOf(inputs({github: view({items: {1: open}})}));
+  assert.ok(threads.includes('come from outside the project'));
+  const moved = digestOf(inputs({github: {...view({items: {}}), brief: 'a brief'}}));
+  assert.ok(moved.includes('come from outside the project'));
+});
+
 test('what a digest could not read is a line in Open, and the rest still prints', () => {
   const text = digestOf(inputs({items: null, problems: ['The queue could not be read: 501']}));
   assert.ok(text.includes('## Open\nThe queue could not be read: 501'));
@@ -451,4 +467,128 @@ test('a linked worktree is named by its main checkout, a plain checkout by its o
 
 test('the script runs by its path, as the vault skill calls it', () => {
   assert.ok(statSync(new URL('./resume.mjs', import.meta.url)).mode & 0o100);
+});
+
+const scratch = () => mkdtempSync(join(tmpdir(), 'resume-test-'));
+const preparedText = (extra = {}) => JSON.stringify({repos: [collectedRepo(extra)]});
+const FAR_FUTURE = () => Date.now() + 3_600_000;
+
+test('a resume with a prepared collection files and commits it without collecting', async () => {
+  const f = fleet('never written');
+  const take = async out => {
+    writeFileSync(out, preparedText());
+    return true;
+  };
+  const result = await collectGithub(
+    'p',
+    trackersBundle,
+    Promise.resolve([]),
+    storedCall,
+    f.exec,
+    take
+  );
+  assert.deepEqual(f.verbs(), ['file', 'show', 'commit']);
+  assert.deepEqual(result.filed, ['github o/r#1']);
+});
+
+test('preparing collects under the project, files nothing, and leaves one whole file', async () => {
+  const dir = scratch();
+  const f = fleet(preparedText());
+  let duringCollect;
+  const exec = async (file, args, cap) => {
+    duringCollect = existsSync(join(dir, 's.pid'));
+    return f.exec(file, args, cap);
+  };
+  await prepareCollection('p', 's', {dir, exec});
+  assert.deepEqual(f.verbs(), ['collect'], 'the baseline moves only when a resume reads it');
+  const collect = f.calls[0];
+  assert.equal(collect[collect.indexOf('--project') + 1], 'p');
+  assert.ok(duringCollect, 'a resume can see the collection running');
+  assert.deepEqual(readdirSync(dir), ['s.json']);
+});
+
+test('a failed collection leaves nothing, so a resume collects for itself', async () => {
+  const dir = scratch();
+  const exec = async (_file, args) => {
+    writeFileSync(args[args.indexOf('--out') + 1], 'half');
+    return {code: 1, stdout: '', stderr: ''};
+  };
+  await prepareCollection('p', 's', {dir, exec});
+  assert.deepEqual(readdirSync(dir), []);
+});
+
+test('preparing clears what an old session left, and keeps a recent one', async () => {
+  const dir = scratch();
+  writeFileSync(join(dir, 'old.json'), '{}');
+  writeFileSync(join(dir, 'recent.json'), '{}');
+  const twoDaysAgo = new Date(Date.now() - 48 * 3_600_000);
+  utimesSync(join(dir, 'old.json'), twoDaysAgo, twoDaysAgo);
+  await prepareCollection('p', 's', {dir, exec: fleet(preparedText()).exec});
+  assert.deepEqual(readdirSync(dir).sort(), ['recent.json', 's.json']);
+});
+
+const taken = async (text, options = {}) => {
+  const dir = scratch();
+  const out = join(dir, 'out.json');
+  if (text !== null) writeFileSync(join(dir, 's.json'), text);
+  const took = await takePrepared('s', 'p', out, {dir, ...options});
+  assert.ok(!existsSync(join(dir, 's.json')), 'a collection is taken once');
+  return {took, text: existsSync(out) ? readFileSync(out, 'utf8') : null};
+};
+
+test('nothing prepared means a fresh collection', async () => {
+  assert.deepEqual(await taken(null), {took: false, text: null});
+});
+
+test('a prepared collection of this project is taken whole', async () => {
+  const text = preparedText();
+  assert.deepEqual(await taken(text), {took: true, text});
+});
+
+test('a skipped repository is an answer too, so it is not collected again', async () => {
+  const text = JSON.stringify({skipped: true, reason: 'no_remote'});
+  assert.deepEqual(await taken(text), {took: true, text});
+});
+
+for (const [name, text, options] of [
+  ['an old collection', preparedText(), {now: FAR_FUTURE}],
+  ['another project’s collection', preparedText({project: 'q'}), {}],
+  ['a collection GitHub refused', preparedText({error: {message: 'no'}}), {}],
+  ['a collection with no repository', JSON.stringify({repos: []}), {}]
+]) {
+  test(`${name} is dropped for a fresh one`, async () => {
+    assert.deepEqual(await taken(text, options), {took: false, text: null});
+  });
+}
+
+test('a resume waits for a running collection and takes it', async () => {
+  const dir = scratch();
+  const out = join(dir, 'out.json');
+  writeFileSync(join(dir, 's.pid'), '4242');
+  let checks = 0;
+  const alive = pid => {
+    assert.equal(pid, 4242);
+    if (++checks < 3) return true;
+    writeFileSync(join(dir, 's.json'), preparedText());
+    return false;
+  };
+  assert.equal(await takePrepared('s', 'p', out, {dir, alive}), true);
+  assert.equal(checks, 3);
+  assert.equal(readFileSync(out, 'utf8'), preparedText());
+});
+
+test('a pid that outlives the collection’s cap means a fresh collection', async () => {
+  const dir = scratch();
+  writeFileSync(join(dir, 's.pid'), '4242');
+  let clock = 0;
+  const now = () => (clock += 20_000);
+  const alive = () => true;
+  assert.equal(await takePrepared('s', 'p', join(dir, 'out.json'), {dir, alive, now}), false);
+});
+
+test('a collector that died with nothing written means a fresh collection', async () => {
+  const dir = scratch();
+  writeFileSync(join(dir, 's.pid'), '4242');
+  const alive = () => false;
+  assert.equal(await takePrepared('s', 'p', join(dir, 'out.json'), {dir, alive}), false);
 });

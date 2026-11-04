@@ -36,8 +36,11 @@ the root documents (`AGENTS.md`, this file, `README.md`) stay out of it.
 - **PostToolUse:** `vault-lease-gate.sh --touch` renews the session's lease; `vault-notices.sh`
   relays the hosted vault's notices.
 - **SessionStart:** `vault-lease-claim.sh` claims the repository; `vault-resume-brief.sh`,
-  `vault-feedback-rules.sh`, and `vault-notices.sh` print the vault's digest; the `herdr-*` hooks
-  label the terminal multiplexer's pane.
+  `vault-feedback-rules.sh`, and `vault-notices.sh` print the vault's digest;
+  `vault-resume-prepare.sh` collects GitHub in the background for a later `/vault resume`; the
+  `herdr-*` hooks label the terminal multiplexer's pane.
+- **UserPromptSubmit:** `vault-resume-digest.sh`, on `/vault resume`, shows the user the digest and
+  puts it in the context.
 - **SessionEnd:** `vault-lease-release.sh` releases the lease; `vault-session-record.sh` appends the
   session's record.
 - **Stop:** `bg-shells-open.sh` names a background shell still running.

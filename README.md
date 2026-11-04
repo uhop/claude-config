@@ -93,6 +93,17 @@ untouched.
   session under `~/.cache/claude-vault-notices/`, a week long. Sub-agents are skipped. **Fails
   open**, like the other vault hooks: no env, no `jq`/`curl`, an unreachable server, or one without
   the route is silence.
+- `vault-resume-prepare.sh` and `vault-resume-digest.sh` — make `/vault resume` a digest on the
+  screen and a line or two of reply, with no call (vault-storage 12d, D594). The first, an async
+  `hooks.SessionStart` entry with the `startup` matcher, collects GitHub in the background into
+  `~/.cache/vault-resume/<session id>.json`. It only reads GitHub, so a session that never resumes
+  files nothing and advances no baseline. The second, in `hooks.UserPromptSubmit`, leaves every
+  other prompt at its first test. On `/vault resume` it waits for a collection still running, then
+  runs `skills/vault/resume.mjs`, which files new threads, advances the baseline, and prints the
+  digest, which the hook shows the user and puts in the agent's context, inside a random tag and
+  labeled as data, since hook output otherwise reads as the user's words and a digest quotes
+  strangers. A collection older than five minutes, or none, is collected afresh. **Fails open**:
+  with no digest printed, the skill runs the script itself.
 
 ## Uninstall
 
