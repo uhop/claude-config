@@ -1186,6 +1186,8 @@ cause two measurement rounds earlier.)
 
 ## Background shells
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/background-shells]].
+
 The Claude Code status line's "N shells" counts `Bash(run_in_background: true)` processes the
 harness registered this session. Use `BashOutput(shell_id)` to peek, `KillShell(shell_id)` to
 terminate. Shell IDs (e.g. `bash_1`) are in the original Bash result — scan prior tool calls;
@@ -1207,10 +1209,7 @@ background shell child is still live (measured 2026-08-29: `completed` at 18 s w
 listed the agent running, and it notified again at 97 s), so the probe's error line stays the
 authority and the all-clear. Don't diagnose by watching `tasks/*.output` file sizes either — the
 `b*` files there are the sinks for your own foreground `Bash` calls, so a growing one is usually
-your own probe observing itself. (Origin: reflect 2026-07-27 — two background research agents fanned
-out to 13; `TaskStop` on both parents plus a "No tasks found" from `TaskList` produced a false
-all-clear while three grandchildren ran on for ~6 more minutes; Eugene: _"I still see them running
-and consuming time."_)
+your own probe observing itself.
 
 **A fan-out is not done until both registries are empty — probe before "Done", not when asked.** A
 sub-agent that has delivered and been merged can still be live: on 2026-08-26 one of ten analysts
@@ -1220,8 +1219,7 @@ Eugene pointed at the status line — _"I still see '1 shell' and one background
 origin's words, a month later. So they are part of the done-check, not the cleanup: after any
 fan-out, before any summary that says done, run the `TaskStop` nonsense-id probe and `/bg-shells`,
 stop what they name, re-probe until both are empty, and say so in the summary. A delivered result is
-evidence about the work, not about the process that produced it. (Origin: reflect 2026-08-26 —
-apodict `41e8d383`.)
+evidence about the work, not about the process that produced it.
 
 **A watcher dies with its producer, and the all-clear is measured, not remembered.** A shell that
 polls another shell's output file (`until grep -q … "$O"; do sleep 5; done`) has no exit once that
@@ -1235,10 +1233,7 @@ hook stays quiet in the turn that launched a shell and raises it at a later Stop
 ([[projects/claude-config/decisions]] D45). A shell that must keep running past its own turn is
 named by its id in that turn's closing message, with why; the hook reads that as the declaration and
 does not block for it (reflect 2026-10-03: 14 firings in a week, every one a gate that had to
-finish). (Origin: reflect 2026-09-22 — the third recurrence of this section's origin, apodict
-`312b0f10`: _"Are you sure that two shells are still working?"_ after "both registries are empty"
-had been claimed from the agent probe alone, three times in one session; one `until` loop was
-waiting on a producer killed an hour earlier.)
+finish).
 
 **Herdr panes are a third registry, and this is the one he watches.** Background shells and
 background agents live in a status line; a pane sits in his window. A pane you split is yours to
@@ -1248,12 +1243,7 @@ the one to reuse, not to split a fresh one beside. **Read the pane's tail before
 there becomes his read instead of yours. Enumerate with
 `herdr pane list --workspace "$HERDR_WORKSPACE_ID"`; panes you did not create stay untouched, and
 split with `--cwd "$PWD"` — a pane opened elsewhere renames the tab, and closing it does not restore
-the label (`skills/herdr/SKILL.md`). (Origin: reflect 2026-08-30 — three asks in one apodict
-session: _"You have an open tab/window with 'KIMI-DONE2' — do you still need/use it?"_ (19:54Z);
-_"Could you close the pane you used to run measurements? BTW, I see it has errors:"_ (01:54Z), with
-two crashes of mine pasted underneath; _"If you have an unused tab, could you close it? Or could I
-close it?"_ (04:40Z), two minutes after I killed a run and split a new pane beside its dead one. A
-fourth the same night in blog-hugo: _"Hmm, the tab name is wrong in this case."_)
+the label (`skills/herdr/SKILL.md`).
 
 ## REST API probes
 
