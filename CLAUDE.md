@@ -1082,14 +1082,14 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/tools]]
   processes, partial output), and re-run the failing piece in isolation; the hang itself is a
   finding worth filing.
 - **A check's result is its exit status, read after the last edit.** Before a stop report, rerun
-  every check the project names (tests, lint, type checks) after the final edit, and put each one's
-  exit status in the report's gates line (`npm run js-check; echo "exit=$?"`). Never read a check
-  through a `grep` or a `tail` of its output: a colored or reworded diagnostic defeats the pattern,
-  and a failing tree reads clean. The same run comes before any git work, staging included: Eugene,
-  2026-11-02, _"I do it as a matter of policy: stuff works, I run all tests to confirm that,
-  including linting, then start working with git."_ CI only confirms other environments, and a
-  failure there is reproduced and fixed locally before the commit that CI then confirms
-  ([[topics/ci-scope-convention]]).
+  every check the project names (tests, lint, type checks) after the final edit, and read each one's
+  exit status (`npm run js-check; echo "exit=$?"`). Report "all gates 0" when they all are, with a
+  table only for the checks that are not. Never read a check through a `grep` or a `tail` of its
+  output: a colored or reworded diagnostic defeats the pattern, and a failing tree reads clean. The
+  same run comes before any git work, staging included: Eugene, 2026-11-02, _"I do it as a matter of
+  policy: stuff works, I run all tests to confirm that, including linting, then start working with
+  git."_ CI only confirms other environments, and a failure there is reproduced and fixed locally
+  before the commit that CI then confirms ([[topics/ci-scope-convention]]).
 - **State the cost of a long run before starting it.** When a run will take more than a few minutes
   (a simulation, a census, a benchmark sweep), give its estimated wall time in the message that
   starts it, and make it write a progress line as it goes. A Stop-hook reply about a run still going
