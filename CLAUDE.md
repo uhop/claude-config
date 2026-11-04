@@ -527,8 +527,8 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/prefere
   when he asks, and you say when one is due.** The plan lives under `projects/<name>/plans/`, and
   each arc is one commit. Re-read every item he has not postponed in his own words, list a
   demand-gated item with its trigger, keep the ordering rule the project's own, and replace the plan
-  by supersession (vault skill § Note format; [[projects/vault-storage/feedback]] § Re-cluster and
-  re-order the Backlog).
+  by supersession (vault skill `references/notes.md` § Note format;
+  [[projects/vault-storage/feedback]] § Re-cluster and re-order the Backlog).
 - **Collections run by hand or on an event, never on a schedule.** A recurring step goes into a
   playbook he runs (`playbash-daily`, `playbash-weekly`) or fires from the event that needs it; no
   cron entries, no scheduled routines ([[projects/agent-workflow/feedback]] § Collections run by
@@ -633,9 +633,9 @@ only what it names).
 Where these rules came from: [[projects/agent-workflow/claude-md-origins/cross-repo-work]].
 
 **Editing a repo outside the session's primary working directory starts with one lease read, and the
-answer picks the path** (ruled 2026-08-18; protocol in the vault skill § Agent coordination, design
-`projects/vault-storage/design/agent-coordination` § Session-lifetime claims).
-`vault_lease_list({resource: "repo:<normalized-remote-url>"})`, then
+answer picks the path** (ruled 2026-08-18; protocol in the vault skill `references/coordination.md`
+§ Agent coordination, design `projects/vault-storage/design/agent-coordination` § Session-lifetime
+claims). `vault_lease_list({resource: "repo:<normalized-remote-url>"})`, then
 `git -C <sibling> status --porcelain`:
 
 - **Unclaimed and clean → side-claim it, edit its working tree directly, release when the burst is
@@ -1040,9 +1040,10 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/tools]]
   non-zero or trips a permission gate — drift checks (`check-drift.sh` exits 1 on drift), `git tag`
   / `git describe` (non-zero when absent; often gated), or `$(…)`-substitution / compound snippets —
   with other independent calls. Run such a command in its own invocation, or guard the pipe with
-  `|| true`. Generalizes the vault skill's "check-drift is a canceller" rule from vault commands to
-  git + shell. **Bare `git tag` is denied even as a read** — the `permissions.deny` pattern matches
-  the verb, not the intent, so the listing form trips it too; list tags with
+  `|| true`. Generalizes the "check-drift is a canceller" rule in the vault skill
+  `references/shell.md` from vault commands to git + shell. **Bare `git tag` is denied even as a
+  read** — the `permissions.deny` pattern matches the verb, not the intent, so the listing form
+  trips it too; list tags with
   `git for-each-ref refs/tags --format='%(refname:short) %(creatordate:short)'` (also the
   release-notes date source).
 - **Kill hung verifications; don't wait them out.** A check running ~10× past its known duration
@@ -1105,16 +1106,16 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/tools]]
   output — an assumed shape that returns nothing reads exactly like a defect in the system being
   inspected. Before drawing any conclusion from an empty/zero `jq` result, dump `keys` (or
   `.[0] | keys`) and confirm the shape; **mandatory before asserting a defect in someone else's
-  system.** Same family as § Diagnosis (evidence before cause) and the vault skill's pagination rule
-  (read the envelope, don't assume it). This rule is the _consumer_ half of a general failure class
-  — a well-formed empty result masking a query the system never understood; the _producer_ half
-  (reject unknown parameters, report unparsed input, echo the effective query) applies wherever you
-  own the read surface. Full: [[topics/silent-empty-result-ambiguity]]. **Same for `grep`/search
-  used as a coverage proof.** A pattern that matches nothing proves that _the pattern_ is absent,
-  never that the property you care about holds. Before writing "no other file does X", check that
-  the pattern actually tests X — searching for a stale _claim_ does not find a stale _prescription_.
-  Either name the pattern in the claim ("nothing still says `No MCP tool exists`") or widen it until
-  it tests the property.
+  system.** Same family as § Diagnosis (evidence before cause) and the pagination rule in the vault
+  skill `references/shell.md` (read the envelope, don't assume it). This rule is the _consumer_ half
+  of a general failure class — a well-formed empty result masking a query the system never
+  understood; the _producer_ half (reject unknown parameters, report unparsed input, echo the
+  effective query) applies wherever you own the read surface. Full:
+  [[topics/silent-empty-result-ambiguity]]. **Same for `grep`/search used as a coverage proof.** A
+  pattern that matches nothing proves that _the pattern_ is absent, never that the property you care
+  about holds. Before writing "no other file does X", check that the pattern actually tests X —
+  searching for a stale _claim_ does not find a stale _prescription_. Either name the pattern in the
+  claim ("nothing still says `No MCP tool exists`") or widen it until it tests the property.
 - **A `WebFetch` 403 is the fetcher being blocked, not the source being unavailable.** Some
   documentation sites (cppreference among them) reject the fetcher's user agent and serve fine to a
   browser. Before writing "X returned 403, so the verification came from Y instead", retry once with

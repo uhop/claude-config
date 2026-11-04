@@ -8,7 +8,7 @@
 # (disposable worktree + a handoff addressed to the repo's role).
 #
 # Design: vault projects/vault-storage/design/agent-coordination § Enforcement.
-# Protocol + holder-id convention: ~/.claude/skills/vault/SKILL.md
+# Protocol + holder-id convention: ~/.claude/skills/vault/references/coordination.md
 # § Agent coordination.
 #
 # FAILS OPEN, always. Every unknown is an allow: no vault env, no curl/jq,

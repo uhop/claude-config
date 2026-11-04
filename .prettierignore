@@ -5,3 +5,4 @@
 # reflowed its sample report. Excluded wholesale, not per-file: the 7 that pass
 # today do so incidentally and flip the moment one gains an output block.
 skills/**/SKILL.md
+skills/vault/references/
