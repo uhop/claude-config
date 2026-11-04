@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // What /vault resume prints (vault-storage 12a): how the last session finished, what is upcoming,
 // what is open, and the outside items by title, in one call. It reads no thread and acts on nothing
-// but filing new GitHub threads and advancing their baseline, so a resume is one call and a reply.
+// but filing new GitHub threads and CVEs and advancing their baseline, so a resume is one call and a reply.
 // The hooks run it twice (12d): `--prepare` at session start collects ahead, and `--session` on
 // `/vault resume` takes that collection, so the digest is in the context with no call at all.
 // `--json` prints `{digest, styled}`, the plain form for the context and the styled for the screen.
@@ -240,10 +240,10 @@ const externalLines = ({project: p, github}) => {
     `GitHub ${github.repo}, CI ${ci}${github.stored ? `, as stored ${day(snapshot.collected_at)}` : ''}:`
   );
   const threads = threadLines(snapshot);
-  if (github.brief || threads.length > 0) lines.push(FROM_OUTSIDE);
+  if (github.brief || threads.length > 0 || github.filed.length > 0) lines.push(FROM_OUTSIDE);
   if (github.firstRun) lines.push('First collection, so no movement to report.');
   if (github.brief) lines.push('Since the last look:', github.brief);
-  if (github.filed.length > 0) lines.push(`Filed on the queue: ${github.filed.join(', ')}`);
+  if (github.filed.length > 0) lines.push('Filed on the queue:', ...bullets(github.filed));
   lines.push(
     ...(threads.length === 0
       ? ['No open threads.']
@@ -305,14 +305,17 @@ export const intakeOf = trackers => {
   return github.intake === 'triage' ? 'Inbox' : 'Active';
 };
 
+const advisorySource = e => `github ${e.repo} ${e.id}`;
+
 const SOURCE_OF = {
   'issue.new': e => `github ${e.repo}#${e.number}`,
   'pr.new': e => `github ${e.repo}#${e.number}`,
   'discussion.new': e => `github ${e.repo} discussion#${e.number}`,
-  'advisory.new': e => `github ${e.repo} ${e.id}`
+  'advisory.new': advisorySource,
+  'advisory.cve_assigned': advisorySource
 };
 
-/** The new threads by a person that no open item mirrors yet, each with what `file` takes. */
+/** A person's new threads and any CVE that no open item mirrors yet, each with what `file` takes. */
 export const threadsToFile = (events, items) => {
   const mirrored = new Set(items.map(item => item.source));
   const threads = [];
@@ -321,11 +324,13 @@ export const threadsToFile = (events, items) => {
     if (sourceOf === undefined || e.bot) continue;
     const source = sourceOf(e);
     if (mirrored.has(source)) continue;
-    const name = e.number === undefined ? e.id : `#${e.number}`;
+    const name =
+      e.number === undefined ? [e.id, e.cve_id].filter(Boolean).join(' ') : `#${e.number}`;
+    const url = e.url ?? e.html_url;
     threads.push({
       source,
       title: `GitHub: ${e.repo} ${name} ${e.title ?? e.summary ?? ''}`,
-      body: `${e.kind} ${name}${e.url ? `, ${e.url}` : ''}`
+      body: `${e.kind} ${name}${url ? `, ${url}` : ''}`
     });
   }
   return threads;
@@ -353,7 +358,7 @@ const fileThreads = async (project, threads, section, dir, exec) => {
       const why = done.stderr.trim().split('\n')[0];
       return {filed, problem: `Filing ${thread.source} failed: ${why}. ${NOT_ADVANCED}`};
     }
-    filed.push(thread.source);
+    filed.push(thread.title);
   }
   return {filed};
 };

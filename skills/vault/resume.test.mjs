@@ -143,19 +143,35 @@ test('a new thread lands where the tracker says', () => {
   assert.equal(intakeOf(github({role: 'primary', intake: 'reflect'})), null);
 });
 
-test('only a person’s new thread with no mirroring item is filed', () => {
+test('a person’s new thread and a CVE, with no mirroring item, are filed', () => {
   const events = [
     {kind: 'issue.new', repo: 'o/r', number: 1, title: 'New', url: 'u'},
     {kind: 'pr.new', repo: 'o/r', number: 2, title: 'Bot', bot: true},
     {kind: 'pr.new', repo: 'o/r', number: 3, title: 'Mirrored'},
     {kind: 'discussion.new', repo: 'o/r', number: 4, title: 'Talk'},
     {kind: 'advisory.new', repo: 'o/r', id: 'GHSA-x', summary: 'Hole'},
+    {
+      kind: 'advisory.cve_assigned',
+      repo: 'o/r',
+      id: 'GHSA-y',
+      summary: 'Known',
+      cve_id: 'CVE-1',
+      html_url: 'h'
+    },
+    {kind: 'advisory.cve_assigned', repo: 'o/r', id: 'GHSA-z', summary: 'Open', cve_id: 'CVE-2'},
+    {kind: 'advisory.updated', repo: 'o/r', id: 'GHSA-y', summary: 'Known'},
     {kind: 'pr.comments', repo: 'o/r', number: 3, title: 'Mirrored'}
   ];
-  assert.deepEqual(threadsToFile(events, [{source: 'github o/r#3'}, {source: null}]), [
+  const items = [{source: 'github o/r#3'}, {source: null}, {source: 'github o/r GHSA-z'}];
+  assert.deepEqual(threadsToFile(events, items), [
     {source: 'github o/r#1', title: 'GitHub: o/r #1 New', body: 'issue.new #1, u'},
     {source: 'github o/r discussion#4', title: 'GitHub: o/r #4 Talk', body: 'discussion.new #4'},
-    {source: 'github o/r GHSA-x', title: 'GitHub: o/r GHSA-x Hole', body: 'advisory.new GHSA-x'}
+    {source: 'github o/r GHSA-x', title: 'GitHub: o/r GHSA-x Hole', body: 'advisory.new GHSA-x'},
+    {
+      source: 'github o/r GHSA-y',
+      title: 'GitHub: o/r GHSA-y CVE-1 Known',
+      body: 'advisory.cve_assigned GHSA-y CVE-1, h'
+    }
   ]);
 });
 
@@ -218,7 +234,7 @@ test('every section the digest owes, in order, from the log, the queue, and GitH
           items: {7: {is_pr: true, title: 'Fix', state: 'open', author: 'ann', updated_at: 'x'}}
         },
         brief: 'new PR #7',
-        filed: ['github o/r#7']
+        filed: ['GitHub: o/r #7 Fix']
       }
     })
   );
@@ -241,7 +257,7 @@ test('every section the digest owes, in order, from the log, the queue, and GitH
     'Drift:\ntwo new commits',
     'GitHub o/r, CI success:',
     'Since the last look:\nnew PR #7',
-    'Filed on the queue: github o/r#7',
+    'Filed on the queue:\n- GitHub: o/r #7 Fix',
     '- PR #7 "Fix", by ann, 0 comments',
     '- Made one (made)',
     '- Edited one (edited)',
@@ -395,7 +411,7 @@ test('the GitHub step names the project, files new threads, and then commits', a
   assert.deepEqual(f.verbs(), ['collect', 'file', 'show', 'commit']);
   const collect = f.calls[0];
   assert.equal(collect[collect.indexOf('--project') + 1], 'p', 'never the folder’s name');
-  assert.deepEqual(result.filed, ['github o/r#1']);
+  assert.deepEqual(result.filed, ['GitHub: o/r #1 New']);
   assert.equal(result.problem, undefined);
   assert.equal(result.brief, 'a brief');
 });
@@ -461,6 +477,8 @@ test('outside text is labeled as such, and a quiet repository needs no label', (
   assert.ok(threads.includes('come from outside the project'));
   const moved = digestOf(inputs({github: {...view({items: {}}), brief: 'a brief'}}));
   assert.ok(moved.includes('come from outside the project'));
+  const filed = digestOf(inputs({github: {...view({items: {}}), filed: ['GitHub: o/r #7 Fix']}}));
+  assert.ok(filed.includes('come from outside the project'));
 });
 
 test('what a digest could not read is a line in Open, and the rest still prints', () => {
@@ -498,7 +516,7 @@ test('a resume with a prepared collection files and commits it without collectin
     take
   );
   assert.deepEqual(f.verbs(), ['file', 'show', 'commit']);
-  assert.deepEqual(result.filed, ['github o/r#1']);
+  assert.deepEqual(result.filed, ['GitHub: o/r #1 New']);
 });
 
 test('preparing collects under the project, files nothing, and leaves one whole file', async () => {

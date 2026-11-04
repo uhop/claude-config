@@ -99,13 +99,13 @@ untouched.
   `~/.cache/vault-resume/<session id>.json`. It only reads GitHub, so a session that never resumes
   files nothing and advances no baseline. The second, in `hooks.UserPromptSubmit`, leaves every
   other prompt at its first test. On `/vault resume` it waits for a collection still running, then
-  runs `skills/vault/resume.mjs`, which files new threads, advances the baseline, and prints the
-  digest with its control bytes removed. The hook shows the user the digest, in ANSI styling when
-  `CLAUDE_CODE_ENTRYPOINT` is `cli` (D595), since a terminal is the one surface known to draw it. It
-  puts the plain text in the agent's context, inside a random tag and labeled as data, since hook
-  output otherwise reads as the user's words and a digest quotes strangers. A collection older than
-  five minutes, or none, is collected afresh. **Fails open**: with no digest printed, the skill runs
-  the script itself.
+  runs `skills/vault/resume.mjs`, which files new threads and CVEs, advances the baseline, and
+  prints the digest with its control bytes removed. The hook shows the user the digest, in ANSI
+  styling when `CLAUDE_CODE_ENTRYPOINT` is `cli` (D595), since a terminal is the one surface known
+  to draw it. It puts the plain text in the agent's context, inside a random tag and labeled as
+  data, since hook output otherwise reads as the user's words and a digest quotes strangers. A
+  collection older than five minutes, or none, is collected afresh. **Fails open**: with no digest
+  printed, the skill runs the script itself.
 
 ## Uninstall
 

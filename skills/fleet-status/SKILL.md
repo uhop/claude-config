@@ -194,7 +194,7 @@ stored views render.
    stars, forks, published advisories without a CVE — and file nothing. The baseline is the
    deliverable of a first run.
 4. For every other repository, surface **every** event with full detail (for a resume, `skills/vault/resume.mjs` does this mechanically: it lists what moved under `Outside`
-   and files a one-line item for each new thread by a person, § Review items), write the review items per § Review items, and end
+   and files a one-line item for each new thread by a person and each CVE, § Review items), write the review items per § Review items, and end
    the reply with the brief, verbatim: `"$S" show "$WORK/github.json" --brief`.
 5. Commit, after the items exist, so the baseline advances only for changes that have been
    filed:
@@ -224,7 +224,7 @@ of a tool's output, so the paste is the deliverable.
 | `/fleet-status show --live` | `"$S" collect --cwd --brief` (`--show` for the full view) — a fresh read of GitHub that is not committed, so the next sweep still sees the events |
 
 A `/vault resume` collects through `skills/vault/resume.mjs`, which lists each open thread's title
-and meta whether or not anything moved, files new threads, and commits; the one-line summary is
+and meta whether or not anything moved, files new threads and CVEs, and commits; the one-line summary is
 `show --cwd`'s job.
 
 ## Review items
@@ -270,6 +270,10 @@ you write the body:
   and `Last seen:`, for a thread no open item mirrors; a thread an item already mirrors is
   listed and the item left alone, since `file` replaces the item's prose. Reading the thread
   and writing the pre-review belong to the session that takes the item up.
+- **A resume files less than a sweep, on purpose** (Eugene, 2026-11-03): a new issue, PR, discussion,
+  or advisory by a person, and a CVE landing on an advisory. Everything else a resume sees, a comment
+  included, stays one digest line, since the digest is on his screen. A sweep still files what the
+  list above names.
 - **Body = the pre-review**, in this order: what changed (the event lines, with URLs); how
   meaningful it is; your opinion; proposed actions; and, when a reply is warranted, a paste-ready
   draft response in its own fenced block per `topics/paste-ready-markdown-for-markdown-systems`.

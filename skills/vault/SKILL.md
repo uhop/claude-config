@@ -1263,7 +1263,8 @@ Then reply, and stop:
   exits non-zero, say what it printed.
 
 The script acts twice, both mechanical. It files each new GitHub thread by a
-person, with no open item mirroring it, as a one-line item, in the section the
+person and each CVE landing on an advisory, with no open item mirroring it, as a
+one-line item, in the section the
 `trackers:` entry's `intake` names. Then it advances the GitHub baseline. It leaves
 the drift baseline to the wrap (`/vault log` step 4). A log body's `## Open` and
 `## Next` are what it relays, so write them at the wrap. The collection is ready
