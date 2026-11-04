@@ -52,13 +52,14 @@ list_sessions() {
   local label="$1"; shift
   local tmux_cmd=(tmux "$@")
 
-  if ! sessions="$("${tmux_cmd[@]}" list-sessions -F '#{session_name}\t#{session_attached}\t#{session_created_string}' 2>/dev/null)"; then
+  # ":" cannot be in a session name, and tmux rewrites a tab to "_" without a UTF-8 locale.
+  if ! sessions="$("${tmux_cmd[@]}" list-sessions -F '#{session_name}:#{?session_attached,attached,detached}:#{t:session_created}' 2>/dev/null)"; then
     echo "No tmux server found on $label" >&2
     return 1
   fi
 
   if [[ -n "$query" ]]; then
-    sessions="$(printf '%s\n' "$sessions" | grep -i -- "$query" || true)"
+    sessions="$(printf '%s\n' "$sessions" | awk -F: -v query="$query" 'index(tolower($1), tolower(query))')"
   fi
 
   if [[ -z "$sessions" ]]; then
@@ -67,9 +68,8 @@ list_sessions() {
   fi
 
   echo "Sessions on $label:"
-  printf '%s\n' "$sessions" | while IFS=$'\t' read -r name attached created; do
-    attached_label=$([[ "$attached" == "1" ]] && echo "attached" || echo "detached")
-    printf '  - %s (%s, started %s)\n' "$name" "$attached_label" "$created"
+  printf '%s\n' "$sessions" | while IFS=: read -r name state created; do
+    printf '  - %s (%s, started %s)\n' "$name" "$state" "$created"
   done
 }
 
