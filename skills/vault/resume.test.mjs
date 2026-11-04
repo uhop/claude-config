@@ -254,7 +254,7 @@ test('every section the digest owes, in order, from the log, the queue, and GitH
     '- A handoff waiting: a run-check from x',
     '- A note contradicts stack',
     'Drift:\ntwo new commits',
-    'GitHub o/r, CI success:',
+    'GitHub o/r: CI success.',
     'Since the last look:\nnew PR #7',
     'Filed on the queue:\n- GitHub: o/r #7 Fix',
     '- PR #7 "Fix", by ann, 0 comments',
@@ -426,7 +426,7 @@ test('a filing failure keeps the fresh view, names the failure, and does not com
   assert.match(result.problem, /did not advance/);
   const text = digestOf(inputs({github: result}));
   assert.ok(text.includes('Filing github o/r#1 failed'));
-  assert.ok(text.includes('GitHub o/r, CI success:'));
+  assert.ok(text.includes('GitHub o/r: CI success.'));
 });
 
 test('an unread queue files nothing and does not commit, since a filing could overwrite an item', async () => {

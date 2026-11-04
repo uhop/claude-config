@@ -238,7 +238,7 @@ const externalLines = ({project: p, github}) => {
   const {snapshot} = github;
   const ci = snapshot.ci?.conclusion ?? 'unknown';
   lines.push(
-    `GitHub ${github.repo}, CI ${ci}${github.stored ? `, as stored ${day(snapshot.collected_at)}` : ''}:`
+    `GitHub ${github.repo}: CI ${ci}${github.stored ? `, as stored ${day(snapshot.collected_at)}` : ''}.`
   );
   const threads = threadLines(snapshot);
   if (github.brief || threads.length > 0 || github.filed.length > 0) lines.push(FROM_OUTSIDE);
