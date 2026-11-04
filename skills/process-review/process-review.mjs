@@ -29,6 +29,7 @@ import {
   isVersionBump,
   releasesInWindow
 } from './git-correlate.mjs';
+import {assertionChanges, isTestPath} from './test-assertions.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -63,6 +64,8 @@ const GENERATED =
 
 // A line has to be distinctive enough that matching it means something.
 const MIN_LINE = 20;
+const SOURCE = /\.(?:js|mjs|cjs|jsx|ts|mts|cts|tsx|py|sh|bash|c|h|cc|cpp|hpp|rs|go|java|rb)$/;
+const isSource = path => SOURCE.test(path) && !isTestPath(path) && !GENERATED.test(path);
 const isSignal = s => s.length >= MIN_LINE && !/^[-+*/#<>{}()[\];,'"`|=\s]*$/.test(s);
 
 const git = (...a) => {
@@ -83,23 +86,36 @@ const parseLog = () => {
   const raw = git('log', ...range, '--no-merges', '-U0', '--format=C|%H|%at|%s');
   const commits = [];
   let cur = null,
-    file = null;
+    file = null,
+    from = null,
+    inHeader = false;
   for (const line of raw.split('\n')) {
     if (line.startsWith('C|')) {
       const [, sha, ts, subj] = line.split('|', 4);
-      cur = {sha, short: sha.slice(0, 8), ts: Number(ts), subj, files: new Map()};
+      cur = {sha, short: sha.slice(0, 8), ts: Number(ts), subj, files: new Map(), testLines: []};
       commits.push(cur);
       file = null;
+      inHeader = false;
       continue;
     }
     if (!cur) continue;
-    if (line.startsWith('+++ b/')) {
-      file = line.slice(6);
-      if (!cur.files.has(file)) cur.files.set(file, {add: new Set(), del: new Set()});
+    if (line.startsWith('diff --git')) {
+      file = from = null;
+      inHeader = true;
       continue;
     }
-    if (line.startsWith('diff --git') || line.startsWith('--- ')) continue;
+    // A removed `-- x` prints as `--- x`, so these spellings are headers only before the first hunk.
+    if (inHeader) {
+      if (line.startsWith('--- a/')) from = line.slice(6);
+      else if (line.startsWith('+++ b/')) file = line.slice(6);
+      else if (line === '+++ /dev/null') file = from;
+      else if (line.startsWith('@@')) inHeader = false;
+      if (file && !cur.files.has(file)) cur.files.set(file, {add: new Set(), del: new Set()});
+      continue;
+    }
     if (!file) continue;
+    if (isTestPath(file) && /^[+-]/.test(line))
+      cur.testLines.push({added: line[0] === '+', file, text: line.slice(1)});
     if (line.startsWith('+')) {
       const s = line.slice(1).trim();
       if (isSignal(s)) cur.files.get(file).add.add(s);
@@ -330,6 +346,25 @@ const detectReleaseClusters = (commits, windowDays = 3) => {
 
 // -------------------------------------------------------------------- main
 
+// `assertion_edit`: an existing assertion removed or rewritten, the shape of a test weakened to pass.
+const detectAssertionEdits = commits => {
+  const out = [];
+  for (const c of commits) {
+    const {rewritten, added} = assertionChanges(c.testLines);
+    if (rewritten.length === 0) continue;
+    const sourceFiles = [...c.files.keys()].filter(isSource);
+    out.push({
+      with_source: sourceFiles.length > 0,
+      removed_count: rewritten.length,
+      added_count: added,
+      removed: rewritten.slice(0, 20),
+      source_files: sourceFiles.slice(0, 20),
+      commits: [{sha: c.short, date: iso(c.ts), subject: c.subj}]
+    });
+  }
+  return out.sort((a, b) => b.with_source - a.with_source || b.removed_count - a.removed_count);
+};
+
 const commits = parseLog();
 if (!commits.length) {
   console.error(`no commits found in ${repo} for the requested window`);
@@ -340,7 +375,8 @@ const findings = {
   split_change: detectSplitChange(commits),
   churn: detectChurn(commits),
   burst: detectBursts(commits),
-  release_cluster: detectReleaseClusters(commits)
+  release_cluster: detectReleaseClusters(commits),
+  assertion_edit: detectAssertionEdits(commits)
 };
 
 // Optional transcript enrichment: name the session and the turn that drove each
@@ -397,16 +433,18 @@ if (outPath) writeFileSync(outPath, json);
 // Exit 1 on any finding, in both output modes — the semantics SKILL.md documents.
 const total = Object.values(report.totals).reduce((a, b) => a + b, 0);
 
+// process.exit drops what a pipe has not taken yet, so a report past its 64 KB loses its tail.
+process.exitCode = total ? 1 : 0;
 if (jsonOnly) {
-  console.log(json);
-  process.exit(total ? 1 : 0);
+  await new Promise(drained => process.stdout.write(`${json}\n`, drained));
+  process.exit();
 }
 
 const w = console.log;
 w(`process-review — ${report.name} @ ${report.head}`);
 w(`  window: ${report.window.commits} commits, ${report.window.from} .. ${report.window.to}`);
 w(
-  `  findings: ${report.totals.split_change} split-change, ${report.totals.churn} churn, ${report.totals.burst} burst, ${report.totals.release_cluster} release-cluster`
+  `  findings: ${report.totals.split_change} split-change, ${report.totals.churn} churn, ${report.totals.burst} burst, ${report.totals.release_cluster} release-cluster, ${report.totals.assertion_edit} assertion-edit`
 );
 if (transcriptCoverage)
   w(
@@ -457,8 +495,19 @@ if (report.findings.churn.length) {
   }
 }
 
+if (report.findings.assertion_edit.length) {
+  w('\n=== ASSERTION EDIT — an existing assertion removed or rewritten ===');
+  for (const f of report.findings.assertion_edit) {
+    const c = f.commits[0];
+    w(`\n  ${c.date}  ${c.sha}  "${c.subject.slice(0, 70)}"`);
+    w(
+      `    ${f.removed_count} removed or rewritten, ${f.added_count} added, ${f.with_source ? `${f.source_files.length} source file(s) beside them` : 'no source changed'}`
+    );
+    if (c.driver) w(`    driven by: ${c.driver}  (session ${c.session})`);
+    for (const line of f.removed.slice(0, 5)) w(`    | ${line.file}: ${line.text.slice(0, 80)}`);
+  }
+}
+
 const dropped = Object.entries(report.truncated).filter(([, n]) => n > 0);
 if (dropped.length)
   w(`\n(truncated at --top=${top}: ` + dropped.map(([k, n]) => `${n} more ${k}`).join(', ') + ')');
-
-process.exit(total ? 1 : 0);

@@ -19,6 +19,7 @@ import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import {homedir} from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import {assertionChanges, TEST_PATHS, TEST_PLACES} from '../process-review/test-assertions.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -571,12 +572,10 @@ const readRuns = sha => {
 // --- what changed for users since the last tag --------------------------------
 // Each list is for the agent to judge, so none of it stops a clean digest: a README may
 // name a theme and not its items, and an assertion can change with no behavior changing.
-const TEST_PLACES = ['tests', 'test', 'ts-test', 'ts-tests', '__tests__'];
 const TYPE_PATHS = [
   ':(glob)**/*.d.ts',
   ...TEST_PLACES.map(place => `:(exclude,glob)**/${place}/**`)
 ];
-const TEST_PATHS = [...TEST_PLACES.map(place => `:(glob)**/${place}/**`), ':(glob)**/*.test.*'];
 const DIFF_FLAGS = [
   '--relative',
   '--no-color',
@@ -646,9 +645,6 @@ const notesFor = version => {
   return new Set(kept.join('\n').match(/[\w$]+/g) ?? []);
 };
 
-const ASSERTION =
-  /^(?:await\s+|return\s+)?(?:t\.(?!test\b|comment\b|plan\b|skip\b|todo\b|diagnostic\b)\w+\(|assert(?:\.\w+)?\(|expect\(|eval\(\s*(?:\w+\.)?TEST\b)/;
-
 {
   const tag = digest.checks.git.last_tag;
   if (!tag) {
@@ -684,22 +680,7 @@ const ASSERTION =
     });
 
     const testLines = changedLines(['diff', ...DIFF_FLAGS, tag, '--', ...TEST_PATHS]);
-    const same = text => text.trim().replace(/\s+/g, ' ');
-    const unmatched = new Map();
-    for (const line of testLines)
-      if (line.added) unmatched.set(same(line.text), (unmatched.get(same(line.text)) ?? 0) + 1);
-    const rewritten = [];
-    let moved = 0;
-    for (const line of testLines) {
-      const text = same(line.text);
-      if (line.added || !ASSERTION.test(text)) continue;
-      if (unmatched.get(text)) {
-        unmatched.set(text, unmatched.get(text) - 1);
-        ++moved;
-      } else rewritten.push({file: line.file, text});
-    }
-    const addedCount =
-      testLines.filter(line => line.added && ASSERTION.test(same(line.text))).length - moved;
+    const {rewritten, added: addedCount} = assertionChanges(testLines);
     const byFile = new Map();
     for (const {file, text} of rewritten.slice(0, 30))
       byFile.set(file, [...(byFile.get(file) ?? []), text]);
@@ -856,4 +837,5 @@ digest.summary = {
 };
 
 console.log(JSON.stringify(digest, null, 2));
-if (actions.length || unchecked.length) process.exit(1);
+// process.exit drops what a pipe has not taken yet, so a digest past its 64 KB loses its tail.
+if (actions.length || unchecked.length) process.exitCode = 1;

@@ -783,6 +783,8 @@ test('what is no assertion is not listed', t => {
       "t.comment('y');",
       't.plan(2);',
       't.skip();',
+      "t.skipTest('z');",
+      't.end();',
       'const v = 1;',
       "test('z', t => {});",
       '// t.ok(commented);'

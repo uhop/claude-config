@@ -1,6 +1,6 @@
 ---
 name: process-review
-description: Analyze one repo's git history for process signals — the same change reaching sibling files weeks apart, lines added-removed-re-added, many small commits where one belonged, version bumps clustered too close together. Use when the user invokes /process-review, asks "what can we learn from this project's history", or wants to find workflow inefficiencies that show up in how work landed rather than in the code. Report-only; findings route to the vault like /reflect's. Backed by `process-review.mjs` over `git log`.
+description: Analyze one repo's git history for process signals — the same change reaching sibling files weeks apart, lines added-removed-re-added, many small commits where one belonged, version bumps clustered too close together, existing test assertions removed or rewritten. Use when the user invokes /process-review, asks "what can we learn from this project's history", or wants to find workflow inefficiencies that show up in how work landed rather than in the code. Report-only; findings route to the vault like /reflect's. Backed by `process-review.mjs` over `git log`.
 user_invocable: true
 ---
 
@@ -35,7 +35,7 @@ The script exits `1` when anything was found, `0` on a clean repo — so run it 
 its **own** Bash call, never co-batched (CLAUDE.md § Tools: a non-zero sibling
 cancels the batch).
 
-## The four detectors
+## The five detectors
 
 All structural, all over `git log -U0`. Generated and vendored paths
 (lockfiles, `dist/`, `search-index.json`, `*.min.*`, snapshots) are excluded
@@ -81,8 +81,22 @@ commit are moves or reindents, not churn, and are excluded — without that filt
 the detector reports every refactor. Also filtered: lines appearing in more than
 three files (boilerplate, not a decision).
 
-The noisiest of the four. Read the subjects before believing a hit: legitimate
+The noisiest of the first four. Read the subjects before believing a hit: legitimate
 design iteration looks identical to thrash in the diff.
+
+### `assertion_edit` — an existing assertion removed or rewritten
+
+A commit whose test files lose an assertion that it does not put back, the shape of
+a test weakened to make a change pass. Each finding carries `with_source`, whether a
+source file changed beside it, and those beside a source change sort first. What
+counts as a test and as an assertion lives in `test-assertions.mjs`, shared with
+`/release-check`. A line that only moved or was reindented is left out.
+
+A count never shows weakening: most hits follow a real change, and a commit can
+weaken a test while adding more assertions than it removes. Read the lines. Its
+blind spots: an assertion's arguments on later lines of a multi-line call go unread,
+a check written without an assertion method goes unread, and a reformat that
+rewraps a call reads as a rewrite.
 
 ## Procedure
 
