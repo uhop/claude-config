@@ -670,6 +670,8 @@ only what it names).
 
 ## Cross-repo work
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/cross-repo-work]].
+
 **Editing a repo outside the session's primary working directory starts with one lease read, and the
 answer picks the path** (ruled 2026-08-18; protocol in the vault skill § Agent coordination, design
 `projects/vault-storage/design/agent-coordination` § Session-lifetime claims).
@@ -699,9 +701,7 @@ answer picks the path** (ruled 2026-08-18; protocol in the vault skill § Agent 
   your own sentences are in the diff. All three hold → side-claim again with an attestation naming
   the earlier burst (`"dirty with this session's own burst, <time>"`) and edit directly; a second
   burst on your own uncommitted first one is still one review unit for him. Dirt you cannot account
-  for that way is someone's, and the worktree path stands. (Added 2026-09-06 from a vault-storage
-  session that extended claude-config twice before the first burst was committed; the check is what
-  makes the exception safe.)
+  for that way is someone's, and the worktree path stands.
 
 **The protocol is for work this session's task needs, or a handoff addressed to it.** A defect
 noticed in another project that the task does not need is filed on that project's queue with its
@@ -737,18 +737,13 @@ omit the repo, it points at the wrong file in the wrong one. Naming the repo onl
 line is not enough; that is exactly where it got missed. Close a multi-repo session with a per-repo
 state table: what is committed, what is uncommitted, which submodules are dirty. Scope stays
 governed by § Ambiguity (don't sweep sibling repos unbidden) — this rule is about _where the work
-lands_ and _how it is reported_. (Origin: 2026-08-08 — a lockstep transport change and a
-relative-URL fix were made directly in `~/Open/double-meh`'s working tree during a `double-meh-sw`
-session, then reported as "`src/sw.js` now sends…" with the repo named only in the gate line;
-Eugene: _"Next time always use a disposable git worktree for changes in repositories you don't
-control"_ and _"I didn't realize it was a fix in a separate repo."_)
+lands_ and _how it is reported_.
 
 **A stop's repository table lists only the repositories with work left:** changes to commit, a push,
 a deploy. A clean, pushed repository the session touched earlier stays out of it, and a stop that
 changed one repository names it in the opening line with no table
 ([[projects/agent-workflow/feedback]] § A stop's repository table lists the repositories with work
-left). (Origin: vault-storage 2026-10-14 — four-row tables on single-repository stops; Eugene: _"the
-repository table is confusing: it has 4 repos and only one needs pushing."_)
+left).
 
 **The lease holder reads its handoff inbox at every breather:**
 `vault_handoff_list({to: "repo:<…>", status: "open"})` during a long run's wait, at each work stop,
@@ -759,13 +754,7 @@ reads its handoff inbox at every breather).
 goes in the owner's own stop report and in its reply to the requester. The requester never writes
 its own, may cite the owner's subject once where its own record needs it, and never tracks whether
 that commit landed: no reading the other checkout, no listing it as pending in a stop or a wrap
-([[projects/agent-workflow/feedback]] § A filed handoff is the owner's problem). (Origin: 2026-10-08
-— apodict's holder applied a claude-config gate batch and replied without a subject, the requesting
-vault-storage session invented one, and the commit landed under the holder's own pattern, _"Recorded
-a claude-config gate batch."_; Eugene ruled the owner names it. 2026-10-09 — a vault-storage wrap
-listed apodict's uncommitted gate record as open, then read apodict's git state to check it; Eugene:
-_"Why do you bother when `apodict` does it? Worry about your own project. If you filed a handoff ---
-it is their problem now."_)
+([[projects/agent-workflow/feedback]] § A filed handoff is the owner's problem).
 
 ## Diagnosis
 
