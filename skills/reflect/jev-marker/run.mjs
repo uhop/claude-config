@@ -205,7 +205,6 @@ const build = () => {
         regex: {
           correction: !!t.correction,
           scope_extension: scopeTs.has(ts),
-          did_you: !!t.did_you,
           queued: !!t.queued
         },
         state: {

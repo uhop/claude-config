@@ -291,29 +291,6 @@ test('short-turn gates read the first line: a short ask over a paste still fires
   assert.equal(fires('x'.repeat(200) + ' too', 'scope_extension'), false);
 });
 
-test('did_you marks the bare announced-step check and leaves the quoted form to unlanded', () => {
-  // 2026-09-11 hits (reports/2026-09-11)
-  for (const t of [
-    'Did you take into account for JS that it may use `.d.ts` files? Usually they are referred with a meta-comment, or by convention.',
-    'Did you updated the writing voice-related records in the vault?',
-    'Did we harvest TSX/JSX code?',
-    "Didn't we agree to keep the pin?",
-    // 2026-09-29: a second sentence after the question (reports/2026-09-29)
-    'Did you count lines only in a parser or in related utility files too? Like the assembler 2nd pass file.',
-    'Did you wrap a progress bar as a web component? If so, I can use its attributes to check it by manually changing the current value.'
-  ]) {
-    assert.equal(fires(t, 'did_you'), true, t);
-  }
-  // the quoted form is the unlanded cue, not this marker
-  const quoted = 'did you do "Next leg: the streamers and the tail"?';
-  assert.equal(fires(quoted, 'unlanded'), true);
-  assert.equal(fires(quoted, 'did_you'), false);
-  // not a question, not at the start, or too long: no mark
-  assert.equal(fires('Did you push.', 'did_you'), false);
-  assert.equal(fires('Pushed. Did you run the tests?', 'did_you'), false);
-  assert.equal(fires('Did you ' + 'really '.repeat(30) + 'check?', 'did_you'), false);
-});
-
 test('withheld marks an ask for what the report should have held', () => {
   // the asks on record, projects/agent-workflow's item on this marker, 2026-09-19 to 11-02
   for (const t of [

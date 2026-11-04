@@ -112,18 +112,8 @@ export const SURPRISE_PATTERNS = [
   /^(that'?s|this is|how)\s+(interesting|surprising|unexpected)\b/im
 ];
 
-// The bare announced-step check: "Did you <verb> …?" / "Did we …?" with no
-// quoted span, opening a first line; a second sentence may follow the
-// question mark (2026-09-29). Not a correction family — a marker on the
-// user-turn listing, so the reading pass sees it flagged and judges it. The
-// quoted form ("did you do \"Next leg…\"?") stays with `unlanded`. Measured
-// by hand across eight windows before this instrument existed: 3 of 6 were
-// announced-step checks, the rest genuine questions answered from the record
-// (projects/claude-config/queue, the 2026-08-25 item; instrument 2026-09-15).
-export const DID_YOU_PATTERN = /^(?:did|didn'?t|have|haven'?t)\s+(?:you|we)\b[^?]*\?/i;
-
 // An ask for what the report should have held: a name, a commit subject, a pick, a step's detail. A
-// marker on the user-turn listing, read and judged like `did_you`. Wording alone: over 60 days a
+// marker on the user-turn listing, read and judged by the reader. Wording alone: over 60 days a
 // quoted span in the prior turn and a tool-free reply did not separate these (claude-config D66).
 export const WITHHELD_PATTERNS = [
   /\bcommit\s+(?:message|msg|subject)s?\b/i,
@@ -152,7 +142,6 @@ export const classifyUserTurn = text => {
       SCOPE_EXTENSION_PATTERNS.some(re =>
         re.test(text.length <= SCOPE_EXTENSION_MAX_CHARS ? text : head)
       ),
-    did_you: !unlanded && head.length <= SCOPE_EXTENSION_MAX_CHARS && DID_YOU_PATTERN.test(head),
     withheld:
       head.length <= SCOPE_EXTENSION_MAX_CHARS && WITHHELD_PATTERNS.some(re => re.test(head)),
     confirmation: CONFIRMATION_PATTERNS.some(re => re.test(text)),
