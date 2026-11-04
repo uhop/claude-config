@@ -512,6 +512,8 @@ today's before wording its recency at resume; sessions switch several times a da
 
 ## Preferences
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/preferences]].
+
 - Default OSS license: **BSD-3-Clause** for personal projects — apply to a per-package `LICENSE` /
   `package.json` `"license"` directly; ask before a repo-wide top-level `LICENSE` on a
   currently-`UNLICENSED` / TBD repo.
@@ -525,8 +527,7 @@ today's before wording its recency at resume; sessions switch several times a da
   Lambda and global tables).
 - **No micro-packages for small utilities.** A helper too small for a standalone project goes into
   an existing library of Eugene's (e.g. `waitFor` → time-queues, `withTempDir` → dollar-shell) —
-  suggest a home in an existing package instead of minting `<project>-*` satellites. (Origin:
-  tape-six plugin-candidates review, 2026-07-10.)
+  suggest a home in an existing package instead of minting `<project>-*` satellites.
 - **Dependency updates: all of them, to absolute latest, majors included.** Any "bump dep X" /
   "update the lockfile" task means bump _every_ `dependencies` + `devDependencies` range to the
   latest published — **cross the `^`/major boundary** (e.g. `@types/node` `^25` → `^26`), never
@@ -555,17 +556,16 @@ today's before wording its recency at resume; sessions switch several times a da
   hand or on an event, never on a schedule).
 - **No keys in repositories, public ones included.** An SSH public key, a deploy key, a token, or a
   certificate lives in a parameter or secret store (AWS Parameter Store, GitHub's settings) or on
-  the machine; the code reads it from there and the repository names only where. (Origin:
-  vault-storage 2026-10-07, a host's SSH keys written into a repository; Eugene: _"I don't keep keys
-  in repos."_) **Never commit a secret, ever, and never hand him a step that can.** A command that
-  makes a key, a token, or a certificate makes it in a temporary directory 100% outside any
-  repository, and proves it: one block, in a subshell, creates the directory with `mktemp -d`,
-  removes it with `trap '… rm -rf "$dir"' EXIT` so a failed step cannot leave the key behind, stops
-  when `git -C "$dir" rev-parse --git-dir` succeeds (a `TMPDIR` inside a checkout), and only then
-  makes the key, stores it, and prints the public half; vault-storage's README step 2 is the model.
-  Never `-f <name>` in the current directory, and never "from the repository root" for a step that
-  makes one. Before naming the files of any commit, read `git status --short`, which shows untracked
-  files (`git diff --stat` does not), and stop at any key-like file (`*.pem`, `*.key`, `id_*`, a
+  the machine; the code reads it from there and the repository names only where. **Never commit a
+  secret, ever, and never hand him a step that can.** A command that makes a key, a token, or a
+  certificate makes it in a temporary directory 100% outside any repository, and proves it: one
+  block, in a subshell, creates the directory with `mktemp -d`, removes it with
+  `trap '… rm -rf "$dir"' EXIT` so a failed step cannot leave the key behind, stops when
+  `git -C "$dir" rev-parse --git-dir` succeeds (a `TMPDIR` inside a checkout), and only then makes
+  the key, stores it, and prints the public half; vault-storage's README step 2 is the model. Never
+  `-f <name>` in the current directory, and never "from the repository root" for a step that makes
+  one. Before naming the files of any commit, read `git status --short`, which shows untracked files
+  (`git diff --stat` does not), and stop at any key-like file (`*.pem`, `*.key`, `id_*`, a
   `-----BEGIN … PRIVATE KEY-----` line) instead of listing it. A secret that reached pushed history
   is rotated, not rewritten out. The dotfiles' global pre-commit hook
   (`~/.config/git/hooks/pre-commit`) stops a commit that adds a key header or a known token format,
@@ -574,26 +574,13 @@ today's before wording its recency at resume; sessions switch several times a da
   the commit, the patch, or the merge, and `--no-verify` on `git commit`, `git am`, or `git merge`
   is his call for a fake he names, never an agent's suggestion. The same holds for Program Clerk's
   server, which refuses a write that adds a secret (vault-storage D171): its override is sent only
-  on his word for that write. (Origin: vault-storage 2026-10-08 — a README step made a deploy key
-  inside the repository, a commit took the private half, and the key was rotated; the stop listing
-  that commit's files read `git diff --stat`; Eugene: _"WHY IS IT IN THE REPOSITORY? I SPECIFICALLY
-  SAID 'NO KEYS IN REPOSITORY'."_ and _"I don't want any security problems and leaks. Never commit
-  secrets. Ever."_)
+  on his word for that write.
 - **No map of the internal network in a public repository either.** A host list, a playbash
   inventory, an address map, or any file that lays out the machines stays on them and is copied
   between them by hand (`playbash put`); it never goes into a public repository, a public chezmoi
   source tree included, and a public doc that needs an example uses obvious stand-ins (`host1`,
   `host2`, `box`). Public prose says "the fleet" or "a fleet host" and names no machine, and an
-  agent that needs the names reads them from `~/.config/playbash/inventory.json`. (Origin: dotfiles
-  2026-10-10 — the playbash 3.7.0 build put `inventory.json` into chezmoi as
-  `dot_config/playbash/inventory.json` and wrote the fleet's real layout into the wiki and
-  `dev-docs/`; a side agent flagged it before any commit. Eugene: _"bad people would try to glean a
-  configuration of my internal network. So I never ever keep keys in repos and I don't want to keep
-  an inventory (or similar files) there. I copy them manually --- with `playbash put`. Don't put
-  files like that in public repositories."_ The same day, on host names in this file: _"I would like
-  if we used a term 'fleet' or something similar without actually naming hosts. You can always read
-  hosts from `~/.config/playbash/inventory.json`."_ And: _"In examples you can use some obvious
-  stand-ins."_)
+  agent that needs the names reads them from `~/.config/playbash/inventory.json`.
 
 ## Ambiguity
 
