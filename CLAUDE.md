@@ -94,6 +94,8 @@ ends with a question; a question still open goes into the log for the next sessi
 
 ## Shell
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/shell]].
+
 Many basics (`cp`, `mv`, `rm`, `ls`, `cat`, `grep`, `du`, `mkdir`, `cd`) are aliased on this machine
 — bypass with `command cmd`. Full table: skill `shell-env`.
 
@@ -112,10 +114,7 @@ it, let python loop over it — no format contract between the two halves); term
 which, count what you did against what you planned** — a per-item success line and a total is what
 turns a silent shortfall into an obvious one, and it is the only check that catches the whole family
 (a mid-list `continue`, a failed op swallowed by a pipe, an unmatched assert) rather than this one
-instance. (Origin: 2026-08-17 fleet queue-archival pass — one removal list per project, four
-projects, one item left behind in **each**, caught only by comparing four printed successes against
-a plan of five. The items were already safely archived, so the cost was a second pass rather than
-data loss.)
+instance.
 
 **Show the lines after a match with `grep -n -A N 'pattern' file`, never with
 `sed -n "$(grep -n … | cut -d: -f1),+Np"`.** The substitution is empty whenever the inner grep
@@ -123,8 +122,7 @@ misses — a regex that differs from the one that matched a moment earlier, a `h
 `tail -1` was meant — and sed then reads `,+Np`, exits 1 with `unknown command: ','`, and takes the
 batch's other output with it; measured at 21 sessions in five projects between 2026-08-28 and
 2026-09-20, every one re-issued by hand. When a range genuinely needs sed, capture and test first:
-`L=$(grep -n … | cut -d: -f1); [ -n "$L" ] && sed -n "${L},$((L+N))p" file`. (Origin: the 2026-09-22
-reflect report, P3.)
+`L=$(grep -n … | cut -d: -f1); [ -n "$L" ] && sed -n "${L},$((L+N))p" file`.
 
 **`set -e` is not a gate in the Bash tool; a step whose failure must stop the next one is chained
 with `&&` or `|| exit 1`.** Measured 2026-09-22: a script opened with `set -eu`, its python heredoc
@@ -148,6 +146,8 @@ signal with `command env … &`, and read `/proc/$P/cmdline` before signaling it
 
 ## Scratch files
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/scratch-files]].
+
 Don't hardcode `/tmp/<name>` for scratch — collides with stale files from prior/parallel sessions
 (`Write` refuses a stale same-name file: "File has not been read yet"; `Read` hits another session's
 leftover). `WORK=$(mktemp -d)` once, use `$WORK/<name>`. Shell state doesn't persist between Bash
@@ -155,15 +155,13 @@ calls — capture the printed dir and reuse its **literal** path across calls, d
 keep the whole read-modify-write in one Bash call). **Never `cd` into `$WORK`** — the trailing
 `rm -rf "$WORK"` then deletes the shell's own cwd: the command exits 1 with `getcwd` noise despite
 full success, and the dead cwd poisons the _next_ Bash call too. Absolute paths only; if something
-must run inside, subshell it: `(cd "$WORK" && …)`. (Origin: reflect 2026-07-04 — 3× in one
-double-meh session.) Best-effort `rm -rf "$WORK"` when done (uniqueness prevents collisions; cleanup
-is hygiene, not correctness — don't fail the task on it) — but **chain it with `&&`** (or guard it)
-so a failed step doesn't delete the staged inputs a retry needs: a trailing bare `rm -rf "$WORK"`
-runs even when the step above just failed (origin: reflect 2026-07-10 — a python SyntaxError's
-cleanup wiped the staged vault bodies). Spell a removal under it `"${WORK:?}"/name`: the harness
-refuses `$WORK/name` and `"$WORK"/name`, since an empty variable would make the target `/name`, and
-lets `"$WORK"` and the `:?` form through (measured 2026-10-22; reflect 2026-10-22 P7). Reference
-impl: `skills/vault-check-drift/check-drift.sh`. Full:
+must run inside, subshell it: `(cd "$WORK" && …)`. Best-effort `rm -rf "$WORK"` when done
+(uniqueness prevents collisions; cleanup is hygiene, not correctness — don't fail the task on it) —
+but **chain it with `&&`** (or guard it) so a failed step doesn't delete the staged inputs a retry
+needs: a trailing bare `rm -rf "$WORK"` runs even when the step above just failed. Spell a removal
+under it `"${WORK:?}"/name`: the harness refuses `$WORK/name` and `"$WORK"/name`, since an empty
+variable would make the target `/name`, and lets `"$WORK"` and the `:?` form through (measured
+2026-10-22; reflect 2026-10-22 P7). Reference impl: `skills/vault-check-drift/check-drift.sh`. Full:
 [[topics/scratch-file-mktemp-not-hardcoded-tmp]].
 
 **Every agent gets its own temp path — sub-agents included.** The rule above is about
@@ -175,12 +173,7 @@ likelier the clobber. Two acceptable forms: a fresh `WORK=$(mktemp -d)`, or **th
 scratchpad path plus a unique subfolder** (`$SCRATCH/<agent-or-holder-id>/`) when the scratchpad is
 wanted for discoverability. Never a bare filename in the shared root. When dispatching parallel
 sub-agents, say so in the prompt and give each a distinct namespace — any per-agent identifier the
-dispatch already generates (a claim holder, a shard index) is a free unique name. (Origin:
-`/vault sweep` 2026-07-20 — both stage-3 triage agents wrote `ws.json` into the shared scratchpad
-and clobbered each other mid-run; both happened to recover from context, but one was left rebuilding
-a worksheet mid-claim with a TTL running. The three `vault-review-*` SKILL.mds already prescribed
-`mktemp -d`; the agents followed the scratchpad instruction instead, so prescribing it once is not
-enough — the dispatch has to namespace.)
+dispatch already generates (a claim holder, a shard index) is a free unique name.
 
 **The scratchpad is a workspace, never a delivery location.** Before reporting an artifact as staged
 / written / delivered / ready, confirm it at the path the _user_ will look at — not the one you
@@ -190,13 +183,9 @@ where the work is parked (reflect 2026-10-27). One `test -f` / `ls` costs nothin
 delivery that never happened costs a round-trip and makes every later status claim suspect. The trap
 is structural rather than careless: the same harness push noted above makes scratchpad-by-default
 _right_ for working files and _wrong_ for deliverables, and nothing marks the boundary — so the copy
-is the step that gets skipped, and the narration reads identical either way. (Origin: /clarify
-2026-08-02, from the 2026-08-01 blog hub-cover session — "`hA5-grid` — staged with the updated
-`warp.py`" plus three paragraphs assessing the image, while the file sat only in the session
-scratchpad and never reached `~/.cache/blog-covers/hub-orloj/`, the durable dir Eugene browses and
-every `SOURCES.md` provenance trail points at; he replied _"I don't see `hA5-grid`. Where is it?"_)
-Consumer-side sibling: [[topics/empirical-on-disk-vs-reported-count-validation]] verifies a _tool's_
-reported counts; this one verifies your own narration.
+is the step that gets skipped, and the narration reads identical either way. Consumer-side sibling:
+[[topics/empirical-on-disk-vs-reported-count-validation]] verifies a _tool's_ reported counts; this
+one verifies your own narration.
 
 ## Code
 
@@ -358,14 +347,15 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
 
 ## Snippets vs files
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/snippets-vs-files]].
+
 Code the user types in the terminal/chat is a **snippet** by default (~99%) — illustrative, meant to
 convey shape / DX / intent, not to run. Read it for the API surface and intent; don't flag missing
 imports, surrounding plumbing, or lifecycle, and don't turn a stray literal into an action item.
 Expect typos (missing/duplicated chars) — read past them, fix obvious ones silently. The user says
 when something is a complete program. Code in a real source **file** (`.js`/`.ts`, not `.md`/text)
 is the opposite: expect it complete, compilable, executable, held to full standards. Ask only when a
-fragment's completeness genuinely matters. (Origin: reflect 2026-07-01 — reviewed an illustrative DX
-snippet as if it were a complete program.)
+fragment's completeness genuinely matters.
 
 **Variants to choose from are snippets.** Offer two or three, a few dozen lines each, for a shape
 judged by reading or looking (a layout, a solution's outline); a service or data design is settled
@@ -390,16 +380,12 @@ having to _ask_ "is this inside the advisory or you talking to me?". **Leave a b
 opening `---` and before the closing one** — without it the terminal renderer swallows the fence
 line and joins the content to the separator, so a one-line command arrives as
 `---git -C ~/Open/… apply …` and cannot be cut cleanly. The separator only marks a boundary if it
-visually _is_ one. (Blank-line clause added 2026-08-08 — a `git apply` handoff rendered exactly that
-way; Eugene: _"You should add a newline after the first `---` — easier to cut and paste."_) The
-`---` is a **separator**, not a dash substitution — em-dashes inside snippet prose are fine and
-often required to match the target's existing house style (a repo's published advisories, its
-release notes) — **but spelled for the consumer, per § Writing style: a block bound for GitHub or
-any other HTML-published surface carries `&mdash;` / `&ndash;`, never the raw Unicode character.**
-The paste block is the one place where the chat's raw-Unicode default and the target's entity rule
-meet, and the block follows the target. (Added 2026-08-29 — a PR-review reply was drafted with a raw
-em-dash and Eugene had to replace it by hand before posting: _"we avoid Unicode for HTML-published
-external texts replacing them with HTML entities."_) Only the paste-content goes inside; all my
+visually _is_ one. The `---` is a **separator**, not a dash substitution — em-dashes inside snippet
+prose are fine and often required to match the target's existing house style (a repo's published
+advisories, its release notes) — **but spelled for the consumer, per § Writing style: a block bound
+for GitHub or any other HTML-published surface carries `&mdash;` / `&ndash;`, never the raw Unicode
+character.** The paste block is the one place where the chat's raw-Unicode default and the target's
+entity rule meet, and the block follows the target. Only the paste-content goes inside; all my
 commentary — what it is, what to change, caveats, next steps — stays **outside**, before or after,
 and says so plainly ("end of advisory; everything below is me"). The user submits every
 outward-facing GitHub mutation himself (he owns it; the `gh` gate blocks the agent — see
@@ -409,13 +395,7 @@ not force-written into `dev-docs/` / the vault; the durable rule here is the _fo
 snippets, not the archiving of one-off content. **GitHub-surface lookup:** before drafting for a
 specific GitHub surface, fetch [[topics/paste-ready-markdown-for-markdown-systems]] § "Per-surface
 mechanics" — it carries the verified hard limits (280-char code-scanning dismissal comments,
-65,536-char bodies, commit messages render no markdown). Full: same note. (Origin: reflect
-2026-07-07 — GitHub-destined Markdown handed back blended into prose; the user repeatedly had to ask
-for a clean, separated, fully-formed snippet, and pushed back on over-documenting one-time steps.
-Separator clause reworded 2026-07-21 — the old phrasing read as "replace em-dashes with `---` inside
-snippets", so an agent drafting a node-re2 security advisory mangled the prose dashes _and_ still
-left its commentary ambiguously attached; the user had to ask which side of the boundary a paragraph
-was on.)
+65,536-char bodies, commit messages render no markdown). Full: same note.
 
 **A draft for an external surface names its destination once and supplies every field.** One routing
 block carries the filing link (the templated new-issue URL, the thread to comment in); each form
@@ -449,6 +429,8 @@ before a number lands anywhere: CVSS 3.1 rounds **up** (6.1103 → 6.2, not 6.1;
 2026-08-28).
 
 ## Writing style
+
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/writing-style]].
 
 **All prose follows the `writing-style` skill** — the
 [Google developer documentation style guide](https://developers.google.com/style), with the
@@ -494,17 +476,14 @@ descriptions", a label like "the dual-stack visitor item") gets one clause of wh
 this session has already discussed it; a resume's or a stop's list of open items is a list of these.
 `9.4`, `D86`, or "the 2026-09-02 item" alone is a lookup in a file the reader does not have open.
 Write _feedback 9.4, "Social engagement is an independent readership signal"_ the first time, and
-the number alone can carry the rest of the paragraph. (Origin: blog-hugo 2026-09-11 — a traffic read
-wrote "Per rule 9.4 the sharer was not sought" and Eugene's next turn was _"What is rule 9.4?"_; the
-clause: reflect 2026-10-22 P2.)
+the number alone can carry the rest of the paragraph.
 
 **A task label with parents is explained down its chain.** Before a label like `7ap-8e-5` is used,
 say in a sentence or two the goal its top level serves and where the work stands, then what this
 step does, so he can tell which parts of the label are parents and which a step. His model: _"We are
 switching the vault from SQLite to Postgres. We already did it, but still fixing minor things. This
 step would attach a git repository to your account."_ A label alone, or with only its own clause, is
-a lookup in a plan he does not have open. (Origin: /clarify 2026-10-30, on vault-storage's labels:
-_"I want to know its parents (7? 7a? 7ad? Is 7ad-8e a parent or a step 8e of 7ad? Is 5 a step?)"_)
+a lookup in a plan he does not have open.
 
 **A dated artifact from today is "earlier today".** Check a log's, commit's, or note's date against
 today's before wording its recency at resume; sessions switch several times a day
@@ -584,25 +563,22 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/prefere
 
 ## Ambiguity
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/ambiguity]].
+
 When an instruction or referent is ambiguous — not just unknown jargon, but _what 'it' points at_ or
 _how far a request reaches_ (which file, which scope, how much to change) — ask rather than guess
 and run. A wrong guess on scope costs more round-trips than the question. Fixing an obvious typo
-silently is still fine; this is about genuine ambiguity of intent. (Origin: an "apply it to the
-post" instruction guessed as a narrow cross-link when it meant a whole thread; reflect 2026-06-09.)
-Two refinements: parse a compound rule **narrowly** — "no X transformations" means "no
-transformations of type X", not "no X _and_ no transformations"; and **scope a multi-repo-capable
-operation to the named project** — don't sweep sibling repos unbidden.
+silently is still fine; this is about genuine ambiguity of intent. Two refinements: parse a compound
+rule **narrowly** — "no X transformations" means "no transformations of type X", not "no X _and_ no
+transformations"; and **scope a multi-repo-capable operation to the named project** — don't sweep
+sibling repos unbidden.
 
 **Name the consuming surface before building a display or affordance.** A request for something to
 be _shown_ — a status line, a tab label, a prompt, a badge — is under-specified until you say
 **where it renders and who is looking at it**, and the obvious surface is often not the one the user
 is in front of. State the target in one clause before building; when more than one surface is
 plausible, ask. The reference model — "like my tmux setup does it" — describes the _effect_, never
-the surface. (Origin: /clarify 2026-08-08, from the 2026-08-07 herdr session — asked to show
-`user@host` + `pwd` on the top line, I reasoned about the bash prompt; Eugene: _"I couldn't care
-less about `bash`. When I am in `Claude Code` working with you I don't remember where I am (host?
-repo?)."_ The affordance existed for orientation _inside a Claude Code session_, where no shell
-prompt is visible at all.)
+the surface.
 
 **"In this project" names the cwd project, and a best practice stated there is fleet-wide.** Eugene,
 /clarify 2026-09-22, on whether the standard-errors ruling reached past double-meh: _"When I say 'in
@@ -618,10 +594,7 @@ repository stays in its own notes.
 worked on or saw, phrased in the past tense, informs the design; it does not specify it. A current
 action turns it into an instruction: _"In the past I saw this"_ is context, while _"In the past I
 did this, do it"_ asks for it. When you suspect an anecdote is an instruction, and the two readings
-would build different code, confirm before building. (Origin: /clarify 2026-09-25, from two
-blog-hugo sessions on 2026-09-24 that built the compilers series' Forth reference code. Eugene: _"I
-said that I worked on a machine with a simulated call stack, not to abandon the separate call
-stack."_ The agent had read the story as a directive and built a software return stack.)
+would build different code, confirm before building.
 
 **"Analyze this feedback" is read-only.** For "look at this", "see if it is relevant", or "check the
 docs as they suggest", verify the claim, report its seed, the verdict, and the options with a
@@ -968,6 +941,8 @@ gate, or fuzzer that should have caught it and see it fail; then fix, and keep b
 
 ## Build vs adopt
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/build-vs-adopt]].
+
 Before building or refreshing a library/tool, check whether an authoritative existing solution
 already covers the need — especially a platform-vendor or official library — and surface the
 build-vs-adopt tradeoff **at the survey stage, up front**, not after a full implementation. If an
@@ -983,20 +958,13 @@ all three sections with the exclusions named (the vault's `projects/agent-workfl
 of that date; the apodict def-use item's "five representation ideas to borrow either way" is the
 shape). Separate the **commodity layer** (the parser/verifier/client everyone reimplements) from the
 **value layer** (your opinionated glue/ergonomics) — adopt the former, keep the latter rebuilt on
-it. Full: [[topics/retire-the-commodity-keep-the-glue]]. (Origin: reflect 2026-06-29 —
-cognito-toolkit got a full zero-dep v2 rewrite that reached parity with AWS's official
-`aws-jwt-verify`, benchmarked only near the end; the initial survey should have surfaced it and
-offered retire-vs-build before the rewrite, which would have saved the whole rebuild.)
+it. Full: [[topics/retire-the-commodity-keep-the-glue]].
 
 **A shortlist is a disclosure.** When you narrow a candidate space by mechanical filters — price,
 license, a vendor's category tag — say what the filters were and which notable candidates they
 dropped, and put the list up before spending against it. A filter set with no capability axis can be
 the right call, but it is an invisible one, and the exclusions are what the user is being asked to
-accept without seeing them. (Origin: 2026-08-30 apodict — an OpenRouter shortlist drawn on
-tool-capability, open weights, price and a "programming" category tag, never shown; Eugene asked
-_"Why did you decide to do DeepSeek and not Kimi?"_ after ~$10 of arms had run. Kimi K3 had not been
-rejected, it had not been considered — and measured afterwards it was not a cheap-tier candidate at
-all: $3/$15 against Sonnet's $2/$10, at 20 tok/s.)
+accept without seeing them.
 
 **Give the history behind a design.** When explaining a design, a convention, or a tool, or
 proposing to change one, say why it was done that way, which alternatives were rejected and why, and
@@ -1177,12 +1145,7 @@ Fire this **proactively, not only on the phrase.** Before proposing or making an
 fleet convention governs — `.prettierrc`, `.editorconfig`, `package.json` scripts/devDeps, workflow
 `permissions:`, `AGENTS.md` — read the governing note first. The file may already have drifted, and
 an edit layered on drift entrenches it; worse, the drift is sometimes a _cause_ of the problem being
-fixed. (Origin: reflect 2026-07-21 — proposed a `.prettierrc` `overrides` block for blog-hugo
-without checking slice 19 [[topics/prettier-editorconfig-convention]]; Eugene had to ask _"Do we use
-a fleet-standard prettier settings in this project?"_ It didn't: `arrowParens: "avoid"` and
-`trailingComma: "none"` were both missing, and `arrowParens`'s default was one of the causes of the
-code-sample rewriting then under investigation — checking the convention first would have isolated a
-cause two measurement rounds earlier.)
+fixed.
 
 ## Background shells
 
@@ -1254,6 +1217,8 @@ Probing or sniffing an HTTP API uses safe verbs only — `GET`, `HEAD`, `OPTIONS
 
 ## Config repo
 
+Where these rules came from: [[projects/agent-workflow/claude-md-origins/config-repo]].
+
 This file + `~/.claude/{settings.json,commands,skills,hooks}` are symlinks from
 `~/Open/claude-config/` (repo `uhop/claude-config`) — edits via either path land in the repo. Shell
 edits, that is — the harness's Edit/Write tools **refuse symlinked paths** ("Refusing to write
@@ -1263,7 +1228,6 @@ and **run `node install.mjs --apply` in the same session that adds one**. `setti
 a symlink, so a reference to a new hook/skill goes live the moment it is committed while the file it
 names stays unlinked: every session on the authoring host then fails at that reference until someone
 runs the installer. Fleet propagation (below) already does the `--apply`, so this only covers the
-authoring host — exactly the one that breaks first. (Origin: 2026-08-07 — a `herdr-tab-label.sh`
-hook wired into `settings.json` without the install step; the next day's sessions all opened on
-`SessionStart:startup hook error … not found`.) Per-host overrides: `~/.claude/settings.local.json`.
-Fleet propagation: `claude-config-update` (in `playbash-{daily,weekly,clean}`).
+authoring host — exactly the one that breaks first. Per-host overrides:
+`~/.claude/settings.local.json`. Fleet propagation: `claude-config-update` (in
+`playbash-{daily,weekly,clean}`).
