@@ -1290,7 +1290,10 @@ alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
        in its Backlog section placed it: confirm the section.
      - `read` — read the note before relaying its summary, a note over
        64 KB (its `body_bytes`) by the sections you need, and restate the
-       summary in your next write to the note when it no longer holds.
+       summary in your next write to the note when it no longer holds. A
+       piece of a folder note, such as a queue item or a decision, carries no
+       summary, so its change owes no read: name it by its title from
+       `changes.notes`.
      - `fix-trackers` — the queue's `trackers:` declaration is malformed:
        fix it with `vault_patch_fm` on the queue, and keep going on the
        answer as given.

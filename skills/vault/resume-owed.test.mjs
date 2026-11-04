@@ -180,7 +180,7 @@ test('a possibly stale summary owes a read under 64 KB, and none at it', () => {
   assert.deepEqual(owedOf(bundleOf(possibly(POSSIBLY_STALE_READ_BYTES))), []);
 });
 
-test('a folded note read when a piece changed; a frontmatter-only write owes none, an unknown one a read', () => {
+test('a piece of a folder note owes no read; the note itself does, unless only frontmatter changed', () => {
   assert.deepEqual(
     owedOf(
       bundleOf(
@@ -188,16 +188,19 @@ test('a folded note read when a piece changed; a frontmatter-only write owes non
           changes: {
             since: {ended: 'x', holder: 'h'},
             notes: [
-              write('projects/p/decisions/0001-x.md', {body: true, agent: false, frontmatter: []}),
+              write('projects/p/decisions/0001-x.md', {created: true}),
               write('projects/p/decisions/0002-y.md', {body: true, agent: false, frontmatter: []}),
+              write('projects/p/decisions/0003-z.md', null),
+              write('projects/p/decisions/_about.md', null),
               write(QUEUE, {body: false, agent: true, frontmatter: ['tags']}),
-              write('projects/p/queue-archive.md', null),
+              write('projects/p/stack.md', {body: true, agent: false, frontmatter: []}),
               write('projects/p/learnings.md', null)
             ]
           },
           files: files(
             ['decisions', file('decisions')],
             ['queue', file('queue')],
+            ['stack', file('stack')],
             ['learnings', file('learnings')]
           )
         })
@@ -206,7 +209,7 @@ test('a folded note read when a piece changed; a frontmatter-only write owes non
     [
       {
         kind: 'read',
-        target: 'projects/p/decisions.md',
+        target: 'projects/p/stack.md',
         why: 'its body changed since the last session'
       },
       {
@@ -214,8 +217,7 @@ test('a folded note read when a piece changed; a frontmatter-only write owes non
         target: 'projects/p/learnings.md',
         why: 'written since the last session, what changed unknown'
       }
-    ],
-    'two pieces, one reason; queue-archive.md is no piece of queue.md'
+    ]
   );
 });
 

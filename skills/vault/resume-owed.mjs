@@ -71,12 +71,11 @@ const owedByProject = (p, items, owe) => {
         `its summary has stood through ${file.summaryUnchanged.writes} writes since ${file.summaryUnchanged.since}`
       );
     }
-    const folder = path.replace(/\.md$/, '/');
-    for (const note of changed) {
-      if (note.path !== path && !note.path.startsWith(folder)) continue;
-      const why = contentChange(note.changed);
-      if (why !== null) owe('read', path, why);
-    }
+    // A piece of a folder note carries no summary to relay, so its change owes no read.
+    const note = changed.find(n => n.path === path);
+    if (note === undefined) continue;
+    const why = contentChange(note.changed);
+    if (why !== null) owe('read', path, why);
   }
   for (const log of p.logs) {
     if (log.summary_stale && log.file_path !== null) {
