@@ -325,7 +325,7 @@ export const archiveItem = async (project, ref, {reason, trail}, call = client()
 };
 
 /**
- * What a resume owes for a project's queue (`resume-owed.mjs`): items mirroring a ticket, to read
+ * What a resume lists for a project's queue (`resume-owed.mjs`): items mirroring a ticket, to read
  * upstream, Inbox items to triage, and items filed into the Backlog on or after `since`'s day, none
  * when `since` is null.
  */

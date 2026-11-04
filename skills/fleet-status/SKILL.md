@@ -193,9 +193,8 @@ stored views render.
 3. For a `first_run: true` repository, report the snapshot summary in one line — open items,
    stars, forks, published advisories without a CVE — and file nothing. The baseline is the
    deliverable of a first run.
-4. For every other repository, surface **every** event with full detail (an `/vault resume`
-   lists them one line each, kind, number, and title, under a `GitHub:` heading, and files
-   one-line items, § Review items), write the review items per § Review items, and end
+4. For every other repository, surface **every** event with full detail (for a resume, `skills/vault/resume.mjs` does this mechanically: it lists what moved under `Outside`
+   and files a one-line item for each new thread by a person, § Review items), write the review items per § Review items, and end
    the reply with the brief, verbatim: `"$S" show "$WORK/github.json" --brief`.
 5. Commit, after the items exist, so the baseline advances only for changes that have been
    filed:
@@ -224,8 +223,9 @@ of a tool's output, so the paste is the deliverable.
 | `/fleet-status show --fleet --table` | `"$S" show --fleet --table` — standing counts per repository |
 | `/fleet-status show --live` | `"$S" collect --cwd --brief` (`--show` for the full view) — a fresh read of GitHub that is not committed, so the next sweep still sees the events |
 
-A quiet repository in a `/vault resume` prints nothing (ruled 2026-08-29, less fluff); the
-one-line summary is `show --cwd`'s job.
+A `/vault resume` collects through `skills/vault/resume.mjs`, which lists each open thread's title
+and meta whether or not anything moved, files new threads, and commits; the one-line summary is
+`show --cwd`'s job.
 
 ## Review items
 
@@ -241,8 +241,8 @@ you write the body:
 - **The section follows the project's declaration** (vault-storage D109, 2026-09-30). Read
   `vault_project_trackers({project})` once per project before filing: with no GitHub entry, or
   one whose `intake` is `reflect`, file under Active as above; `intake: triage` files under the
-  Inbox (`--section Inbox`; the server creates the section first in the file), where the project's
-  next resume triages it; `intake: none` files nothing, and the events go to the digest and the
+  Inbox (`--section Inbox`; the server creates the section first in the file), where the user triages
+  it; `intake: none` files nothing, and the events go to the digest and the
   resume output only. A GitHub entry that is `primary` takes no items either: the vault records
   the item in flight, not a mirror.
 

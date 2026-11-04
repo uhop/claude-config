@@ -191,5 +191,5 @@ if [[ $project =~ ^[a-z0-9][a-z0-9.-]*$ ]]; then
   fi
 fi
 
-echo "[vault] Digest only — /vault resume for full context (drift check, feedback body, logs)."
+echo "[vault] Digest only — /vault resume for full context (last log, plan, drift, GitHub)."
 exit 0

@@ -19,7 +19,7 @@ All signals are cheap: local `git` ops plus one `npm view` call when a publishab
 
 ### Automatic — inside `/vault resume`
 
-`/vault resume` calls this skill as its first step. When drift is detected, resume's output leads with the drift report; when clean, resume emits a one-liner and proceeds to the log summary.
+`skills/vault/resume.mjs` runs this skill without `--update` and puts a drifted report in the digest's `Open` section. The wrap refreshes the baseline (`/vault log` step 4).
 
 ### Manual — `/vault check [--update]`
 

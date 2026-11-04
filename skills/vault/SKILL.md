@@ -1163,8 +1163,11 @@ lists the line among the logs with the body's path as `data_path`.
 1. **Write the body** to
    `projects/<project>/data/sessions/logs/YYYY-MM-DD-<session-prefix>-{description}.markdown`,
    `<session-prefix>` the first eight characters of the session id, so two
-   sessions never share a file. Record what was done, decisions made, pending
-   items, and key files touched, citing notes by their backticked paths: a data
+   sessions never share a file. Record what was done, decisions made, and key
+   files touched, with a `## Open` of unresolved questions and pending items, one
+   bullet each, and a `## Next` naming the upcoming task when one is set, since
+   the next resume relays those two as written. Cite notes by their backticked
+   paths: a data
    file is never parsed, so its links are not read, and a durable note cites
    this body's path the same way. Write it with `vault_data_write` (`op:
    "replace"`), or, until the adapter's next publish carries that tool,
@@ -1204,300 +1207,141 @@ lists the line among the logs with the body's path as `data_path`.
 
 ### /vault resume
 
-Rebuild context from the vault. Note: a SessionStart hook
-(`hooks/vault-resume-brief.sh`, 2026-07-23) already injects a few `[vault]`
-digest lines at session start via `GET /system/resume-brief` — lint state,
-pending-suggestion count, the project's Active titles + ready/blocked counts,
-its queue-hygiene findings (server ≥ 2026-09-06),
-a feedback.md pointer, the latest log title, the project's own when it has
-one and marked `(fleet)` otherwise (server ≥ 2026-09-29, D104), and the vault
-server's loop stalls of the past week (server ≥ 2026-10-09, D177), and the
-calling key's name and date when it expires within seven days (server ≥
-2026-10-12, vault-storage D210), and the open handoffs created over a day ago
-in other projects, each project with its count and its oldest's age, since a
-handoff waits for a session in its own project (server ≥ 2026-10-22,
-vault-storage D402): a session in that project picks them up at its resume;
-the handoffs returned for rework over a day ago, by filer, and in the
-project's line the count of its own returned handoffs (vault-storage D403) —
-plus, since 2026-09-05, one
-`[vault] github <repo>:` line read from the project's stored baseline,
-`projects/<name>/data/github.json` since vault-storage 10g-2 (open items,
-advisories without a CVE, open alerts, CI, and how old the collection is),
-never from GitHub itself. The digest is a *trigger*,
-never a substitute: it carries no bodies, so feedback rules, logs, and the
-drift check still come from this workflow. On a pre-brief server (404) the
-hook injects nothing, silently; a project with no stored GitHub baseline gets no
-GitHub line. A key the server refuses (401: expired or recalled) is the one
-failure the hook names, in a single line pointing at `/ui/keys.html`, since
-its silence is how an agent would otherwise lose its vault context unnoticed.
+Bring the agent up to speed on the project and stop: how the last session
+finished, what is upcoming, what is open, and the outside items by title. What
+to work on next is the user's to say (vault-storage 12a; Eugene, 2026-11-03:
+*"Any unnecessary work, which is outside of bringing an agent up to speed on a
+project should be removed or delayed."* and *"It is up to a user to define
+directions after resuming."*).
 
-This workflow is **MCP-native** — steps 2 and 5 are tool calls, not shell. The
-Bash is `check-drift.sh` (step 1), `resume-owed.mjs` (step 2), and
-`fleet-status.mjs` (step 3), each run
-alone, so the parallel-batch `jq`-guard hazard does not arise here at all.
+Make one call, from the project directory. It takes about 6 s:
 
-1. **Drift check first.** Run `~/.claude/skills/vault-check-drift/check-drift.sh`
-   from the current project directory (see the `vault-check-drift` skill for
-   details) as its **own** Bash call. It exits `1` whenever it detects drift
-   (the common case), which would cancel any co-batched sibling; read the
-   report from stdout. If drift is detected, surface it at the top of the
-   resume output before reading logs — the vault's view of the project may be
-   stale, and the recorded logs reflect that stale view.
-2. **One-shot bundle** — call `vault_resume_bundle({project: "<name>", logs: 3})`
-   with `<name>` = the current project (from git remote or directory
-   name). The server runs the incremental reindex first, then packages
-   what used to be five separate reads. Do **not** hand-roll this as
-   `vault-curl … | jq` into a scratch file — the MCP call returns the whole
-   structure directly.
-   - **What this resume owes** comes from a script, since the rules are the
-     skill's and the server keeps the blocks (vault-storage 1h, 11d-2b): run
-     `~/.claude/skills/vault/resume-owed.mjs <name>`, which reads the bundle and
-     the project's queue and prints `[{kind, target, why}]`, in the order to act
-     on it: `target` is what the call takes, and `why` is the evidence. **Act on
-     each entry**, and say in the resume what you did with it; an empty list
-     means nothing is owed. Take the items' sections from
-     `queue-items.mjs list <name>`, since the `queue` body shows none.
-     - `log` — a session ended without a wrap. Write its log first, from
-       its record's commits and notes, the drift check, the queue and
-       decisions as they stand, and, on the host that ran it, the transcript
-       (`~/.claude/projects/<cwd with / as ->/<session id>.jsonl`), as
-       `/vault log` writes one: the body file, then a `log` line whose
-       `holder` is `target.holder` and whose `ended` is `target.ended`, so it
-       pairs with that end alone, a resumed session's other ends included, and
-       is not written twice. Append the line to the month file `target.path` names
-       (`projects/<name>/data/sessions/<YYYY-MM>.jsonl`), or, when
-       `target.path` is the sessions note (`projects/<name>/sessions.md`,
-       until the server takes it in), to the month file of now: a line pairs
-       with a note's session by holder too.
-     - `handoff` — another agent waits on this session: read the request
-       with `vault_handoff_get` before acting (§ Agent coordination —
-       handoffs). `rework` — your own submission came back: surface it.
-     - `upstream` — the item, by its slug, mirrors a ticket: read the ticket,
-       and when it is closed or merged upstream, close the item
-       with `queue-items.mjs archive`, `--reason shipped` when the work was
-       yours and `--reason parked` with a trail saying it closed upstream
-       otherwise.
-     - `triage` — an Inbox item a secondary tracker took in: read it with
-       its `source` and accept it (`queue-items.mjs move … --section backlog`
-       or `active`) or reject it (`queue-items.mjs archive … --reason
-       rejected`, with a trail saying why). Say what you decided;
-       leave an item you cannot judge and name it.
-     - `place` — the item entered the Backlog since the last session, or
-       during it where the project keeps a plan under `plans/` (vault-storage
-       D525, D527), since a wrap files what
-       arrives after it: place it by the project's plan, or say that the
-       plan already places it. In a project with no plan, filing the item
-       in its Backlog section placed it: confirm the section.
-     - `read` — read the note before relaying its summary, a note over
-       64 KB (its `body_bytes`) by the sections you need, and restate the
-       summary in your next write to the note when it no longer holds. A
-       piece of a folder note, such as a queue item or a decision, carries no
-       summary, so its change owes no read: name it by its title from
-       `changes.notes`.
-     - `fix-trackers` — the queue's `trackers:` declaration is malformed:
-       fix it with `vault_patch_fm` on the queue, and keep going on the
-       answer as given.
-     - `file-stalls` — the server does not file its loop stalls, so this
-       resume files what is not filed yet, since the server is shared: find
-       the newest `Loop stalls recorded through <at>.` title among
-       vault-storage's open and archived items (the open one is
-       `queue/loop-stalls.md`, the rest
-       in `queue-archive/`), which marks where filing stopped; read every stall record since it
-       with `vault-curl '/system/events?log=stalls&since=<that at>&limit=1000' -f`,
-       following `next` while it is not null and leaving out the record at
-       exactly that `at`. `-f` makes an HTTP error stop the step, since
-       `vault-curl` exits 0 on one otherwise. **One open stall item at a
-       time** (Eugene, 2026-10-09): when the newest item is still open, add
-       the records to it with one `vault_replace`, its title's time moved to
-       the latest record's `at` and the new records first, its `from`
-       running from the title line through the newest existing record line,
-       so another resume's filing refuses it whole; a 409 means another
-       resume filed first: read the item and stop. When it is archived, or
-       there is none, put them into one new Backlog item titled
-       `Loop stalls recorded through <the latest record's at>.`. Each record
-       is one line: `at`, `lagMs`, CPU against the lag (near it is
-       computing, `gcMs` the collector's share; far below it is waiting, on
-       storage when `fsReads` or `majorFaults` moved), and `before`. Filing
-       is the whole step: the cause is looked for when Eugene schedules it.
-   - `reindex` — quiet on a no-op (`changedFiles: 0`); report counts when
-     something got reindexed; mention `fellBack: true` (the full-reindex
-     path — history loss or first run).
-   - `lint` — pre-filtered to non-zero checks. If `ok=false`, surface the
-     categories with counts and first samples at the top of the resume
-     output. These are bug indicators — report, don't auto-fix.
-   - `suggestions` — `{total, by_kind}` of pendings. If `total > 0`, one
-     summary line; the dedicated review skills handle decisions.
-   - `stalls` (vault-storage D177) — the vault server's event-loop stalls of
-     the past week, `{count, latestAt, latestMs, worstAt, worstMs}`, in one
-     line; null when none, and then stay quiet. With `filedBy: "server"`
-     (D264) the server files them itself, so add `filedThrough` and file
-     nothing; otherwise the owed list carries `file-stalls`.
-   - `workflow` — surface the agent-workflow Active items
-     (`queue-items.mjs list agent-workflow --section active`) under a
-     `Workflow:` heading when there are any. If
-     `clarify_pending > 0`, one line like
-     `Clarify queue: N pending (/clarify to drain)`. Nulls mean the
-     surface isn't scaffolded — omit silently.
-   - `logs` — the fleet's most recent session logs as their `agent.summary`
-     lines; `project.logs` is the project's own latest logs in the same
-     shape and number, since the fleet's newest can all belong to other
-     projects — read those first. Skim the summaries; fetch a full body
-     when a fleet log's summary is missing or `summary_stale` (the owed list
-     names the project's own), or when the session directly continues that log's
-     work: a `log` line's entry (`file_path: null`) names its body in
-     `data_path`, read with `vault_data_read` or `vault-curl /data/<path>`
-     (vault-storage 10e-2), and a log note's is read with `vault_read_file`.
-   - `project` — `feedback.md` normally arrives with its full body:
-     surface its rules near the top of the resume output (this is the
-     read path for fleet-shared project feedback — the vault is
-     pull-only, not auto-loaded like local memory; see
-     `topics/project-feedback-md-convention`). When it instead carries
-     `body_omitted: {reason: "bundle_budget"}` (the body would push the
-     bundle past 32 KiB), the `headings` index shows what rules exist. The
-     session-start hook `vault-feedback-rules.sh` has then usually put each
-     rule's heading and first paragraph in context already, as a
-     `[vault] <project>'s feedback rules` block (vault-storage D380):
-     surface those, and fetch the body with `vault_read_file` when a rule's
-     Why or How to apply matters to the work at hand. With no such block (a
-     host without the hook installed), fetch the body (or read it to a file
-     when `body_bytes` says it is huge) and still surface the rules.
-     The other files (queue/decisions/learnings/stack) come as
-     `summary` + `body_bytes`, each with `summary_stale` and, when its text
-     stood long, `summaryPossiblyStale` (the owed list asks the reads they
-     call for). A note of 64 KB or more with `summaryPossiblyStale` is owed no
-     read: relay its summary marked possibly stale, and read only the
-     sections you need; the sweep restates it (vault-storage D287). A file
-     kept as an atomized folder comes as the note its path composes, with
-     `composed: true` and `pieces`; a `null` entry means the file doesn't
-     exist.
-     The block also carries `trackers` (vault-storage D95): where the
-     project's work is tracked, from the `trackers:` list in its
-     `queue/_about.md` frontmatter, as `{declared, trackers: [{kind, ref, role, create,
-     write, url}], primary, problems}`; no declaration means the vault
-     queue is primary. **When `primary.kind` is not `vault`, new work is
-     filed there** (through that tracker's own MCP server, or as a
-     paste-ready ticket handed to the user when you cannot write to it), and
-     a queue item that mirrors an outside ticket carries `source:` with the
-     tracker and its id; the vault keeps context, notes, edges, and
-     handoffs either way. **The item in flight is one Active item with
-     `source:`** (vault-storage D108): when you start on a ticket,
-     `queue-items.mjs file <name> --section active --source "github
-     owner/repo#15"` (or `linear ENG-123`, `jira VS-7`) with your notes as
-     the body — the script replaces the open item that already carries that
-     source instead of filing a second (D107), so the call is safe to
-     repeat; the Backlog stays empty in that configuration, since the tracker
-     holds the list; when the ticket closes, `queue-items.mjs archive …
-     --reason shipped`, or `--reason parked` when the work moves off you.
-     Before
-     starting on a ticket, read what the vault holds about it:
-     `vault_links({key: "<the source>"})` (or `{url}` for any link) lists
-     the notes and queue items that mention it (vault-storage D112).
-     `vault_project_trackers({project})` reads the same view outside the
-     resume flow.
-     The block also carries `notices` (vault-storage D90), the `supersedes`
-     and `contradicts` edges pointing into the project's files, each
-     `{file, type, by: {record_id, file_path, title}, note, created}`:
-     surface each before relaying that file. `sessions: {recent, unlogged}`
-     (D105, vault-storage 10e-1) is the project's last sessions, from the
-     month files `projects/<name>/data/sessions/<YYYY-MM>.jsonl`, an `end`
-     line per session from the SessionEnd hook and a `log` line per log,
-     paired by holder, and from `projects/<name>/sessions.md` until the server
-     takes that note in; each record names its `file`, and its `log` is the
-     body file a `log` line names (10e-2), a log note's path, or `n/a`.
-     `changes` (D117) is what changed since the end of the latest session
-     that took a turn, named in `since: {ended, holder}`: `notes`, the
-     project's notes written since, the ones whose content changed first,
-     each with `changed` (vault-storage 1g), `{created: true}` or
-     `{body, agent, frontmatter}`, null when the server cannot say, a queue
-     item among them as a note under `queue/`. It shows what happened between sessions:
-     edits in the UI, a sweep, another project's agent. A note whose writes
-     only restated its `agent:` block or set frontmatter keys needs no read:
-     say what was restated or which keys. `null` means no session record
-     qualifies; stay quiet then. `vault_project_changes({project, since})`
-     answers the same for any time or commit. `handoffs: {open, returned,
-     claimed}` is the coordination inbox, since claiming a repo means
-     inheriting it, `returned` matched by its `from.repo` against the
-     project's GitHub repository; both empty (the normal single-agent case):
-     stay quiet.
-3. **GitHub status for the current repository** — the same information the
-   fleet sweep collects, every class, not a one-line digest (ruled
-   2026-08-28; the `fleet-status` skill is the reference). Run
-   `~/.claude/skills/fleet-status/fleet-status.mjs collect --cwd --out "$WORK/github.json"`
-   as its **own** Bash call (`WORK=$(mktemp -d)` first), then read the digest
-   without its snapshots:
-   `jq 'if .skipped then {skipped, reason, repo} else {totals, repos: [.repos[] | {repo, first_run, summary, errors, events}]} end' "$WORK/github.json"`
-   — or `fleet-status.mjs show "$WORK/github.json"` for the text view, which
-   is what goes under the `GitHub:` heading.
-   - `skipped: true` — the remote isn't github.com, there is none, or the
-     repository is private and the project's `trackers:` does not name it
-     (`reason` names which; a declared private repository is collected,
-     ruled 2026-10-06). That is the safety gate:
-     no line in the resume output, no error. A skipped digest has no
-     `repos` key, hence the guard (2026-09-13: the unguarded filter exited 5
-     on 33 private-repository resumes in 60 days).
-   - Exit `3` with `error: "gh_auth"` — `gh` has no valid login on this
-     host. Tell the operator (`gh auth login`) and continue the resume
-     without GitHub data; never pass over it silently.
-   - `first_run: true` — no baseline yet, or one of another repository
-     (`replaced_baseline` names it: the project moved). Report the snapshot
-     summary in one line (open items, stars, forks, published advisories
-     without a CVE) and file nothing.
-   - Otherwise list every event under a `GitHub:` heading, one line each:
-     its kind, number, and title, as `show` prints them ("new PR #229
-     Preserve replacer context…", "new comment on issue #226"). File a
-     one-line item for each attention-worthy thread no open item mirrors
-     yet (`queue-items.mjs list <name> --json` gives each item's `source`):
-     `fleet-status.mjs file … --source …` with a body of the event line,
-     its URL, and `Last seen:`. A thread an open item already mirrors is
-     listed and its item left alone, since `file` would replace the item's
-     prose. Only then `fleet-status.mjs commit "$WORK/github.json"`, so the baseline
-     advances after the items exist — a run with events is also recorded
-     in the fleet digest, where `fleet-status.mjs show --fleet` reads it
-     back (2026-08-29). Partial `errors` are reported inline.
-   - No events and not a first run — print nothing: no heading, no `none`
-     line (ruled 2026-08-29, less fluff; the one-line summary of a quiet
-     repository belongs to `fleet-status.mjs show`, not to a resume).
-   Never block the resume on GitHub: offline degrades to the baseline view.
-   **The resume files and stops.** An issue, PR, advisory, or CI failure this
-   step surfaces becomes a one-line review item on the queue, written from
-   the collector's event line alone, and Eugene schedules it. Reading the
-   thread, the diff, or the code, writing the pre-review, reproducing,
-   measuring, and fixing belong to the session that takes the item up, never
-   to the resume; the same holds for anything else the resume turns up (a
-   dependency bump, a drifted note). (Narrowed 2026-10-26, stream-json: a
-   resume read four threads and their diffs and wrote four pre-reviews, ten
-   minutes before the session could start. Eugene: *"You just say: 'new PR',
-   'new issue', 'new comment in an existing PR' and so on. No need to analyze
-   more. Just titles and numbers."* and *"The deep work is for the session we
-   want to start."* The purpose, in his words the same day: *"a fast resume
-   by skipping unnecessary tasks --- it is quite possible that a developer
-   wants to work on their items rather than 3rd-party things, which are often
-   of low quality."* The rule covers the resume; a sweep he asks for is
-   another matter. Ruled 2026-09-08, install-artifact-from-github: a
-   pre-review of issue #30 grew a scratch fixture, a local corepack install,
-   and three package-manager measurements before he had seen the issue.
-   Eugene: *"I ask you to bootstrap a session with `/vault resume`, not
-   fixing issues and PRs without initial discussion."* Then: *"An issue should
-   be an item in a queue in the vault. We can schedule it at will. It is not
-   something that should be acted upon immediately."*)
-4. **Fallback (pre-bundle server).** A 404 / missing-tool error from the
-   bundle means an older server — run the individual reads instead:
-   `vault_lint`, `vault_suggestions_summary`, the two agent-workflow
-   reads (`queue-items.mjs list agent-workflow --section active`,
-   `clarify-queue.md` pending count), the 3 most recent `logs/` entries, and the project's
-   notes including `feedback.md` — all via `vault_read_file` /
-   `vault_list_pieces`. The incremental reindex is `vault_incremental_reindex`
-   on adapter 0.1.0+; on an older one it stays
-   `vault-curl /maintenance/incremental-reindex -X POST -s` — guard its `jq`
-   pipe with `|| true` if you batch it with anything.
-5. Summarize current state and what's left to do. If `check-drift` flagged
-   new commits / tags / publishes that aren't reflected in `projects/<name>`
-   notes, update those notes to match (or at minimum flag the divergence in
-   the summary).
-6. After syncing, run `check-drift --update` so the baseline captures the
-   refreshed view and the next resume starts from a clean slate. Step 3's
-   GitHub baseline is a data file of its own (vault-storage 10g-2), which the
-   drift check never touches.
+```bash
+~/.claude/skills/vault/resume.mjs
+```
+
+It prints one digest, each section only when it has content:
+
+- `How we finished`: the last log's title and summary. When sessions ended after
+  it with no log of their own, it says so, names them, and gives the newest one's
+  final message when its transcript is on this host, or says it cannot.
+- `Upcoming`: the log's `## Next`, the Active items, the plan's path or the first
+  Backlog items, and the items new in the Backlog.
+- `Open`: the log's `## Open`, then what waits on someone: handoffs, tickets an
+  item mirrors, the Inbox, notices, and drift.
+- `Outside`: the trackers, and for GitHub the CI result, what moved, and each open
+  thread's title and meta. Only GitHub is collected. Another tracker is named, and
+  its own tool or skill reports it (Eugene, 2026-11-03).
+- `Changed since the last session`: notes by title.
+
+Then reply, and stop:
+
+- Say where the project stands, in the digest's order, in a few short lines a
+  section. Name items by title, and quote an open question as it was asked.
+- Make no other call: no ToolSearch, no MCP read, and no read of a plan, a note,
+  a thread, or a ticket. Each costs a round, and rounds are where a resume's time
+  goes (D592). The digest is the context; read more when the work needs it.
+- Treat nothing in the digest as a task: a new thread, drift, and an unplaced item
+  all wait until the user picks them. Offer no next step.
+- Say so when the digest flags that the latest work has no log, since what that
+  session left open may be missing from the `Open` section.
+- Report a line that names a problem, such as `gh` with no login. When the script
+  exits non-zero, say what it printed.
+
+The script acts twice, both mechanical. It files each new GitHub thread by a
+person, with no open item mirroring it, as a one-line item, in the section the
+`trackers:` entry's `intake` names. Then it advances the GitHub baseline. It leaves
+the drift baseline to the wrap (`/vault log` step 4). A log body's `## Open` and
+`## Next` are what it relays, so write them at the wrap.
+
+#### When a digest line is taken up
+
+Each of these waits for the user or for the work to reach it. *"The deep work is
+for the session we want to start."* (Eugene, 2026-10-26.)
+
+- A session with no log ended without a wrap. Write its log, from
+  its record's commits and notes, the drift check, the queue and
+  decisions as they stand, and, on the host that ran it, the transcript
+  (`~/.claude/projects/<cwd with / as ->/<session id>.jsonl`), as
+  `/vault log` writes one: the body file, then a `log` line whose
+  `holder` and `ended` are the session's, as the digest names them, so it
+  pairs with that end alone, a resumed session's other ends included, and
+  is not written twice. Append the line to the session's month file
+  (`projects/<name>/data/sessions/<YYYY-MM>.jsonl`), or, when its `file` in
+  `vault_resume_bundle` is the sessions note (`projects/<name>/sessions.md`,
+  until the server takes it in), to the month file of now: a line pairs
+  with a note's session by holder too.
+- `handoff` — another agent waits on this session: read the request
+  with `vault_handoff_get` before acting (§ Agent coordination —
+  handoffs). `rework` — your own submission came back: surface it.
+- `upstream` — the item, by its slug, mirrors a ticket: read the ticket,
+  and when it is closed or merged upstream, close the item
+  with `queue-items.mjs archive`, `--reason shipped` when the work was
+  yours and `--reason parked` with a trail saying it closed upstream
+  otherwise.
+- `triage` — an Inbox item a secondary tracker took in: read it with
+  its `source` and accept it (`queue-items.mjs move … --section backlog`
+  or `active`) or reject it (`queue-items.mjs archive … --reason
+  rejected`, with a trail saying why). Say what you decided;
+  leave an item you cannot judge and name it.
+- `place` — the item entered the Backlog since the last session, or
+  during it where the project keeps a plan under `plans/` (vault-storage
+  D525, D527), since a wrap files what
+  arrives after it: place it by the project's plan, or say that the
+  plan already places it. In a project with no plan, filing the item
+  in its Backlog section placed it: confirm the section.
+- `fix-trackers` — the queue's `trackers:` declaration is malformed:
+  fix it with `vault_patch_fm` on the queue, and keep going on the
+  answer as given.
+- `file-stalls` — the server does not file its loop stalls, so this
+  resume files what is not filed yet, since the server is shared: find
+  the newest `Loop stalls recorded through <at>.` title among
+  vault-storage's open and archived items (the open one is
+  `queue/loop-stalls.md`, the rest
+  in `queue-archive/`), which marks where filing stopped; read every stall record since it
+  with `vault-curl '/system/events?log=stalls&since=<that at>&limit=1000' -f`,
+  following `next` while it is not null and leaving out the record at
+  exactly that `at`. `-f` makes an HTTP error stop the step, since
+  `vault-curl` exits 0 on one otherwise. **One open stall item at a
+  time** (Eugene, 2026-10-09): when the newest item is still open, add
+  the records to it with one `vault_replace`, its title's time moved to
+  the latest record's `at` and the new records first, its `from`
+  running from the title line through the newest existing record line,
+  so another resume's filing refuses it whole; a 409 means another
+  resume filed first: read the item and stop. When it is archived, or
+  there is none, put them into one new Backlog item titled
+  `Loop stalls recorded through <the latest record's at>.`. Each record
+  is one line: `at`, `lagMs`, CPU against the lag (near it is
+  computing, `gcMs` the collector's share; far below it is waiting, on
+  storage when `fsReads` or `majorFaults` moved), and `before`. Filing
+  is the whole step: the cause is looked for when Eugene schedules it.
+
+**Trackers.** **When `primary.kind` is not `vault`, new work is
+filed there** (through that tracker's own MCP server, or as a
+paste-ready ticket handed to the user when you cannot write to it), and
+a queue item that mirrors an outside ticket carries `source:` with the
+tracker and its id; the vault keeps context, notes, edges, and
+handoffs either way. **The item in flight is one Active item with
+`source:`** (vault-storage D108): when you start on a ticket,
+`queue-items.mjs file <name> --section active --source "github
+owner/repo#15"` (or `linear ENG-123`, `jira VS-7`) with your notes as
+the body — the script replaces the open item that already carries that
+source instead of filing a second (D107), so the call is safe to
+repeat; the Backlog stays empty in that configuration, since the tracker
+holds the list; when the ticket closes, `queue-items.mjs archive …
+--reason shipped`, or `--reason parked` when the work moves off you.
+Before
+starting on a ticket, read what the vault holds about it:
+`vault_links({key: "<the source>"})` (or `{url}` for any link) lists
+the notes and queue items that mention it (vault-storage D112).
+`vault_project_trackers({project})` reads the same view outside the
+resume flow.
+
+`vault_resume_bundle` still answers the raw blocks, for `/vault learn` and for a
+reader that needs them; its tool description names each one. Before relaying a
+summary it marks stale, read the note, one over 64 KB (its `body_bytes`) by the
+sections you need, and restate the summary in your next write to it.
+`vault_project_changes` answers what changed since any time or commit.
 
 ### /vault wrap [optional log slug]
 
@@ -1608,7 +1452,7 @@ What a note records about each tracker's objects, and which of the vendor's
 tools reads them, is in the per-tool notes under
 `projects/vault-storage/integrations/` (`github` first). How a session
 records the ticket it works on when the primary is outside the vault, one
-Active item with `source:`, is in `/vault resume` step 2 under `trackers`.
+Active item with `source:`, is under **Trackers** in `/vault resume`, § When a digest line is taken up.
 
 ### /vault verify [project] [--all] [--unchecked]
 
