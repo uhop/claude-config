@@ -670,7 +670,8 @@ for (const t of transcripts) {
   // and the previous human one — a reply with no tool call, so the two turns
   // are a quick exchange (a cluster). `correction`: the classifier already
   // fired here, so the unmarked turns are the reading. `did_you`: the bare
-  // announced-step check, measured rather than scored. `after_api_error`: the
+  // announced-step check, measured rather than scored. `withheld`: an ask for
+  // what the report should have held, read the same way. `after_api_error`: the
   // reply before this turn was the harness's `API Error:` row, so a run of
   // "Try again." turns reads as an outage, not a cluster (2026-09-07: nine
   // such turns during an SSL outage).
@@ -685,7 +686,8 @@ for (const t of transcripts) {
     const afterAssistant = prev?.role === 'assistant';
     const side = parseSideNote(e.userText);
     const own = side ? side.addendum : e.userText;
-    const didYou = (e.queued || afterAssistant) && classifyUserTurn(own).did_you;
+    const answers = e.queued || between.some(x => x.role === 'assistant');
+    const marks = answers ? classifyUserTurn(own) : {};
     const afterApiError = afterAssistant && /^API Error\b/.test(prev.userText ?? '');
     userTurns.push({
       project: t.project,
@@ -699,7 +701,8 @@ for (const t of transcripts) {
       ...(e.queued && {queued: true}),
       ...(adjacent && {adjacent: true}),
       ...(correctionTs.has(e.ts) && {correction: true}),
-      ...(didYou && {did_you: true}),
+      ...(marks.did_you && {did_you: true}),
+      ...(marks.withheld && {withheld: true}),
       ...(afterApiError && {after_api_error: true})
     });
     prevHuman = i;

@@ -70,7 +70,7 @@ Read all three to dedupe; write only to vault + claude-config.
      "live_sessions": [{project, session_id, path, mtime_iso, age_seconds, first_row_iso}],
      "state_watermark_iso": "...",
      "session_git": [{project, session_id, start_iso, end_iso, first_turn, repo, commits, correction_driven_commits, shas, releases: [{package, version, ts_iso, sha, tag}], npm: {<package>: "ok" | "unpublished" | "not checked"}}],
-     "user_turns": [{project, session_id, ts, ts_iso, first_line, chars, side_note?, addendum?, queued?, adjacent?, correction?, did_you?, after_api_error?}],
+     "user_turns": [{project, session_id, ts, ts_iso, first_line, chars, side_note?, addendum?, queued?, adjacent?, correction?, did_you?, withheld?, after_api_error?}],
      "signals": {
        "corrections":       [{kind, project, session_id, ts, ts_iso, matched_text, excerpt, unlanded?, scope_extension?}, ...],
        "confirmations":     [{...}],
@@ -166,7 +166,11 @@ Read all three to dedupe; write only to vault + claude-config.
    mark (2026-09-29) — a measurement, not a correction: read it
    and say in the report whether it checked a step the agent had announced
    (3 of 6 did, by hand, before the marker existed) or asked a question the
-   record answered; `after_api_error: true` means the reply before the turn
+   record answered; `withheld: true` (2026-11-03) is an ask for what the report
+   should have held: a name, a commit subject, a pick, a step's detail, or
+   *"What is 4f?"* after a bare locator. Over 60 days about three in four marked turns
+   were in class, and a domain question or a fresh request reads the same, so
+   say which rule each one broke; `after_api_error: true` means the reply before the turn
    was the harness's `API Error:` row, so a run of such turns is an outage,
    not a cluster. `queued: true` (2026-09-17) marks a message typed while the
    agent was working: Claude Code stores it as an `attachment` row of type

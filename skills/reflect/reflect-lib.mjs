@@ -122,6 +122,18 @@ export const SURPRISE_PATTERNS = [
 // (projects/claude-config/queue, the 2026-08-25 item; instrument 2026-09-15).
 export const DID_YOU_PATTERN = /^(?:did|didn'?t|have|haven'?t)\s+(?:you|we)\b[^?]*\?/i;
 
+// An ask for what the report should have held: a name, a commit subject, a pick, a step's detail. A
+// marker on the user-turn listing, read and judged like `did_you`. Wording alone: over 60 days a
+// quoted span in the prior turn and a tool-free reply did not separate these (claude-config D66).
+export const WITHHELD_PATTERNS = [
+  /\bcommit\s+(?:message|msg|subject)s?\b/i,
+  /\bwhat\s+do\s+you\s+(?:recommend|suggest)\b/i,
+  /\bwhat\s+(?:are\s+)?questions?\b.*\bfor\s+me\b/i,
+  /\b(?:more\s+(?:info|details?|context)|pertinent\s+details|i\s+need\s+context)\b/i,
+  /\b(?:where|which|what)\b.{0,40}\bshould\s+i\b|\bshould\s+i\s+(?:run|pu\w*sh)\b|\bhow\s+to\s+split\b/i,
+  /\bwhat\s+(?:is|was|are|were)\b[^?]{0,90}\?|---\s*what\b/i
+];
+
 // One user-authored turn → which families fire. Pass 1 of the scanner reads
 // these flags; the test reads them for the fixtures, so both see one function.
 // The short-turn gates read the FIRST LINE: a 34-character ask over a two-line
@@ -141,6 +153,8 @@ export const classifyUserTurn = text => {
         re.test(text.length <= SCOPE_EXTENSION_MAX_CHARS ? text : head)
       ),
     did_you: !unlanded && head.length <= SCOPE_EXTENSION_MAX_CHARS && DID_YOU_PATTERN.test(head),
+    withheld:
+      head.length <= SCOPE_EXTENSION_MAX_CHARS && WITHHELD_PATTERNS.some(re => re.test(head)),
     confirmation: CONFIRMATION_PATTERNS.some(re => re.test(text)),
     surprise: SURPRISE_PATTERNS.some(re => re.test(text))
   };

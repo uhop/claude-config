@@ -314,6 +314,58 @@ test('did_you marks the bare announced-step check and leaves the quoted form to 
   assert.equal(fires('Did you ' + 'really '.repeat(30) + 'check?', 'did_you'), false);
 });
 
+test('withheld marks an ask for what the report should have held', () => {
+  // the asks on record, projects/agent-workflow's item on this marker, 2026-09-19 to 11-02
+  for (const t of [
+    'What is the short name of arc 4?',
+    'What is Arc 1 for the commit message?',
+    'What is the name of arc2 so I can use it as a commit message?',
+    'What do you suggest? The criteria here is the simplicity of code, removing perpendicular concerns.',
+    'What question do you have for me?',
+    'What are questions for me?',
+    'For #1: what id should I use?',
+    'what do you recommend?',
+    'What do you recommend and why?',
+    'What is 7m?',
+    'What is "Rich completion descriptions"?',
+    'what is 4f?',
+    'what is 7an-1?',
+    'What is "the JXL-normalization discussion"?',
+    'The dual-stack visitor item, waiting on the privacy-posture item --- what is it?',
+    '`Fleet --flags O remediation through Dependabot` --- what is it?',
+    'What is `record()`?',
+    'what is consumer test?',
+    'What is the commit message for the rest?',
+    'What are other changes and commit msg for them?',
+    'How to split three commits?',
+    'could you give me more info on that item?',
+    '"Question 131 is still open" --- list all open questions. Give me pertinent details on Q131.',
+    'I need context.',
+    'Should I pubish it??? What does it do over the previous version?',
+    '"my pick for the database class is db.t4g.large" --- what is the pricing?',
+    'pushed & deployed, what is #235?',
+    'Step 1: where should I get a person key? In `.env`?',
+    'Should I run Step 5?',
+    'Committed the `blog-hugo` handoff. What is the commit message for the rest?',
+    'deployed, what is the commit message for the current changes?',
+    'What is rule 9.4?'
+  ]) {
+    assert.equal(fires(t, 'withheld'), true, t);
+  }
+  for (const t of [
+    'pushed, next',
+    'Fix the relative Location in the other two too',
+    'Did you push?',
+    'no, keep the pin',
+    'What a mess.',
+    'x'.repeat(170) + ' what is 7m?'
+  ]) {
+    assert.equal(fires(t, 'withheld'), false, t);
+  }
+  // the first line decides, so a short ask over a paste still counts
+  assert.equal(fires('what is 4f?\n' + 'a paste line\n'.repeat(40), 'withheld'), true);
+});
+
 test('exchange rendering: human rows, tool calls and results, hand-backs left out', () => {
   const rows = [
     {
@@ -543,6 +595,44 @@ test('a window the rows fill stays quiet', t => {
   const {scan, stderr, at} = scanOf(t, 6.5, '7d');
   assert.equal(scan.scan_window.earliest_row_iso, at);
   assert.doesNotMatch(stderr, /earliest row/);
+});
+
+test('a marker reads a turn that answers a reply, whatever row sits between them', t => {
+  const home = mkdtempSync(path.join(tmpdir(), 'reflect-marks-'));
+  t.after(() => rmSync(home, {recursive: true, force: true}));
+  const dir = path.join(home, '.claude/projects/-x');
+  mkdirSync(dir, {recursive: true});
+  const base = Date.now() - 3600e3;
+  const row = (type, content, i) => ({
+    type,
+    timestamp: new Date(base + i * 1000).toISOString(),
+    sessionId: 's',
+    cwd: home,
+    entrypoint: 'cli',
+    message: {role: type, content}
+  });
+  const said = text => [{type: 'text', text}];
+  const rows = [
+    row('user', 'what is 1a?', 0),
+    row('assistant', said('A report naming 4f.'), 1),
+    row('user', '<local-command-stdout>ok</local-command-stdout>', 2),
+    row('user', 'what is 4f?', 3),
+    row('assistant', said('It is this.'), 4),
+    row('user', 'what is 5g?', 5)
+  ];
+  const file = path.join(dir, 's.jsonl');
+  writeFileSync(file, rows.map(r => `${JSON.stringify(r)}\n`).join(''));
+  // a file written moments ago reads as a live session, which the scan leaves out
+  utimesSync(file, new Date(base), new Date(base));
+  const script = new URL('reflect.mjs', import.meta.url).pathname;
+  const r = spawnSync('node', [script, '--since=1d'], {
+    encoding: 'utf8',
+    env: {...process.env, HOME: home}
+  });
+  const marks = Object.fromEntries(
+    JSON.parse(r.stdout).user_turns.map(u => [u.first_line, u.withheld === true])
+  );
+  assert.deepEqual(marks, {'what is 1a?': false, 'what is 4f?': true, 'what is 5g?': true});
 });
 
 test('an empty window names no earliest row and warns of nothing', t => {
