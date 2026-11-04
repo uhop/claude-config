@@ -14,16 +14,11 @@ PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
 
-# Project derivation — mirrors vault-check-drift: nearest git repo root,
-# `.claude/vault-project` override, else the root's basename. Non-repo cwd →
-# fleet-level digest (no project block).
+# Non-repo cwd → fleet-level digest (no project block).
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-project.sh" || exit 0
 project=""
 if root=$(git rev-parse --show-toplevel 2>/dev/null); then
-  if [[ -f "$root/.claude/vault-project" ]]; then
-    project=$(tr -d '[:space:]' <"$root/.claude/vault-project")
-  else
-    project=$(basename "$root")
-  fi
+  project=$(vault_project_of "$root")
 fi
 
 # Start loading the embedding model now, so the session's first semantic

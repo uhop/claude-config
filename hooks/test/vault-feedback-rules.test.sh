@@ -25,8 +25,24 @@ out=$(cd "$repo" && env "${refused[@]}" bash "$HOOK" 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "unreachable server must exit 0 silently (rc=$rc out=$out)"
 out=$(cd / && env "${refused[@]}" bash "$HOOK" 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "a non-repo cwd must exit 0 silently (rc=$rc out=$out)"
-trace=$(cd "$repo" && env PROGRAM_CLERK_URL=http://127.0.0.1:59999 PROGRAM_CLERK_KEY=new bash -x "$HOOK" 2>&1 >/dev/null)
-[[ "$trace" == *"Bearer new"*"http://127.0.0.1:59999/projects/claude-config/rules"* ]] && ok || bad "asks for the cwd project's rules (trace=$trace)"
+
+# ── OFFLINE: which project it asks for, from a scratch repository ────────
+asks() {
+  (cd "$1" && env PROGRAM_CLERK_URL=http://127.0.0.1:59999 PROGRAM_CLERK_KEY=new bash -x "$HOOK" 2>&1 >/dev/null)
+}
+work=$(mktemp -d)
+main="$work/main-name" linked="$work/other-name"
+mkdir -p "$main" && git -C "$main" init -q
+git -C "$main" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m first
+git -C "$main" worktree add -q --detach "$linked"
+trace=$(asks "$main")
+[[ "$trace" == *"Bearer new"*"http://127.0.0.1:59999/projects/main-name/rules"* ]] && ok || bad "asks for the cwd project's rules (trace=$trace)"
+trace=$(asks "$linked")
+[[ "$trace" == *"/projects/main-name/rules"* ]] && ok || bad "a linked worktree is its main checkout's project (trace=$trace)"
+mkdir "$linked/.claude" && printf 'named\n' >"$linked/.claude/vault-project"
+trace=$(asks "$linked")
+[[ "$trace" == *"/projects/named/rules"* ]] && ok || bad "the marker names the project (trace=$trace)"
+rm -rf "$work"
 
 # ── LIVE: vault-storage's rules ──────────────────────────────────────────
 url=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}}

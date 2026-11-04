@@ -18,8 +18,7 @@
 # FAILS OPEN, silently, inside the hook's timeout: SessionEnd stdout is shown
 # to no one, and nothing here may hold up shutdown. Missing env or tools, a
 # non-repo cwd, a sub-agent run (agent_id present), an unreachable server all
-# exit 0. Project name as vault-resume-brief.sh derives it: `.claude/vault-project`
-# in the repository root, else the root's basename.
+# exit 0. `lib/vault-project.sh` names the project.
 #
 # Hook contract: stdin JSON {session_id, cwd, transcript_path?, reason?, agent_id?}.
 
@@ -44,12 +43,9 @@ cwd=$(jq -r '.cwd // ""' <<<"$payload" 2>/dev/null) || exit 0
 reason=$(jq -r '.reason // "other"' <<<"$payload" 2>/dev/null) || reason=other
 [[ $reason =~ ^[a-z_-]+$ ]] || reason=other
 
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-project.sh" || exit 0
 root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || exit 0
-if [[ -f "$root/.claude/vault-project" ]]; then
-  project=$(tr -d '[:space:]' <"$root/.claude/vault-project")
-else
-  project=$(basename "$root")
-fi
+project=$(vault_project_of "$root")
 [[ $project =~ ^[a-z0-9][a-z0-9.-]*$ ]] || exit 0
 
 me="$(hostname -s)/${session_id:0:8}"

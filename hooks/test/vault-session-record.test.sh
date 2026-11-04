@@ -91,6 +91,14 @@ printf '{"session_id":"deadbeef-0001","cwd":"%s","transcript_path":"%s","reason"
 [[ $(tail -1 "$work/requests.jsonl" | jq -r '.url') == "/data/projects/uhop.github.com/data/sessions/$month.jsonl" ]] && ok ||
   bad "a dotted project name is a project: $(tail -1 "$work/requests.jsonl")"
 
+# ── a linked worktree records under its main checkout's project ───────────
+linked="$work/other-name"
+git -C "$repo" worktree add -q --detach "$linked"
+printf '{"session_id":"deadbeef-0002","cwd":"%s","transcript_path":"%s","reason":"exit"}' "$linked" "$transcript" |
+  env PROGRAM_CLERK_URL="$url" PROGRAM_CLERK_KEY=x bash "$HOOK" >/dev/null 2>&1
+[[ $(tail -1 "$work/requests.jsonl" | jq -r '.url') == "/data/projects/vs-demo/data/sessions/$month.jsonl" ]] && ok ||
+  bad "a linked worktree is its main checkout's project: $(tail -1 "$work/requests.jsonl")"
+
 kill "$server" 2>/dev/null
 rm -rf "$work"
 

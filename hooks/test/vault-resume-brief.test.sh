@@ -181,6 +181,15 @@ out=$(jq -r "$prog" <<<"$(disk '{"path":"/data/vault","free_bytes":16106127360,"
 out=$(jq -r "$prog" <<<"$(disk null)" 2>&1)
 [[ "$out" == "[vault] lint ok" ]] && ok || bad "disk: a server without the field adds nothing (out=$out)"
 
+# ── OFFLINE: a linked worktree is its main checkout's project ────────────
+work=$(mktemp -d)
+mkdir -p "$work/main-name" && git -C "$work/main-name" init -q
+git -C "$work/main-name" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m first
+git -C "$work/main-name" worktree add -q --detach "$work/other-name"
+trace=$(cd "$work/other-name" && env PROGRAM_CLERK_URL=http://127.0.0.1:59999 PROGRAM_CLERK_KEY=new bash -x "$HOOK" 2>&1 >/dev/null)
+[[ "$trace" == *"/system/resume-brief?project=main-name"* ]] && ok || bad "a linked worktree asks for its main checkout's project (trace=$trace)"
+rm -rf "$work"
+
 # ── LIVE: this repository has a stored GitHub baseline ───────────────────
 live_url=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}} live_key=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
 if [[ -z $live_url || -z $live_key ]] ||

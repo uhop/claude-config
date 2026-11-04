@@ -13,13 +13,9 @@ PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
 
-# The project as the brief hook and vault-check-drift derive it.
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-project.sh" || exit 0
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-if [[ -f "$root/.claude/vault-project" ]]; then
-  project=$(tr -d '[:space:]' <"$root/.claude/vault-project")
-else
-  project=$(basename "$root")
-fi
+project=$(vault_project_of "$root")
 [[ $project =~ ^[a-z0-9][a-z0-9.-]*$ ]] || exit 0
 
 resp=$(curl -sf --connect-timeout 1 --max-time 2 \
