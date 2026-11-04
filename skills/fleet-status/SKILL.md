@@ -123,7 +123,9 @@ WORK=$(mktemp -d)
   repository) or `--runs N` picks the runs.
 - The dotfiles shim `fleet-status` (`private_dot_local/bin/executable_fleet-status`) runs the
   same script from any shell on a host with claude-config installed.
-- `--no-packages` skips the packages pass; `--packages-only` skips the GitHub reads (the private
+- `--no-packages` skips the packages pass, and a commit then leaves `packages.json` as it is.
+  `/vault resume` collects this way, so only a run of this skill moves the package numbers
+  (vault-storage D598). `--packages-only` skips the GitHub reads (the private
   gate still runs for `--cwd` and `--repo`) and its commit writes only `packages.json`, never
   `github.json`, so it refreshes the npm view without consuming GitHub events. `--npm-user LOGIN`
   names the npm account when the graph cannot. `show --fleet --table --packages` prints the

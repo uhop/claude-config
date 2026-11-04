@@ -411,6 +411,7 @@ test('the GitHub step names the project, files new threads, and then commits', a
   assert.deepEqual(f.verbs(), ['collect', 'file', 'show', 'commit']);
   const collect = f.calls[0];
   assert.equal(collect[collect.indexOf('--project') + 1], 'p', 'never the folder’s name');
+  assert.ok(collect.includes('--no-packages'), 'a digest shows no package data');
   assert.deepEqual(result.filed, ['GitHub: o/r #1 New']);
   assert.equal(result.problem, undefined);
   assert.equal(result.brief, 'a brief');

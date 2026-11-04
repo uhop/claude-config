@@ -379,7 +379,12 @@ const storedGithub = async (project, call, problem) => {
 
 const collectInto = (out, project, exec) =>
   // `commit` takes the project from this file, so naming it here covers both.
-  exec(FLEET, ['collect', '--cwd', '--project', project, '--out', out], COLLECT_CAP_MS);
+  // No packages: a digest shows none, and `/fleet-status` refreshes them (vault-storage D598).
+  exec(
+    FLEET,
+    ['collect', '--cwd', '--project', project, '--no-packages', '--out', out],
+    COLLECT_CAP_MS
+  );
 
 const preparedPaths = (session, dir) => ({
   json: join(dir, `${session}.json`),
