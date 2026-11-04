@@ -91,13 +91,20 @@ const requestsOf = async (args, extraEnv = {}) => {
   return urls;
 };
 
+/** Runs a script in the worktree with a stand-in `vault-curl`, which no runner has, and what it asked. */
+const vaultCurlAsks = async args => {
+  const bin = mkdtempSync(join(work, 'bin-'));
+  const log = join(bin, 'asked.log');
+  writeFileSync(join(bin, 'vault-curl'), `#!/usr/bin/env bash\nprintf '%s\\n' "$1" >>"${log}"\n`);
+  chmodSync(join(bin, 'vault-curl'), 0o755);
+  await requestsOf(args, {PATH: `${bin}:${process.env.PATH}`});
+  return decodeURIComponent(readFileSync(log, 'utf8'));
+};
+
 test('vault-verify in a worktree reads its main checkout’s project', async () => {
-  const urls = await requestsOf(['node', script('../vault-verify/vault-verify.mjs')]);
-  assert.ok(
-    urls.some(url => url.includes('projects/main-name/')),
-    urls.join('\n')
-  );
-  assert.ok(!urls.some(url => url.includes('other-name')), urls.join('\n'));
+  const asked = await vaultCurlAsks(['node', script('../vault-verify/vault-verify.mjs')]);
+  assert.ok(asked.includes('projects/main-name/'), asked);
+  assert.ok(!asked.includes('other-name'), asked);
 });
 
 test('fleet-status --cwd in a worktree reads its main checkout’s project', async () => {
@@ -115,15 +122,7 @@ test('fleet-status --cwd in a worktree reads its main checkout’s project', asy
 });
 
 test('check-drift in a worktree reads its main checkout’s project', async () => {
-  const bin = join(work, 'bin');
-  const log = join(work, 'vault-curl.log');
-  mkdirSync(bin, {recursive: true});
-  writeFileSync(join(bin, 'vault-curl'), `#!/usr/bin/env bash\nprintf '%s\\n' "$1" >>"${log}"\n`);
-  chmodSync(join(bin, 'vault-curl'), 0o755);
-  await requestsOf(['bash', script('../vault-check-drift/check-drift.sh')], {
-    PATH: `${bin}:${process.env.PATH}`
-  });
-  const asked = readFileSync(log, 'utf8');
+  const asked = await vaultCurlAsks(['bash', script('../vault-check-drift/check-drift.sh')]);
   assert.ok(asked.includes('/vault/projects/main-name/state.md'), asked);
   assert.ok(!asked.includes('other-name'), asked);
 });
