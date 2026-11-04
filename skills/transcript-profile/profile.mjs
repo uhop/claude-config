@@ -13,8 +13,9 @@
 //   profile.mjs --root DIR         # transcripts root (default ~/.claude/projects)
 
 import {readdirSync, readFileSync, statSync} from 'node:fs';
-import {join} from 'node:path';
+import {basename, join} from 'node:path';
 import {homedir} from 'node:os';
+import {SHORT_WAIT_MS, summarize, waitsOf} from './waits.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -109,8 +110,11 @@ const resultBytes = block => {
   return n;
 };
 
-for (const {path: fp, sidechain} of transcriptFiles) {
+const sessionWaits = [];
+
+for (const {path: fp, project, sidechain} of transcriptFiles) {
   const content = readFileSync(fp, 'utf8');
+  const parsed = [];
   // toolUseId → {name, t_start, msg}
   const pending = new Map();
   // One assistant message can issue several tool calls, which run in turn: a
@@ -129,6 +133,7 @@ for (const {path: fp, sidechain} of transcriptFiles) {
       continue;
     }
 
+    if (!sidechain) parsed.push(row);
     if (!INCLUDE_SIDECHAIN && row.isSidechain === true) continue;
 
     const ts = row.timestamp ? Date.parse(row.timestamp) : null;
@@ -185,6 +190,10 @@ for (const {path: fp, sidechain} of transcriptFiles) {
     if (sidechain) subagentsAnalyzed++;
     else sessionsAnalyzed++;
   }
+  const split = sidechain ? null : waitsOf(parsed);
+  if (split?.span_ms) {
+    sessionWaits.push({project, session: basename(fp, '.jsonl').slice(0, 8), ...split});
+  }
 }
 
 const pct = (sorted, p) => {
@@ -233,6 +242,7 @@ for (const [name, s] of stats) {
   });
 }
 
+const waits = summarize(sessionWaits);
 const grandTotal = rows.reduce((sum, r) => sum + r.total_ms, 0);
 const grandCount = rows.reduce((sum, r) => sum + r.count, 0);
 
@@ -247,7 +257,8 @@ if (AS_JSON) {
         total_calls: grandCount,
         total_wall_time_ms: grandTotal,
         total_result_bytes: totalResultBytes,
-        rows
+        rows,
+        waits
       },
       null,
       2
@@ -303,6 +314,40 @@ if (AS_JSON) {
       totalResultBytes === 0 ? '—' : `${((100 * r.bytes) / totalResultBytes).toFixed(1)}%`;
     console.log(
       `| ${r.name} | ${r.count} | ${fmtBytes(r.bytes)} | ${share} | ${fmtBytes(r.avg_bytes)} | ${fmtBytes(r.p50_bytes)} | ${fmtBytes(r.p95_bytes)} |`
+    );
+  }
+
+  const hours = ms => (ms >= 3_600_000 ? `${(ms / 3_600_000).toFixed(1)}h` : fmt(ms));
+  const share =
+    waits.span_ms === 0 ? '—' : `${Math.round((100 * waits.waiting_ms) / waits.span_ms)}%`;
+  const threshold = `${SHORT_WAIT_MS / 60_000} min`;
+  console.log();
+  console.log('## Working and waiting');
+  console.log();
+  console.log(
+    `${waits.sessions} sessions over ${hours(waits.span_ms)}: ${hours(waits.working_ms)} working, ${hours(waits.waiting_ms)} waiting on the user (${share}).`
+  );
+  console.log(
+    `${waits.short.count} waits under ${threshold}, ${hours(waits.short.ms)}; ${waits.long.count} longer, ${hours(waits.long.ms)}, often work in another session.`
+  );
+  console.log();
+  console.log(`| Stop | Waits | Time | Median | Under ${threshold} | Time under ${threshold} |`);
+  console.log('| ---- | ----- | ---- | ------ | ---- | ---- |');
+  const byTime = Object.entries(waits.labels).sort((a, b) => b[1].ms - a[1].ms);
+  for (const [label, l] of byTime) {
+    console.log(
+      `| ${label} | ${l.count} | ${hours(l.ms)} | ${hours(l.median_ms)} | ${l.short_count} | ${hours(l.short_ms)} |`
+    );
+  }
+  console.log();
+  console.log(`## The sessions with the most waiting (top ${TOP})`);
+  console.log();
+  console.log('| Session | Project | Span | Working | Waiting | Waits |');
+  console.log('| ------- | ------- | ---- | ------- | ------- | ----- |');
+  const byWaiting = [...waits.by_session].sort((a, b) => b.waiting_ms - a.waiting_ms);
+  for (const s of byWaiting.slice(0, TOP)) {
+    console.log(
+      `| ${s.session} | ${s.project} | ${hours(s.span_ms)} | ${hours(s.working_ms)} | ${hours(s.waiting_ms)} | ${s.waits} |`
     );
   }
 }

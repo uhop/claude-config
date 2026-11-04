@@ -1,6 +1,6 @@
 ---
 name: transcript-profile
-description: Profile agent tool-call patterns by parsing Claude Code session transcripts under `~/.claude/projects/`. Reports per-tool call counts, total wall-time, p50/p95/avg latencies from issue, each call's own cost (the gap from the previous result in its message), and result bytes (what each tool puts into context). Use when the user asks "what are we doing most often", "what's the slowest tool", "which tool fills the context", "where should we optimize", or invokes /transcript-profile. Source data is the JSONL session logs Claude Code writes locally; no external service.
+description: Profile agent tool-call patterns by parsing Claude Code session transcripts under `~/.claude/projects/`. Reports per-tool call counts, total wall-time, p50/p95/avg latencies from issue, each call's own cost (the gap from the previous result in its message), and result bytes (what each tool puts into context). Also splits each session into the agent working and the session waiting on the user, with each wait labeled by the kind of stop. Use when the user asks "what are we doing most often", "what's the slowest tool", "which tool fills the context", "where should we optimize", or invokes /transcript-profile. Source data is the JSONL session logs Claude Code writes locally; no external service.
 user_invocable: true
 ---
 
@@ -54,6 +54,17 @@ Each transcript line is one of: a session-meta record (permission mode, snapshot
 The block rows of one assistant message share `message.id`; the own cost and the batched count group tool calls by it. A row without one counts as its own message, which never over-attributes batching.
 
 Sub-agent transcripts live beside the session file as `<session>/subagents/agent-*.jsonl`; older sessions marked such rows `isSidechain: true` inside the session file instead, and both forms are honoured. Excluded by default — they double-count work that the parent's `Agent` call already includes in its own latency. Add `--include-sidechain` to drill into sub-agent breakdowns; the header then reports the sub-agent transcript count beside the session count. (Before 2026-09-28 the flag read only the `isSidechain` rows, so on the current layout it found nothing.)
+
+## Working and waiting
+
+`waits.mjs` divides each main session. A wait runs from the last agent row, a tool result included, to the prompt that answers it; the rest of the span is working, so a message queued during a run counts as working. A slash command ends a wait; `[Request interrupted` and `Stop hook feedback:` do not, since the harness writes those. A wait of 30 minutes or more is often work in another session, so the report gives both sides. Each wait is labeled by the message before it, and a stop can carry more than one:
+
+- `command`: a fenced block starting with `!`.
+- `question`: the closing paragraph holds a `?`. A stop states its question and then its pick, so it rarely ends on one.
+- `commit`: the message ends on a fenced one-line subject.
+- `report`: none of these.
+
+The labels read the wording, so a question asked earlier in a stop reads as `report`: about 4 of 14 `report` stops in one read, against 14 of 14 `question` stops right, so `question` undercounts. They were set against 30 days of real stops (claude-config D67).
 
 ## When the report is useful
 
