@@ -12,6 +12,7 @@ import {
   intakeOf,
   lastMessageOf,
   prepareCollection,
+  recordTimings,
   sectionOf,
   takePrepared,
   threadLines,
@@ -612,4 +613,29 @@ test('a collector that died with nothing written means a fresh collection', asyn
   writeFileSync(join(dir, 's.pid'), '4242');
   const alive = () => false;
   assert.equal(await takePrepared('s', 'p', join(dir, 'out.json'), {dir, alive}), false);
+});
+
+test('recordTimings appends a line a resume, and a folder it cannot make costs nothing', () => {
+  const dir = join(mkdtempSync(join(tmpdir(), 'vault-resume-')), 'made');
+  recordTimings({project: 'p', total: 10}, dir);
+  recordTimings({project: 'p', total: 20}, dir);
+  const lines = readFileSync(join(dir, 'timings.jsonl'), 'utf8').trim().split('\n');
+  assert.deepEqual(
+    lines.map(line => JSON.parse(line).total),
+    [10, 20]
+  );
+  const file = join(dir, 'timings.jsonl');
+  assert.doesNotThrow(() => recordTimings({total: 30}, join(file, 'under-a-file')));
+});
+
+test('the sweep of old collections keeps the timings, whatever their age', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vault-resume-'));
+  recordTimings({project: 'p', total: 10}, dir);
+  const old = new Date(Date.now() - 2 * 24 * 3_600_000);
+  utimesSync(join(dir, 'timings.jsonl'), old, old);
+  writeFileSync(join(dir, 'gone.json'), '{}');
+  utimesSync(join(dir, 'gone.json'), old, old);
+  await prepareCollection('p', 's', {dir, exec: async () => ({code: 1})});
+  assert.ok(!existsSync(join(dir, 'gone.json')), 'an old collection goes');
+  assert.ok(existsSync(join(dir, 'timings.jsonl')), 'the measurement stays');
 });

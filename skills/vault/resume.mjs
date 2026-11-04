@@ -10,14 +10,15 @@
 //   resume.mjs [project] --prepare --session ID
 
 import {execFile} from 'node:child_process';
-import {closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync} from 'node:fs';
+import {appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync} from 'node:fs';
+import {openSync, readdirSync} from 'node:fs';
 import {readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {homedir, hostname, tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
-import {client, expectJson, listItems, owedItems} from './queue-items.mjs';
+import {client, expectJson, itemsFrom, openNotes, owedFrom} from './queue-items.mjs';
 import {owedOf} from './resume-owed.mjs';
 import {styledOf, withoutControls} from './resume-style.mjs';
 import {projectOf} from './vault-project.mjs';
@@ -30,6 +31,7 @@ const DRIFT = script('../vault-check-drift/check-drift.sh');
 const COLLECT_CAP_MS = 30_000;
 const STEP_CAP_MS = 15_000;
 const PREPARED_DIR = join(homedir(), '.cache/vault-resume');
+const TIMINGS_FILE = 'timings.jsonl';
 /** 157 of the 158 resumes since 2026-10-01 came within 283 s of their session's start. */
 const PREPARED_MAX_AGE_MS = 5 * 60_000;
 /** What a session that never resumed leaves behind. */
@@ -386,6 +388,7 @@ const preparedPaths = (session, dir) => ({
 
 const sweepPrepared = (dir, now) => {
   for (const name of readdirSync(dir)) {
+    if (name === TIMINGS_FILE) continue;
     const path = join(dir, name);
     if (now - statSync(path).mtimeMs > PREPARED_KEPT_MS) rmSync(path, {force: true});
   }
@@ -455,6 +458,16 @@ export const takePrepared = async (
   if (age > PREPARED_MAX_AGE_MS || !usable) return false;
   writeFileSync(out, text);
   return true;
+};
+
+/** One line a resume, for the hook's time, which the transcript cannot divide (vault-storage D596). */
+export const recordTimings = (timings, dir = PREPARED_DIR) => {
+  try {
+    mkdirSync(dir, {recursive: true, mode: 0o700});
+    appendFileSync(join(dir, TIMINGS_FILE), `${JSON.stringify(timings)}\n`);
+  } catch {
+    // A lost line costs a measurement; the digest is already out.
+  }
 };
 
 const collectIn = async (dir, project, bundlePromise, itemsPromise, call, exec, takeInto) => {
@@ -571,41 +584,52 @@ const main = async () => {
       problems.add(`${what} could not be read: ${err.message}`);
       return fallback;
     });
-  const bundlePromise = call(
-    'POST',
-    `/system/resume-bundle?project=${encodeURIComponent(project)}&logs=1`,
-    {json: {}}
-  ).then(r => expectJson(r, `the resume bundle of ${project}`));
-  const itemsPromise = orElse(listItems(project, {}, call), null, 'The queue');
-  const [bundle, items, plansFolder, drift, github] = await Promise.all([
-    bundlePromise,
-    itemsPromise,
-    orElse(
-      call('GET', `/vault/projects/${project}/plans/`).then(r => (r.ok ? r.json() : {files: []})),
-      {files: []},
-      'The plans'
-    ),
-    run(DRIFT, [project]),
-    collectGithub(
-      project,
-      bundlePromise,
-      itemsPromise,
-      call,
-      run,
-      values.session === undefined ? undefined : out => takePrepared(values.session, project, out)
+  const started = performance.now();
+  const timings = {at: new Date().toISOString(), project};
+  const timed = (name, promise) =>
+    promise.finally(() => {
+      timings[name] = Math.round(performance.now() - started);
+    });
+  const bundlePromise = timed(
+    'state',
+    call('POST', `/system/resume-project?project=${encodeURIComponent(project)}`).then(r =>
+      expectJson(r, `the resume state of ${project}`)
     )
+  );
+  const notesPromise = timed('queue', orElse(openNotes(call, project), null, 'The queue'));
+  const itemsPromise = notesPromise.then(notes => (notes === null ? null : itemsFrom(notes)));
+  const takeInto =
+    values.session === undefined
+      ? undefined
+      : async out =>
+          (timings.prepared = await timed('take', takePrepared(values.session, project, out)));
+  const [bundle, notes, items, plansFolder, drift, github] = await Promise.all([
+    bundlePromise,
+    notesPromise,
+    itemsPromise,
+    timed(
+      'plans',
+      orElse(
+        call('GET', `/vault/projects/${project}/plans/`).then(r => (r.ok ? r.json() : {files: []})),
+        {files: []},
+        'The plans'
+      )
+    ),
+    timed('drift', run(DRIFT, [project])),
+    timed('github', collectGithub(project, bundlePromise, itemsPromise, call, run, takeInto))
   ]);
   const p = bundle.project;
-  const [queue, logBody] = await Promise.all([
-    orElse(owedItems(project, p.changes?.since.ended ?? null, call), [], 'The queue'),
-    p.logs?.[0]?.data_path
-      ? orElse(
+  const queue = owedFrom(notes ?? [], p.changes?.since.ended ?? null);
+  const logBody = p.logs?.[0]?.data_path
+    ? await timed(
+        'log',
+        orElse(
           call('GET', `/data/${p.logs[0].data_path}`).then(r => (r.ok ? r.text() : null)),
           null,
           'The last log'
         )
-      : null
-  ]);
+      )
+    : null;
   const plans = plansFolder.files
     .filter(f => f !== 'archive/' && !f.startsWith('.'))
     .map(f => `projects/${project}/plans/${f.replace(/\/$/, '')}`);
@@ -622,6 +646,9 @@ const main = async () => {
     problems: [...problems]
   });
   console.log(values.json ? JSON.stringify({digest, styled: styledOf(digest)}) : digest);
+  if (values.session !== undefined) {
+    recordTimings({...timings, total: Math.round(performance.now() - started)});
+  }
 };
 
 if (import.meta.main) {

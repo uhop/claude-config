@@ -118,7 +118,7 @@ const itemNotes = async (call, folder, match) =>
     n => !SPECIAL.has(n.path.slice(n.path.lastIndexOf('/') + 1))
   );
 
-const openNotes = (call, project, match) => itemNotes(call, folderOf(project), match);
+export const openNotes = (call, project, match) => itemNotes(call, folderOf(project), match);
 
 const shaped = n => ({
   title: n.frontmatter.title ?? n.title,
@@ -136,9 +136,12 @@ const inOrder = items =>
     (a, b) => SECTIONS.indexOf(a.section) - SECTIONS.indexOf(b.section) || b.priority - a.priority
   );
 
+/** Open notes as a listing shows them, in order. */
+export const itemsFrom = notes => inOrder(notes.map(shaped));
+
 /** The project's open items in order. */
 export const listItems = async (project, {section} = {}, call = client()) =>
-  inOrder((await openNotes(call, project, section ? {section} : undefined)).map(shaped));
+  itemsFrom(await openNotes(call, project, section ? {section} : undefined));
 
 /** Every project's open items, in the convention's order. */
 export const listFleet = async ({section, priority, limit} = {}, call = client()) => {
@@ -329,8 +332,11 @@ export const archiveItem = async (project, ref, {reason, trail}, call = client()
  * upstream, Inbox items to triage, and items filed into the Backlog on or after `since`'s day, none
  * when `since` is null.
  */
-export const owedItems = async (project, since, call = client()) => {
-  const notes = await openNotes(call, project);
+export const owedItems = async (project, since, call = client()) =>
+  owedFrom(await openNotes(call, project), since);
+
+/** `owedItems`, from open notes already read. */
+export const owedFrom = (notes, since) => {
   const day = since?.slice(0, 10);
   // The server files its own stall item, so nobody places it.
   const filedSince = n =>

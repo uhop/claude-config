@@ -8,6 +8,8 @@ import {
   fileItem,
   listFleet,
   listItems,
+  openNotes,
+  owedFrom,
   openFields,
   owedItems,
   slugOf,
@@ -178,6 +180,11 @@ test('owed places a Backlog item by the day it was filed, and never the stall it
       ['place', 'backlog 2026-11-20'],
       ['place', 'No field']
     ]
+  );
+  assert.deepEqual(
+    owedFrom(await openNotes(vault.call, 'p'), '2026-11-10T12:00:00Z'),
+    owed,
+    'the same from notes already read'
   );
   assert.equal(owed[1].filed, '2026-11-20', 'an item says when it was filed');
   assert.equal(owed[2].filed, '2026-11-21', 'by its note where it has no field');
