@@ -19,6 +19,16 @@ lease_cwd_claim_body() {
      + (if $t == "" then {} else {claim_token: $t} end)'
 }
 
+# lease_refused_line <resource> <status> <response> — the one line a claim the
+# server answered with neither 200 nor 409 earns, so a session with no lease
+# knows it (8c). The hooks still fail open.
+lease_refused_line() {
+  local why
+  why=$(jq -r 'if type == "object" then .code // empty else empty end' <<<"$3" 2>/dev/null)
+  printf '[vault] lease: %s — not claimed: the server answered HTTP %s%s, so this session holds no lease. Behave as holding it, as when the vault is unreachable; a 401 means PROGRAM_CLERK_KEY is expired or recalled.\n' \
+    "$1" "$2" "${why:+ ($why)}"
+}
+
 lease_token_file() {
   printf '%s/%s/%s' "$lease_token_dir" "${1//\//_}" "$(printf '%s' "$2" | cksum | tr -d ' ')"
 }

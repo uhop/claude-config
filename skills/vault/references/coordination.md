@@ -163,7 +163,9 @@ never claim — the parent owns the repo. All fail-open. The result arrives
 as a `[vault] lease: …` line at session start, which is how you know your
 standing: **held by you** (edit freely), **unclaimed** (the vault was
 unreachable or the hook is not installed — behave as held-by-you, nothing
-else changes), or **held by another cwd session** — then you are
+else changes), **not claimed** (the server answered the claim with another
+status, which the line names, such as 401 for an expired key; the same, and
+the gate says it again once per 15 minutes), or **held by another cwd session** — then you are
 **subordinate**: read and analyze freely, route every edit through a
 worktree + a handoff to `repo:X` (below), and ping the holder with
 `SendMessage` when `ListAgents` shows it reachable. **Address the doorbell

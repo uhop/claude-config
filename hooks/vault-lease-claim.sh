@@ -21,7 +21,8 @@
 # Missing env, missing jq/curl, non-repo cwd, unreachable server, a sub-agent
 # run (payload carries agent_id — the parent owns the repo) all exit 0 with no
 # output. Plain-text stdout is injected into the agent's context, so the one
-# line printed on success or 409 is the agent's only knowledge of its standing.
+# line printed on success, a 409, or any other answer (a refused claim, 8c) is
+# the agent's only knowledge of its standing.
 #
 # Hook contract: stdin JSON {session_id, cwd, hook_event_name, agent_id?}.
 
@@ -135,5 +136,6 @@ case "$code" in
         "for an hour passes to the next session that starts here."
       end end' <<<"$resp" 2>/dev/null || exit 0
     ;;
+  *) lease_refused_line "$resource" "$code" "$resp" ;;
 esac
 exit 0

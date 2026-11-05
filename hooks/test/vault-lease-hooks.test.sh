@@ -72,6 +72,47 @@ run "$RELEASE" '{"session_id":"deadbeefcafe","cwd":"/"}' PROGRAM_CLERK_URL=http:
   bad "release: an unreachable server must leave a marker naming the holder"
 rm -rf "$ST"
 
+# A claim the server refuses is said in one line, and the hooks still fail open (8c).
+# fake_server <claim-status> <claim-body>: GET answers "not held", POST the given status.
+fake_server() {
+  local pf
+  pf=$(mktemp)
+  node -e '
+const [pf, status, body] = process.argv.slice(1);
+const s = require("http").createServer((q, r) => {
+  q.resume();
+  q.on("end", () => {
+    const get = q.method === "GET";
+    r.writeHead(get ? 200 : Number(status), {"content-type": "application/json"});
+    r.end(get ? "{\"items\":[]}" : body);
+  });
+}).listen(0, "127.0.0.1", () => require("fs").writeFileSync(pf, String(s.address().port)));' "$pf" "$1" "$2" &
+  srv=$!
+  for _ in $(seq 50); do [[ -s $pf ]] && break; sleep 0.1; done
+  fake="http://127.0.0.1:$(cat "$pf")"
+  rm -f "$pf"
+}
+RF=$(mktemp -d)
+git -C "$RF" init -q && git -C "$RF" remote add origin https://github.com/uhop/zz-lease-hook-test.git
+RRES="repo:github.com/uhop/zz-lease-hook-test"
+RENV=(XDG_CACHE_HOME="$RF/cache" XDG_STATE_HOME="$RF/state" PROGRAM_CLERK_KEY=pck VAULT_API_URL= VAULT_API_TOKEN=)
+fake_server 401 '{}'
+run "$CLAIM" "$(jq -nc --arg c "$RF" '{session_id:"feedfacecafe",cwd:$c}')" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+kill "$srv" 2>/dev/null
+[[ $rc -eq 0 && "$out" == "[vault] lease: $RRES — not claimed: the server answered HTTP 401"* && "$out" == *"holds no lease"* ]] && ok ||
+  bad "claim: a refused claim must be said in one line (rc=$rc out=$out)"
+fake_server 400 '{"code":"bad_request","error":"rank must be a number"}'
+touch_ "$(jq -nc --arg c "$RF" '{session_id:"feedfacecafe",cwd:$c}')" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+ctx=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$out" 2>/dev/null)
+[[ $rc -eq 0 && "$ctx" == "[vault] lease: $RRES — not claimed: the server answered HTTP 400 (bad_request)"* ]] && ok ||
+  bad "touch: a refused re-claim must reach the agent's context (rc=$rc out=$out)"
+touch_ "$(jq -nc --arg c "$RF" '{session_id:"feedfacecafe",cwd:$c}')" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+[[ $rc -eq 0 && -z "$out" ]] && ok || bad "touch: a refusal is said once, not on every tool call (rc=$rc out=$out)"
+run "$GATE" "$(jq -nc --arg c "$RF" --arg f "$RF/x" '{tool_name:"Edit",tool_input:{file_path:$f},session_id:"feedfacecafe",cwd:$c}')" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+[[ $rc -eq 0 ]] && ok || bad "gate: a refused re-claim must still allow the edit (rc=$rc)"
+kill "$srv" 2>/dev/null
+rm -rf "$RF"
+
 # ── LIVE: round-trip on a throwaway repo with a fake remote ──────────────
 live_url=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}} live_key=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
 if [[ -z $live_url || -z $live_key ]] ||

@@ -117,6 +117,7 @@ now=$(date +%s)
 auth=(-H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json')
 holder=""
 kind=""
+refused=""
 
 # Renew and re-claim present the claim's token (vault-storage D67). Without
 # the library they send none, and the server refuses the renew: the lease
@@ -211,7 +212,10 @@ claim_cwd() {
       kind=$(tail -n1 <<<"$parsed")
       [[ -n "$holder" ]] && printf '%s\n%s\n%s\n' "$now" "$holder" "$kind" >"$cf" 2>/dev/null
       ;;
-    *) return 1 ;;
+    *)
+      refused=$(lease_refused_line "$resource" "$code" "$resp")
+      return 1
+      ;;
   esac
   return 0
 }
@@ -305,7 +309,13 @@ if [[ $mode == touch ]]; then
   ((now - last < RENEW_EVERY)) && exit 0
   prev_holder=$(sed -n 2p "$(cache_file_of "$resource")" 2>/dev/null)
   lookup "$resource" || exit 0
-  if [[ -z "$holder" ]]; then claim_cwd "$resource" || exit 0; fi
+  if [[ -z "$holder" ]] && ! claim_cwd "$resource"; then
+    [[ -n "$refused" ]] || exit 0
+    # Stamped, so a refused claim is retried and said once per RENEW_EVERY, not on every tool call.
+    printf '%s\n' "$now" >"$stamp" 2>/dev/null || true
+    jq -cn --arg m "$refused" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}'
+    exit 0
+  fi
   if [[ "$holder" == "$me" ]]; then
     renew_if_due "$resource"
   else
