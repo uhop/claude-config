@@ -327,10 +327,13 @@ leases: a single-agent session that owns its cwd repo never files one.
   pass on the applied result, `vault_handoff_verify` with the `HEAD` it was
   applied on, so the record carries both sides' checks. **Then remove the
   submitter's worktree and branch** when `from.host` is yours:
-  `git -C <repo> worktree remove --force <path>`, since a worktree can hold a
-  `node_modules` link or build output, and `git -C <repo> branch -D <branch>`,
-  since an applied patch never makes the branch's tip an ancestor of `main`
-  and `-d` refuses it. Resolving deletes the artifact and the branch delete
+  `git -C <repo> worktree remove <path>`, never with `--force`, and
+  `git -C <repo> branch -D <branch>`, since an applied patch never makes the
+  branch's tip an ancestor of `main` and `-d` refuses it. Git refuses to
+  remove a worktree with changes or untracked files, and `--force` would
+  delete them: the submitter may still be working there. When git refuses,
+  leave the worktree and its branch, and say so in the resolution's note,
+  so the submitter removes them. Resolving deletes the artifact and the branch delete
   leaves its commit unreachable, so until his commit the working tree and the
   patch file are the only copies: keep the file until the commit is in
   `git log`. A patch that will not apply is a `rejected`

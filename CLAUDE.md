@@ -716,9 +716,9 @@ left).
 **The lease holder reads its handoff inbox at every breather:**
 `vault_handoff_list({project: "<name>", status: "open"})` during a long run's wait, at each work
 stop, and at the wrap, then apply what arrived, live files included, and remove the submitter's
-worktree and branch; a handoff that loosens a gate or a permission waits for his word
-([[projects/claude-config/decisions]] D73; [[projects/agent-workflow/feedback]] § The lease holder
-reads its handoff inbox at every breather).
+worktree and branch, never with `--force`, which would delete work it still holds; a handoff that
+loosens a gate or a permission waits for his word ([[projects/claude-config/decisions]] D73;
+[[projects/agent-workflow/feedback]] § The lease holder reads its handoff inbox at every breather).
 
 **The owner that applies a handoff names its commit, and the outcome is the owner's.** The subject
 goes in the owner's own stop report and in its reply to the requester. The requester never writes
