@@ -1,6 +1,6 @@
 ---
 name: writing-style
-description: "House prose style for everything the agent writes: README, wiki, dev-docs, AGENTS.md and llms.txt, release notes, GitHub issue and PR text, vault notes, and chat replies. Based on the Google developer documentation style guide (developers.google.com/style), with the Microsoft Writing Style Guide as the fallback reference. Read before writing or editing any prose; use when asked to review, edit, or polish writing, or when the user mentions Google style, Microsoft style, tech-writing style, or \"the style guide\"."
+description: "House prose style for everything the agent writes: README, wiki, dev-docs, AGENTS.md and llms.txt, release notes, GitHub issue and PR text, vault notes, and chat replies. Based on the Google developer documentation style guide (developers.google.com/style), with the Microsoft Writing Style Guide as the fallback reference. Read before writing or editing a document, and not for a chat reply or a vault note, whose style is in the global CLAUDE.md; use when asked to review, edit, or polish writing, or when the user mentions Google style, Microsoft style, tech-writing style, or \"the style guide\"."
 ---
 
 # Writing style
@@ -38,6 +38,9 @@ GitHub issue, PR, and review text, vault notes (body prose; structure per the `v
 messages, and chat replies. In chat, the voice and mechanics apply in full; the document
 scaffolding (introductory sentences before every list, figure captions) applies only where it
 helps a reader.
+
+A chat reply or a vault note follows the global `CLAUDE.md` § Writing style, and opens this file
+only for a question that section does not answer.
 
 Out of scope: the code itself (language style guides + the repo's prettier config), code comments
 (vault `topics/no-narrating-comments`: comments are short _why_ markers, and when one exists its

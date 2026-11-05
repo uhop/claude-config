@@ -436,8 +436,9 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/writing
 [Google developer documentation style guide](https://developers.google.com/style), with the
 Microsoft Writing Style Guide as Google's own fallback (adopted 2026-08-19 on Eugene's ask: _"use it
 for all communications, especially written ones (docs, README, wiki)"_). Read the skill before
-writing or editing a README, wiki page, `dev-docs/`, `AGENTS.md` / `llms.txt`, release notes, GitHub
-issue / PR text, a vault note's body, or a chat reply of any length; it also governs `/docs-review`,
+writing or editing a README, wiki page, `dev-docs/`, `AGENTS.md` / `llms.txt`, release notes, or
+GitHub issue / PR text; a vault note's body or a chat reply follows this section without it (Eugene,
+2026-11-05, [[projects/claude-config/decisions]] D72). The skill also governs `/docs-review`,
 `/document-wiki-page`, and `/ai-docs-update`. Precedence is in the skill: project + fleet structural
 conventions and the blog / articles voice models win where they conflict; the skill governs the
 sentence-level writing underneath. The moves that do most of the work — second person and
