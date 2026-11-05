@@ -3,7 +3,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {readFileSync, statSync} from 'node:fs';
+import {existsSync, readFileSync, statSync} from 'node:fs';
 
 const root = new URL('.', import.meta.url);
 
@@ -16,7 +16,10 @@ test('every script with a shebang runs by its path, tracked or new', () => {
   )
     .trim()
     .split('\n');
-  const scripts = files.filter(path => readFileSync(new URL(path, root), 'utf8').startsWith('#!'));
+  // A tracked file deleted and not yet staged is still listed, and is no script.
+  const scripts = files
+    .filter(path => existsSync(new URL(path, root)))
+    .filter(path => readFileSync(new URL(path, root), 'utf8').startsWith('#!'));
   assert.ok(scripts.length > 0);
   assert.deepEqual(
     scripts.filter(path => !(statSync(new URL(path, root)).mode & 0o100)),

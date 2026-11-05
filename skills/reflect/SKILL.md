@@ -84,162 +84,7 @@ Read all three to dedupe; write only to vault + claude-config.
    }
    ```
 
-   **Pass 4 — git correlation (`session_git`, `multi_release`).** Transcripts say
-   what was asked; git says what landed. The scanner joins them per session via
-   the shared correlator `skills/process-review/git-correlate.mjs`: the project
-   dir maps to a repo path, the session's row window selects the commits made
-   inside it, and each commit is attributed to the user turn that immediately
-   preceded it. This is enrichment and **fails open** — no repo, no git, no
-   transcript-to-repo match means no correlation, never a failed scan.
-
-   Two things it buys: `correction_driven_commits` per session (a commit whose
-   driving turn was classified a correction is rework, so a high ratio is a
-   direct measure of a session that needed steering), and the session's
-   releases, behind the `multi_release` signal below.
-
-   **A release comes from npm first, never from a commit subject** (Eugene,
-   2026-10-08). For every `package.json` the repository tracks, a version npm
-   published inside the session's window is a release, and so is a commit that
-   changes a `package.json`'s `"version"`; a private package has only the
-   second. Each release then looks for its tag, naked `X.Y.Z` at the root and
-   `<pkg>-X.Y.Z` in a subfolder. Subjects are the fallback for a repository
-   with no `package.json`: the subject pattern had missed every "New MCP
-   version: X." release on record, two of them in one vault-storage session.
-   npm comes first because it survives what git does not: a publish from
-   changes never pushed, on another machine, leaves no commit here. Offline,
-   `session_git[].npm` says `not checked` and the bumps alone stand.
-   `multi_release` is one signal per run of a package's releases less than 24
-   hours apart, across the whole window: one session or several, each release
-   naming its `session_id` and the signal listing `sessions` (2026-10-22:
-   tape-six's 1.17.0, 1.18.0, and 1.18.1 came from three sessions in 20 hours,
-   and the per-session count raised nothing). **`release_alerts` go to Eugene as alerts, not proposals:** a
-   release with no tag (`tag_expected` names what was looked for), or
-   `unrecorded: true`, a version npm has that no commit on any ref carries.
-   List each in the report with the package, version, and what is missing;
-   reconciling it is his call. Note the first is only as good as the correction classifier —
-   a session whose corrections arrive as *"fix the trailer too"* scored zero
-   corrections and therefore zero correction-driven commits until 2026-08-18,
-   when the `scope_extension` cue below was added; the classifier is still the
-   floor of what git correlation can see.
-
-   **`scope_extension: true`** marks a correction fired by the short-turn
-   scope-extension cue (`…too`, `do the rest`, `finish X, then do Y`, `Did you
-   fix … in …?` — turn ≤ 160 chars, after an assistant turn). These carry no
-   corrective vocabulary; they are the user appending the sibling the agent
-   left out. Read them as a *cluster*: several in one session on one defect
-   class is the CLAUDE.md § Fix the class signal ("sweep means fix, not file"),
-   and one alone is usually just the next task. Precision ≈ 75 % by the
-   2026-08-18 measurement — the misses are planning talk that happens to end in
-   "too".
-
-   **Read `matched_text`, not `excerpt`, to see what fired.** `excerpt` is the
-   preceding context (mostly the assistant's tool output); the user turn that
-   tripped the classifier is `matched_text`. Then render the moment with
-   `~/.claude/skills/reflect/reflect-context.mjs --project=<dir> --session=<prefix> --at=<ts>`
-   for the reply, in human time — the 2026-08-18 run first read `excerpt` alone
-   and saw nothing but tool results.
-
-   **Two populations: `sessions_scanned` and `automated`.** `sessions_scanned`
-   counts human sessions only. A headless `claude -p` transcript carries
-   `entrypoint: "sdk-cli"` on every row (an interactive one carries `"cli"`;
-   measured 2026-09-05 over 140 transcripts, no third value), and apodict's
-   study arms and one-turn probes made 14 of a window's 16 "sessions" on
-   2026-08-30. They are listed under `automated.sessions` with their first
-   turn, and analyzed only with `--include-automated` — their "user" turns are
-   a launcher's prompt, and Pass 4 would otherwise attribute the launcher's
-   commits to them. Report the `automated.count` in the stats line beside
-   `sessions_scanned`, never fold it in.
-
-   **`user_turns` is the reading pass.** Every human-authored turn of every
-   analyzed session, by its first line (capped at 220 characters; the turn is
-   never hidden, so a one-line ruling is truncated and a short ask over a long
-   paste keeps its line), with `correction: true` where the classifier fired
-   and `adjacent: true` where the turn came one assistant reply after the
-   previous human turn. Read every unmarked turn: in five consecutive windows
-   (2026-08-25 → 09-01) this pass carried proposals the regexes missed, and it
-   replaces the ad hoc `jq` listing those runs built by hand. A run of
-   `adjacent` turns is the fix-the-class cluster shape; a short `first_line`
-   over a large `chars` is a short ask carrying a paste, the shape most worth
-   opening. Two more markers: `withheld: true` (2026-11-03) is an ask for what the report
-   should have held: a name, a commit subject, a pick, a step's detail, or
-   *"What is 4f?"* after a bare locator. Over 60 days about three in four marked turns
-   were in class, and a domain question or a fresh request reads the same, so
-   say which rule each one broke. A bare *"Did you …?"* carries no mark: it is a
-   request to confirm, never a correction (Eugene, 2026-11-03); `after_api_error: true` means the reply before the turn
-   was the harness's `API Error:` row, so a run of such turns is an outage,
-   not a cluster. `queued: true` (2026-09-17) marks a message typed while the
-   agent was working: Claude Code stores it as an `attachment` row of type
-   `queued_command`, not a `user` row, and every scan before this marker
-   dropped it, 224 messages on one fleet host from 2026-08-18. These are the turns
-   typed while watching the work, so they carry the densest steering; read
-   them first.
-
-   **`side_notes` are the side agent's findings, relayed by Eugene.** The
-   built-in `cc-plugin-you-should-know` plugin (enabled 2026-10-03) watches a
-   session and writes a heads-up; a turn that opens _"Here is a note offered
-   by a side agent:"_ is one he passed to the main agent. The scanner lists it
-   here by its bold `title`, keeps it out of `corrections`, marks its
-   `user_turns` entry `side_note: true`, and classifies only his own words
-   after the note (`addendum`) as his turn. On 2026-10-06, 11 of 22 notes
-   caught a rule on record being broken, the unread residue four times, and
-   the previous report had filed four as false positives
-   (the 2026-10-06 report, P1). Read each one
-   against the transcript with `reflect-context.mjs`, since a note is a claim
-   and one that day overstated its case. In the report, give each a row:
-   the session, the note's title, the rule on record it shows broken (or
-   "none": a consequence or a review), and how the main agent answered. Read
-   `addendum` as Eugene's turn in the reading pass.
-
-   **Reader agents are asked for, with an estimate.** When the reading pass
-   and the side notes are more than the main session reads, say how many
-   readers you would dispatch, the tokens (about 15K per side note read
-   against its transcript: 1.44M for 95 on 2026-10-30), and the wall time,
-   and ask before dispatching. Offer the cheaper path beside it: the main
-   session reads the side notes and turns that fired a cue or show a rule
-   broken, and lists the rest by title; or a Jev `rule` rank orders the
-   reading first. (The 2026-10-30 report, P8, from a side note on that run;
-   the same ask `/vault-reorg` makes for a dispatch of millions of tokens.)
-
-   **Jev is on demand here, never a step** (Eugene, 2026-09-22: *"Let's run
-   without Jev for now, keep it on demand. But you can suggest when to use
-   it."*). The arm in `skills/reflect/jev-marker/` measured it on 902 turns
-   (the public repositories, plus the private ones its local list allows): on
-   corrections alone the model loses to the cues above; a `rule` criterion,
-   the engineer stating how the agent should work in general, finds the
-   standing preferences no cue can name, 22 of its 25 strongest flags real;
-   `withheld` separates the "what is the name of arc N" ask at 0.7 with about
-   1.3% of turns flagged; `sibling` ranks the "…too" turns beside the
-   `scope_extension` cue. Numbers and hand reads: vault
-   `projects/claude-config/measurements/2026-09-22-jev-reflect-marker`.
-   Suggest a run, one line in the report, when the window is large (over
-   about 400 turns, where a two-cent rank beats reading in scan order); when
-   the prior report's headline came from this reading pass rather than the
-   cues, twice running; when a queue item asks for a read of one turn class
-   over weeks, the way the withheld item did; or when a feedback sweep is
-   wanted, since a `rule` pass over a month lists the preferences stated
-   in-session and captured nowhere. The run is `build --scan <scan.json>`,
-   `ask --arm rule --all`, `score --arm rule`, then read `top_rule` and
-   `top_withheld`; a flag orders the reading and never hides a turn. A queued turn counts as a reply to the agent for the
-   correction and `withheld` gates, and the same mark appears on its signals.
-
-   **`repeated_failures` aggregates across sessions and project directories;
-   `sessions` says how many.** "4 occurrences" was read as an over-count on
-   2026-09-11 when it was one failure in each of four sessions, some under
-   directories other than `~/Open`. The signature is the tool's own error
-   line — ANSI stripped, `/tmp/tmp.*` and the session scratchpad normalized,
-   the harness's `Exit code N` line and stack frames dropped — so an agent's
-   `echo` lines and a `mktemp` path no longer split one failure into five
-   (2026-09-13 P1). A result that is only `Exit code N` has no signature and
-   is not counted.
-
-   **The window under-sizes a stable signature.** A repeated failure with a
-   fixed error line recurs outside the window too: on 2026-09-22 the scan
-   showed 3 and 4 occurrences of two signatures, and one `grep -l` over every
-   transcript on the host showed 21 and 16 sessions. Before sizing such a
-   failure in the report, count its sessions across the host's transcripts and
-   report both numbers: match `tool_result` rows with `is_error`, read their
-   `tool_use` input, and leave out the running session's transcript, since a
-   search writes its own pattern there and the count runs one session high.
+   **Read `references/scan-fields.md` before using the scan:** what each signal means and how the report treats it, from the git correlation and `release_alerts` through `user_turns`, `side_notes`, reader agents, Jev, and `repeated_failures`. What it must not lose: read `matched_text`, not `excerpt`, to see what fired; read every turn in `user_turns`, the `queued: true` ones first; give each side note a row in the report; list each of `release_alerts` as an alert, not a proposal; and count a repeated failure's sessions across the host before sizing it.
 
 3. **Dedupe against existing memory.** For each candidate signal, check whether the rule is already captured. Read in parallel:
    - `~/Open/claude-config/CLAUDE.md` (global rules)
@@ -350,52 +195,9 @@ Read all three to dedupe; write only to vault + claude-config.
 
    `@path` reads a value from a file, so the context and the candidates need no shell quoting; one candidate per line, numbered by the helper; `--dry-run` prints the block without writing. Never hand-roll the block: the heading shape below is what the parser reads, and a title on the id line unlisted an item on 2026-07-20.
 
-   **Read the source exchange before filing — never write the entry from the scan excerpt.** Run `~/.claude/skills/reflect/reflect-context.mjs --project=<dir> --session=<id prefix> --at=<ts>` — the rows around the moment in human time, the user turn *and* the assistant reply that followed it — and write the `Context:` and `Candidates:` from what is actually there. The scan excerpt is a truncated, regex-selected window: it routinely omits the reply that already answered the question, and a candidate built on a guessed mechanism is unbuildable at `/clarify` time. Filing is cheap; filing *wrong* costs the clarify walk, because the user is then choosing between options that cannot be implemented. If reading the source dissolves the ambiguity, don't file the item at all — resolve it in the report's "Already covered" or "False positives" section instead. (Origin: 2026-08-16 — `Q-2026-08-16-001` asked whether sub-agent progress labels should be descriptive, on the stated premise that "labels are agent-authored per dispatch". Two of its three candidates proposed a rule over those labels. The assistant reply four rows below the source turn already said the strings were the *harness's* per-tool-call activity glosses, which the agent does not author — so the item was rejected at `/clarify` as unbuildable, and one `Read` at filing time would have prevented it being filed.)
+   Before filing, read `references/clarify-filing.md`: read the source exchange and every store a candidate routes to first, then give two or three distinct candidates, "no rule / one-off" among them whenever it is live, in the block's exact shape.
 
-   **Read every store a candidate would route to before filing — "nothing there speaks to it" is a read, not an assumption.** Each `Candidates:` line names a destination (`projects/<name>/feedback.md`, `CLAUDE.md` § …); open each one and search it for the rule before writing the `Context:` claim that it is absent. Step 3 lists these files as dedupe inputs, but a broad step-3 skim does not test the specific rule a Q proposes — the check has to be per candidate, at filing time. (Origin: 2026-08-18 — `Q-2026-08-18-001` asked whether third-party names in negative anecdotes should be anonymized, stating that neither `projects/blog/feedback.md` nor `projects/articles/feedback.md` spoke to it; both carried the exact ruling, written the day before. It was archived at `/clarify` as already covered — a filing that cost a walk to un-file.)
-
-   **The heading must be `### Q-YYYY-MM-DD-NNN` and nothing else on that line.** `/clarify`'s parser matches `/### (Q-[\w-]+)\n/`, so a title after the id — `### Q-2026-07-20-001 — is there a rule for…` — fails to match and the item is **silently unlisted**: the file looks correct and `clarify-queue.mjs list` returns a clean `{"pending": 0}`, indistinguishable from an empty queue. (That happened on 2026-07-20; the helper now also reports an `unparsed` array and a stderr warning, but the format is still the thing to get right.) Copy this shape exactly:
-
-   ```markdown
-   ### Q-2026-07-20-001
-
-   - **Created:** YYYY-MM-DD (reflect, <host> <HHMM>)
-   - **Source:** project `<dir>`, session `<id>`, ts <epoch_ms>; report [[projects/agent-workflow/reports/<name>]]
-   - **Question:** <one sentence, ends with a question mark>
-   - **Context:** <what happened, and why the reading is ambiguous — enough that a reader months later needs no transcript>
-   - **Candidates:**
-     1. **<short label>.** <what this interpretation claims and where it would route>
-     2. **<short label>.** <…>
-     3. **<short label>.** <…>
-   ```
-
-   Two or three candidates; they must be genuinely distinct readings, not degrees of the same one. Include "no rule / one-off" whenever it is live — `/clarify` resolutions frequently land there, and omitting it biases the walk toward filing a rule.
-
-8. **Apply (if `--apply`).** Walk the high-confidence proposals **one per turn, each with its context in front of it** — never a run of bare "Apply P1?" questions. Eugene, 2026-09-15: *"sometimes I don't recognize the context and need it and more discussions/examples on it. Yet there is no way to 'hang a question' while working on it. I need to answer, say, 4 questions in the row with a minimal context."* ([[projects/agent-workflow/feedback]] § A question carries its context and can be hung.) For each proposal:
-
-   a. **Put the context in chat first**, in this order: the session named by its subject and day (from `session_git[].first_turn`, never the id prefix), the exchange from `~/.claude/skills/reflect/reflect-context.mjs --project=<dir> --session=<prefix> --at=<ts>` (his words and the reply that followed, in human time), why it matters now, and one example of the rule or change applied — a before/after, or the sentence the rule would have changed.
-
-   b. **A proposal that writes only to claude-config is applied and shown, with no question** (Eugene, 2026-11-03: he reviews those files at commit anyway). `Edit` the real file under `~/Open/claude-config/`, put `git -C ~/Open/claude-config diff -- <file>` in chat under the context, and go on to the next proposal without waiting. These files are live on this host through their symlinks, so the edit takes effect before his review: when he objects, undo it, and when he wants to discuss it first, undo it and park it as "Hang it" does. A proposal with any vault write, a long form in a feedback note included, takes the question below, since that part never reaches a diff he reads.
-
-   c. **Every other proposal gets the question**, with the proposed text in the option's `preview` so the diff is read where the choice is made:
-
-   ```
-   AskUserQuestion({
-     question: "P1: {one sentence — what changes, where}?",
-     header: "Apply P{N}",
-     options: [
-       {label: "Apply as proposed", description: "Write the artifact as shown.", preview: "{the proposed diff or body}"},
-       {label: "Edit then apply", description: "Adjust the proposed text before writing."},
-       {label: "Hang it", description: "Park it on the clarify queue with this context; pick it up with more discussion later."},
-       {label: "Skip this one", description: "Move on without applying."},
-     ],
-     multiSelect: false,
-   })
-   ```
-
-   d. **Route:** "Apply as proposed" → execute the write. For vault paths prefer the narrow op: a queue item through `queue-items.mjs file <project>`; a rule or lesson through `vault_append` to its topic piece when the note's folder is grouped (`vault_list_pieces` lists them), else to the note's path; `vault_replace` for an edit; `vault_write_file` only when authoring a whole new note (fallback: `vault-put --append/--replace`); for claude-config paths use `Edit` against the real file under `~/Open/claude-config/`, never the `~/.claude/` symlink. "Edit then apply" → present the proposed body, ask for tweaks, then write. "Hang it" → `clarify-queue.mjs file` (step 7) with the rendered exchange as the `Context:`, the proposal as candidate 1, and "no rule / one-off" as a candidate, so nothing is lost when he moves on; `/clarify` picks it up as a conversation. "Skip" → no-op.
-
-   e. **Then offer the mediums.** After the last high-confidence proposal, ask once, multi-select, which medium proposals to walk, each named with its one-line proposal and a medium carried from the previous report listed first, plus your pick. Each chosen one is walked like a high one (a–d); an unchosen one stays in the report as proposed. (Origin: apodict `ecf4a29e`, 2026-10-07 — a side note: "This run's two medium-priority proposals won't be shown in the apply walk"; Eugene: _"walk M1 and M2"_. The previous run's M2 had been carried twice unwalked.)
+8. **Apply (if `--apply`).** Read `references/apply-walk.md`, then walk the high-confidence proposals one per turn, each with its context in front of it. A proposal that writes only to claude-config is applied and shown; every other proposal gets the question. Then offer the mediums.
 
 9. **Update state.** After the report writes successfully:
 
@@ -415,27 +217,12 @@ Read all three to dedupe; write only to vault + claude-config.
    `date +%s%3N` truncation; ANSI-wrapped `node -e` output breaking
    `jq --argjson`) — don't hand-roll the timestamps again.
 
-## Cadence — when to run
+## Cadence and limits
 
-`/reflect` is a **cross-session, per-machine** sweep, not a per-session step — it looks *back* over recent **closed** sessions for patterns in how the collaboration went. That is a different axis from `/vault wrap` (which closes *one* session's content) and unrelated to `/vault sweep` (vault hygiene). Two properties fix the timing:
-
-- **It needs accumulation.** A signal reaches **high** confidence only on recurrence — ≥ 2 sessions or a cross-machine match (step 4). Per-session it mostly sees single instances; it is built to sweep a window, not a session.
-- **It reads only completed transcripts.** The live session's tail isn't on disk yet — `reflect.mjs` flags it, skips it, and warns (§ When NOT to run).
-
-**Best practice:** run it at the **start** of a fresh session — recent sessions are then closed and on disk — then `/clarify` to drain what it filed. The default `--since=last-run` auto-scopes the window to everything since your last reflect on this box. Rhythm ≈ weekly, or after a cluster of substantive sessions — enough closed sessions that patterns emerge.
-
-**Not** chained after `/vault wrap`: wrap runs *inside* the session it closes, so that session is still live and reflect would skip the very work you just wrapped. **Not** after `/vault sweep`: orthogonal — reflect's drain path is `projects/agent-workflow/queue.md` + `/clarify`, not the vault maintenance queues. And **per-machine** — transcripts are local-only (§ Limitations), so run it on each box you work on; a box that never reflects contributes no cross-machine evidence.
+Run it at the start of a fresh session, about weekly, on each machine you work on, and never chained after `/vault wrap`. Why, and what the scanner cannot see: `references/cadence-and-limits.md`.
 
 ## When NOT to run
 
 - The first time on a fresh machine — `~/.claude/projects/` will be empty or sparse. Wait until you have ≥ 2 sessions worth of transcripts.
 - Mid-conversation — `/reflect` reads completed sessions; the current one's tail isn't on disk. `reflect.mjs` flags any transcript modified within `--live-window-secs` (default 120) of the scan as a live session, excludes it from `sessions_scanned`, and warns on stderr — so a mid-session run is *visible*, not silently lossy, but it still skips today's work. Reflect from a later session instead.
 - Right after a `claude-config-update` pull on a non-primary machine — its transcripts are local-only, so cross-machine signals will be weak. Run on the host where most work happens.
-
-## Limitations (first iteration)
-
-- **Regex-based classification.** False positives are normal — the agent's dedupe + judgment step in the procedure is what makes the output useful. A candidate that looks like a correction may turn out to be benign in context.
-- **No cross-machine transcript *merging*.** Each host still scans only its own transcripts. Cross-machine *recurrence* is recovered indirectly: step 3 reads other hosts' recent reports and step 4 counts a match there as a second occurrence, so a once-per-machine signal can still reach high confidence. The catch: this only works if the other host has actually run `/reflect` and committed its report — an un-run host contributes no evidence — and the match is semantic, not exact.
-- **Tool-input fingerprint is JSON-serialize-and-truncate.** Catches identical retries, misses semantically-equivalent ones with different whitespace / arg order.
-
-These are deliberate first-cut tradeoffs; revisit once `/reflect` has produced enough output to know which are worth refining.
