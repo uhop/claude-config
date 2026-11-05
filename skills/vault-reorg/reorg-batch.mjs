@@ -518,15 +518,16 @@ const write = async () => {
     return;
   }
   const items = units.mode === 'note' ? [units.path, `${folder}/`] : [units.path];
-  const claim = await api('POST', '/claims', {
+  const claim = await api('POST', '/leases/claim', {
     holder,
-    purpose: 'compact',
-    items,
+    resources: items.map(item => `note:${item}`),
     ttl_seconds: 3600
   });
-  if (claim.held?.length)
-    fail(3, `another pass holds: ${claim.held.map(h => `${h.item} (${h.holder})`).join(', ')}`);
-  const release = () => api('POST', '/claims/release', {holder, claim_token: claim.claim_token});
+  const release = () => api('POST', '/leases/release', {holder, claim_token: claim.claim_token});
+  if (claim.held.length) {
+    if (claim.claim_token) await release();
+    fail(3, `another pass holds: ${claim.held.map(h => `${h.resource} (${h.holder})`).join(', ')}`);
+  }
   let written = 0;
   let archived = null;
   try {

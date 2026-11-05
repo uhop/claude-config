@@ -19,10 +19,10 @@
 // --from. Read every page; a summary judged from part of a note goes out stamped current
 // (vault-storage 0an).
 //
-// `prepare` takes a work claim (purpose enrich, vault-storage D150) on its
-// worklist and keeps only what it got, so a parallel sweep leaves those notes
-// alone; `apply` releases it after its writes, and `release` gives it back
-// without writing. A server without /claims is run unclaimed.
+// `prepare` leases its worklist's notes as one batch (`note:<path>`,
+// vault-storage D610) and keeps only what it got, so a parallel sweep leaves
+// those notes alone; `apply` releases the batch after its writes, and `release`
+// gives it back without writing.
 //
 // A --stale item whose body changed by at most F (default 0.4) of its chunk
 // bytes since its last enrichment carries `delta` (the added chunks) instead
@@ -267,43 +267,36 @@ const wikilinks = body => [
   ...new Set([...maskCode(body).matchAll(WIKILINK_RE)].map(m => `[[${m[1].trim()}]]`))
 ];
 
-// --- work claims (D150) -------------------------------------------------------
+// --- note leases (vault-storage D610) ------------------------------------------
 
 const CLAIM_TTL = {base: 600, perItem: 120, min: 1800, max: 14400};
+const NOTE = 'note:';
 
-// Partial by design: what another claim covers comes back `held` and is left
-// out. A 404 is a server older than /claims, so the batch runs unclaimed.
+// Partial by design: a note another lease covers comes back `held` and is left out.
 const claimWork = async (holder, paths) => {
   if (!paths.length) return {claim: null, claimed: new Set(), held: []};
   const ttl = Math.min(
     CLAIM_TTL.max,
     Math.max(CLAIM_TTL.min, CLAIM_TTL.base + paths.length * CLAIM_TTL.perItem)
   );
-  try {
-    const {data} = await api('POST', '/claims', {
-      holder,
-      purpose: 'enrich',
-      items: paths,
-      ttl_seconds: ttl
-    });
-    return {
-      claim: data.claim_token
-        ? {holder, claim_token: data.claim_token, expires_at: data.expires_at}
-        : null,
-      claimed: new Set(data.claimed),
-      held: data.held
-    };
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404)
-      return {claim: null, claimed: null, held: [], unclaimed: 'route_absent'};
-    throw err;
-  }
+  const {data} = await api('POST', '/leases/claim', {
+    holder,
+    resources: paths.map(path => NOTE + path),
+    ttl_seconds: ttl
+  });
+  return {
+    claim: data.claim_token
+      ? {holder, claim_token: data.claim_token, expires_at: data.expires_at}
+      : null,
+    claimed: new Set(data.claimed.map(resource => resource.slice(NOTE.length))),
+    held: data.held.map(h => ({...h, resource: h.resource.slice(NOTE.length)}))
+  };
 };
 
-// A lapsed claim (404) is already free; anything else is reported, never thrown.
+// A lapsed batch (404) is already free; anything else is reported, never thrown.
 const releaseWork = async claim => {
   try {
-    await api('POST', '/claims/release', {
+    await api('POST', '/leases/release', {
       holder: claim.holder,
       claim_token: claim.claim_token
     });
@@ -502,7 +495,7 @@ const prepare = async () => {
   await pool(
     candidates.map(candidate => async () => {
       const record = records.get(candidate.record_id);
-      if (work.claimed && !work.claimed.has(record.file_path)) {
+      if (!work.claimed.has(record.file_path)) {
         unclaimed.push(record.file_path);
         return;
       }
@@ -594,7 +587,6 @@ const prepare = async () => {
       ? {reads: {delta: deltas, full: items.length - deltas, full_threshold: opts.fullThreshold}}
       : {}),
     claim: work.claim,
-    ...(work.unclaimed ? {unclaimed_reason: work.unclaimed} : {}),
     held: work.held,
     unclaimed: unclaimed.sort(),
     taxonomy,

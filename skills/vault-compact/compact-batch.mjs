@@ -12,11 +12,10 @@
 //   compact-batch execute --plan=FILE --summary=BODY.md [--related=[[a]],[[b]]] [--dry-run]
 //   compact-batch release --plan=FILE
 //
-// `plan` takes a work claim (purpose compact, vault-storage D150) on the
-// selected pieces, all or nothing: a piece another pass holds stops the plan
-// (exit 3), so the summary's range never has a hole. `execute` passes the
-// claim's token on each move and releases it; `release` gives it back
-// unexecuted. A server without /claims is run unclaimed.
+// `plan` leases the selected pieces as one batch (`note:<path>`, vault-storage
+// D610), all or nothing: a piece another pass holds stops the plan (exit 3), so
+// the summary's range never has a hole. `execute` passes the batch's token on
+// each move and releases it; `release` gives it back unexecuted.
 //
 // Exit 0 ok · 1 HTTP/partial failures · 2 usage · 3 plan/summary rejected
 // before any write. Run solo or `|| true` in parallel Bash batches.
@@ -151,11 +150,13 @@ const pool = async (jobs, width = 6) => {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-// --- work claims (D150) ------------------------------------------------------
+// --- note leases (vault-storage D610) -----------------------------------------
+
+const NOTE = 'note:';
 
 const releaseWork = async claim => {
   try {
-    await api('POST', '/claims/release', {holder: claim.holder, claim_token: claim.claim_token});
+    await api('POST', '/leases/release', {holder: claim.holder, claim_token: claim.claim_token});
     return 'released';
   } catch (err) {
     if (!(err instanceof ApiError)) throw err;
@@ -165,28 +166,21 @@ const releaseWork = async claim => {
   }
 };
 
-// The whole selection or nothing; null when the server predates /claims.
+// The whole selection or nothing.
 const claimSelection = async paths => {
   const holder = opts.holder ?? `compact-${hostname()}-${randomBytes(3).toString('hex')}`;
-  let answer;
-  try {
-    answer = await api('POST', '/claims', {
-      holder,
-      purpose: 'compact',
-      items: paths,
-      ttl_seconds: CLAIM_TTL_S
-    });
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) return null;
-    throw err;
-  }
+  const answer = await api('POST', '/leases/claim', {
+    holder,
+    resources: paths.map(path => NOTE + path),
+    ttl_seconds: CLAIM_TTL_S
+  });
   const claim = answer.claim_token
     ? {holder, claim_token: answer.claim_token, expires_at: answer.expires_at}
     : null;
   if (answer.held.length) {
     if (claim) await releaseWork(claim);
     const held = answer.held.map(
-      h => `${h.item} (${h.holder}, ${h.purpose}, until ${h.expires_at})`
+      h => `${h.resource.slice(NOTE.length)} (${h.holder}, until ${h.expires_at ?? 'released'})`
     );
     fail(
       3,

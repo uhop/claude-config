@@ -15,10 +15,12 @@ lease_cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease"
 
 lease_marker_of() { printf '%s/%s' "$lease_pending_dir" "${1//\//_}"; }
 
-# lease_list <seconds> — GET /leases; fails on any trouble.
+# lease_list <seconds> — GET /leases?prefix=repo:; fails on any trouble.
+# Repository leases alone: the hooks keep tokens for no others, and a pass's
+# batch of note: leases would only lengthen this capped read (vault-storage D610).
 lease_list() {
   curl -sf --connect-timeout 1 --max-time "$1" \
-    -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$PROGRAM_CLERK_URL/leases"
+    -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$PROGRAM_CLERK_URL/leases?prefix=repo:"
 }
 
 # lease_release_held <holder> <leases-json> <post-seconds> <max-posts>

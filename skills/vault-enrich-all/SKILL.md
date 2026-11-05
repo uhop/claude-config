@@ -61,16 +61,16 @@ W=$(mktemp -d)
 "$E" release --worksheet="$W/ws.json"
 ```
 
-**Work claims** (vault-storage D150). `prepare` claims its worklist (purpose
-`enrich`, under `--holder` or a generated name, for ten minutes plus two a
-note, from half an hour to four hours) and keeps only what it got: a note another
-pass holds is listed under `unclaimed`, with the holders under `held`, and
-left out of `items`. So a sweep and an ingest, or two sweeps, never enrich
-one note twice. The worksheet's `claim` carries the token; `apply` releases
-it after its writes (its report's `claim: "released"`, or `"lapsed"` when
-the time ran out first). A rejected enrichments file (exit 3) keeps the
-claim, so you can fix the file and apply again. A server without `/claims`
-runs unclaimed (`unclaimed_reason: "route_absent"`).
+**Note leases** (vault-storage D610). `prepare` leases its worklist's notes
+as one batch (`note:<path>`, under `--holder` or a generated name, for ten
+minutes plus two a note, from half an hour to four hours) and keeps only what
+it got: a note another pass holds is listed under `unclaimed`, with the
+holders under `held`, and left out of `items`. So a sweep and an ingest, or
+two sweeps, never enrich one note twice. The worksheet's `claim` carries the
+batch's token; `apply` releases it after its writes (its report's
+`claim: "released"`, or `"lapsed"` when the time ran out first). A rejected
+enrichments file (exit 3) keeps the batch, so you can fix the file and apply
+again.
 
 Each worksheet item carries the note's `body` (or a `delta`, below), `title`, `type`,
 `existing_tags` / `existing_related`, the extracted `body_wikilinks` (the
@@ -309,7 +309,7 @@ split the worksheet-independent worklist (`prepare`'s coverage or the
 --records=<chunk-file>` — the explicit shard replaces self-enumeration, so
 two agents of one sweep never take the same records. The sweep shards the
 `--stale` worklist the same way, at most four notes an agent, and gives
-every agent a `holder` for `--holder`, so its work claim names the sweep
+every agent a `holder` for `--holder`, so its note leases name the sweep
 and the shard. Concurrent writers are server-safe (atomic writes +
 `If-Match`, 2026-06-11).
 

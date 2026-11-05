@@ -12,20 +12,21 @@ are skipped — the user is still iterating on them.
    `{ready: [{path, title, updated}], drafts: [...]}`. Process only `ready`. If
    that array is empty, report "no ready notes; N drafts waiting" and
    stop. (The user flips `ready: true` in FM when a note is ripe.) A note
-   another pass has claimed is listed under `held`, not `ready`.
-2. **Claim the ready notes** (§ Work claims): `vault_work_claim({holder:
-   "<host>/<session>", purpose: "ingest", items: [<ready paths>],
-   ttl_seconds})` (before adapter 0.15.0, the `vault-curl /claims`
-   fallback in § Surface split), sized to the run (the default 30 minutes covers a few
-   notes; renew with `vault_work_renew` when a run outlasts it). A note in
-   `held` is being compiled by another session: skip it. Keep the
-   `claim_token`. Then, for each claimed note, read the content with
-   `vault_read_file`.
+   another pass holds is listed under `held`, not `ready`.
+2. **Lease the ready notes** (§ Note leases) as one batch, always with a
+   `ttl_seconds` sized to the run, since a batch with none holds for four
+   hours (1800 covers a few notes): `vault-curl /leases/claim -X POST -H
+   'Content-Type: application/json' --data-binary '{"holder":
+   "<host>/<session>", "resources": ["note:<ready path>", …],
+   "ttl_seconds": 1800}'`; renew with `POST /leases/renew` and `{holder,
+   claim_token, ttl_seconds}` when a run outlasts it. A note in `held` is
+   being compiled by another session: skip it. Keep the `claim_token`.
+   Then, for each leased note, read the content with `vault_read_file`.
 3. Extract concepts — create or update topic notes in `topics/`,
    project notes in `projects/<name>/`, or queue items with
    `queue-items.mjs file <name>` per the content's nature. Before extending
-   or superseding an existing topic note, claim it too (a second
-   `vault_work_claim`, its own token), so a duplicate merge cannot archive
+   or superseding an existing topic note, lease it too (a second batch, its
+   own token, the same short TTL), so a duplicate merge cannot archive
    it under you; when `held` names it, write a new note instead, or leave
    that point for the next run. When a
    compilation *replaces* an existing topic outright (the old note is
@@ -69,19 +70,19 @@ are skipped — the user is still iterating on them.
      older server the sentinel is stored as a literal string; use
      `ready: false` there instead.
    - `vault_move` from `raw/<name>.md` to
-     `raw/archive/<YYYY-MM-DD>-<name>.md`, with the claim's
+     `raw/archive/<YYYY-MM-DD>-<name>.md`, with the batch's
      `claim_token`, so the inbox surfaces only pending material. (Before
      adapter 0.15.0, `vault_move` refuses the token: use `vault-curl
      /vault/move -X POST` with `{from, to, claim_token}`.) A `vault_supersede`
-     of a claimed topic note carries that note's token the same way.
+     of a leased topic note carries that note's token the same way.
    Process notes one-at-a-time end-to-end: derived note created →
    source updated → moved to archive. A failure mid-ingest leaves
    earlier notes archived and the rest still pending — safe to retry
    `/vault ingest` to resume.
-7. **Release every claim you took** with `vault_work_release({holder,
-   claim_token})`, on a failure too. A retry's claim sees your own unreleased
-   claim as `held`, since any live claim counts, yours included: release it
-   first when you still have the token, or let it lapse.
+7. **Release every batch you took** with `POST /leases/release` and
+   `{holder, claim_token}`, on a failure too. A retry's batch sees your own
+   unreleased one as `held`, since any live lease counts, yours included:
+   release it first when you still have the token, or let it lapse.
 
 ### /vault query {question}
 

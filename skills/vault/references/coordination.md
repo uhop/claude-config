@@ -2,29 +2,42 @@
 
 Part of the vault skill: the table in its `SKILL.md` says which file holds a section named here.
 
-### Work claims — a maintenance pass reserves its notes
+### Note leases — a maintenance pass reserves its notes
 
 A pass that processes notes (an ingest, an enrichment, a duplicate merge, a
-compaction) claims them first (vault-storage D150), so a pass running
-beside it leaves them alone. The claim is partial: `claimed` is what you
-got, `held` lists each item another pass holds, with its holder, purpose,
-and expiry; work on what you got and skip the rest. Keep the
-`claim_token`, pass it to your own moves, supersedes, and deletes of those
-notes, and release the claim when the pass ends; a crashed pass's claim
-lapses at its TTL (30 minutes by default). The raw inbox's `ready` list and
-lint's `unenriched_records` already leave claimed notes out, so read a
-worklist before you claim, never after. `enrich-batch.mjs` and
-`compact-batch.mjs` claim for you; `/vault ingest` and the duplicate merge
-claim by hand (their procedures say where).
+compaction) leases them first, as one batch of `note:<path>` resources, a
+folder's `note:<prefix>/` covering every note under it (vault-storage D609,
+D610; work claims until 11e-5), so a pass running beside it leaves them
+alone:
+
+```bash
+vault-curl /leases/claim -X POST -H 'Content-Type: application/json' \
+  --data-binary '{"holder": "<host>/<session>", "resources": ["note:<path>", "note:<folder>/"], "ttl_seconds": 1800}'
+```
+
+**Always send `ttl_seconds`,** sized to the run: a batch with none holds for
+the lease's four hours, so a crashed pass would keep its notes that long. The
+batch is partial: `claimed` is what you got, `held` lists each resource
+another lease holds, with its holder and expiry; work on what you got and
+skip the rest. Keep the `claim_token`, pass it to your own moves, supersedes,
+and deletes of those notes, renew with `POST /leases/renew` and `{holder,
+claim_token, ttl_seconds}` when a run outlasts its TTL, and release with
+`POST /leases/release` and `{holder, claim_token}` when the pass ends. The
+raw inbox's `ready` list and lint's `unenriched_records` already leave
+leased notes out, so read a worklist before you lease, never after.
+`enrich-batch.mjs`, `compact-batch.mjs`, and `reorg-batch.mjs` lease for you;
+`/vault ingest` and the duplicate merge lease by hand (their procedures say
+where). Until the adapter's release after 11e-5, the batch form is REST
+only: `vault_lease_claim` takes one `resource`.
 
 **A 409 `claimed_by_other` on a move, supersede, or delete** means another
 pass holds that note, or, on a move or a supersede's archive slot, the path
 the note would arrive at (server from 2026-10-21, vault-storage D396;
-`details.item` names the claim's item). Leave the note, move it elsewhere,
-or come back after the pass; edits and appends are never blocked, so
-ordinary writes need no claim. **Never force a work-claim release**, even
-when the claim looks stuck: a claim another holder left behind is the
-operator's to end on the agents page (`/ui/agents.html`). From adapter
+`details.item` names the lease's resource, or a work claim's item). Leave
+the note, move it elsewhere, or come back after the pass; edits and appends
+are never blocked, so ordinary writes need no lease. **Never force a
+release**, even when a lease looks stuck: one another holder left behind is
+the operator's to end on the agents page (`/ui/agents.html`). From adapter
 0.15.0 neither `vault_work_release` nor `vault_lease_release` offers
 `force`; the REST route's `force` is a signed-in person's act, refused to
 an agent's key.
@@ -182,7 +195,7 @@ and never route a refused release through `vault-curl`. Adapter 0.15.0
 dropped `force` from `vault_lease_release`, and an older adapter still
 offers it: do not send it. The REST route refuses `force` to an agent's key,
 and the auto-mode classifier refuses the call anyway. The same holds for a
-work claim (§ Work claims).
+pass's note leases (§ Note leases).
 Before that ruling the section said single-agent sessions claim nothing;
 that left the registry unable to tell "nobody is there" from "nobody
 claimed", which is why the claim moved into a hook.

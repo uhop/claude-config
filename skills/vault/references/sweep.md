@@ -149,7 +149,7 @@ worksheet; the holder name settles nothing (vault-storage D67). On a pre-claim s
 same-kind triage agents — they pull the same queue head and duplicate
 or contradict each other's decisions. Enrichment shards by explicit
 worklist chunks instead, and each agent's `enrich-batch prepare` takes a
-work claim on its chunk under the plan's `holder` (§ Work claims), so a
+batch of note leases on its chunk under the plan's `holder` (§ Note leases), so a
 second sweep or an ingest running beside this one leaves those notes
 alone. Label every concurrent dispatch with its kind so a failed pass
 attributes cleanly.
@@ -193,7 +193,7 @@ W=$(mktemp -d)
      `--records=<records_file>` when the plan sharded the worklist,
      else `--limit=<limit>`; `mode: "stale"` → `--stale`; `mode: "refresh"`
      → `--refresh`, and `outline: true` → `--outline`; and always
-     `--holder=<holder>`, the name its work claim goes under. The stale
+     `--holder=<holder>`, the name its note leases go under. The stale
      worklist is always sharded (at most four notes an agent) and frozen at
      `begin`: a note that goes stale mid-sweep waits for the next sweep.
      An `enrich_oversized` entry restates each listed summary from the

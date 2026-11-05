@@ -84,17 +84,17 @@ be the superseded one).
 The only content-altering path; stays manual. Get explicit confirmation,
 then:
 
-0. **Claim both notes** (vault-storage D150), so an ingest or a compaction
-   running beside you cannot extend or move either one mid-merge:
-   `vault_work_claim({holder: "<host>/<session>", purpose: "merge", items:
-   [<path A>, <path B>]})`; when that tool is absent (adapter before
-   0.15.0), `vault-curl /claims -X POST -H 'Content-Type: application/json'
-   --data-binary '{"holder": "…", "purpose": "merge", "items": ["…", "…"]}'`.
-   Keep the `claim_token`. When `held` names either note, another pass is
-   working on it: release what you got (`vault_work_release`, or `POST
-   /claims/release` with `{holder, claim_token}`), leave the suggestion
-   pending, and move on. A claim another holder left behind is the
-   operator's to end on the agents page (`/ui/agents.html`), never yours.
+0. **Lease both notes** (vault-storage D610), so an ingest or a compaction
+   running beside you cannot extend or move either one mid-merge, as one
+   batch with a short TTL, since a batch with none holds for four hours:
+   `vault-curl /leases/claim -X POST -H 'Content-Type: application/json'
+   --data-binary '{"holder": "<host>/<session>", "resources": ["note:<path
+   A>", "note:<path B>"], "ttl_seconds": 1800}'`. Keep the `claim_token`.
+   When `held` names either note, another pass is working on it: release
+   what you got (`POST /leases/release` with `{holder, claim_token}`), leave
+   the suggestion pending, and move on. A lease another holder left behind
+   is the operator's to end on the agents page (`/ui/agents.html`), never
+   yours.
 1. **Choose canonical**: more recent `updated:`, more inbound wikilinks
    (`mcp__vault__vault_backlinks{record_id}`; fallback
    `vault-curl /sections/$ID/backlinks`), better structure; when in doubt
@@ -109,15 +109,15 @@ then:
    to point at the canonical (`vault-put --replace` per site).
 4. **Archive the redundant note** (record id, embeddings, history survive):
    `mcp__vault__vault_move` to `<dir>/archive/<YYYY>/<name>.md` with the
-   claim's `claim_token`, then stamp `status: "superseded"` with
+   batch's `claim_token`, then stamp `status: "superseded"` with
    `vault_patch_fm` (fallbacks: `POST /vault/move` with `claim_token` in the
    body, which is also the route on an adapter before 0.15.0, whose
    `vault_move` refuses the argument; and a JSON PUT). `DELETE` is reserved
    for zero-history junk.
 5. **Accept the suggestion**: `mcp__vault__vault_accept_suggestion{id}`
    (fallback `vault-curl /suggestions/$ID/accept -X POST`).
-6. **Release the claim**: `vault_work_release({holder, claim_token})`, or
-   `POST /claims/release` with the same body.
+6. **Release the batch**: `POST /leases/release` with `{holder,
+   claim_token}`.
 
 ## Sub-agent mode (`--auto`)
 

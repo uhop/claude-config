@@ -64,16 +64,15 @@ report itemizes every move (`from → to`) — feed that itemization into the
 sweep/final summary verbatim, never bare counts. Exit 0 ok · 1 partial
 failures · 3 rejected pre-write; run solo or `|| true` in parallel batches.
 
-**Work claims** (vault-storage D150). `plan` claims the selected pieces
-(purpose `compact`, `--holder` or a generated name) for an hour, so a
+**Note leases** (vault-storage D610). `plan` leases the selected pieces as
+one batch (`note:<path>`, `--holder` or a generated name) for an hour, so a
 parallel ingest or duplicate merge cannot move one mid-compaction; the plan
-carries the claim, `execute` passes its token on every move and releases it,
-and its report says `claim: "released"`. The claim is all or nothing: when
+carries the batch, `execute` passes its token on every move and releases it,
+and its report says `claim: "released"`. The batch is all or nothing: when
 another pass holds any selected piece, `plan` exits 3 naming each one with
-its holder, purpose, and expiry, and keeps nothing. Leave the folder for
-the next run, or compact again once that pass ends. If you abandon a plan,
-`release` gives the claim back; otherwise it lapses after the hour. A
-server without `/claims` runs unclaimed.
+its holder and expiry, and keeps nothing. Leave the folder for the next run,
+or compact again once that pass ends. If you abandon a plan, `release` gives
+the batch back; otherwise it lapses after the hour.
 
 ## Summary quality (the judgment)
 
