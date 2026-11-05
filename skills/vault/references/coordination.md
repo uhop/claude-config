@@ -337,7 +337,11 @@ leases: a single-agent session that owns its cwd repo never files one.
   passing that token: `done` (you applied it — you own any
   merge conflicts), `rejected`, or `returned` for rework. **`returned`
   requires a `note`** — the critique is what makes the rework possible, and a
-  return without one is a silent drop. Claims expire lazily (~30 min), so an
+  return without one is a silent drop. **`result`, on `done` or `rejected`, is
+  an object**, such as `{summary, commit}`: the REST route answers a string
+  with 400 `bad_request`, "result must be an object when set" (two of
+  apodict's resolutions on 2026-11-05), which the MCP tool's schema already
+  prevents. Claims expire lazily (~30 min), so an
   abandoned review reopens rather than wedging the work.
 - **Reworking**: a returned handoff comes back to *you*. Fix it, then
   `vault_handoff_resubmit({id, ref?, body?, touches?})` — same record, same
