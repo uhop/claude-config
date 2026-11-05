@@ -1146,6 +1146,10 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/tools]]
   dependency ships a skill for (`.claude/skills/`, the package's `skills/`), invoke that skill; one
   found afterward audits the hand-written artifact ([[projects/agent-workflow/feedback]] § Consult
   dependency-shipped agent skills before authoring artifacts they govern).
+- **Authoring a skill reads `openai/skills` first.** Its `skills/.system/skill-creator/SKILL.md` and
+  Anthropic's skill authoring best practices give the same normative rules (Eugene, 2026-11-05: _"it
+  has a bunch of normative information we should use when authoring skills"_); claude-config's
+  `AGENTS.md` names the bounds its tests hold.
 - **An `LSP` answer can be stale about a file the session has not opened.** On Linux, after a pull,
   a rebase, or generated code, run an `LSP` call on that file before believing a surprising type
   error; a `Read` does not refresh it ([[projects/claude-config/decisions]] D41).

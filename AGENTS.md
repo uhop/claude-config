@@ -36,6 +36,13 @@ node install.mjs --apply   # symlink into ~/.claude/
   such as `host1`.
 - **A skill's mechanical steps are scripts.** A step whose outcome its inputs determine belongs in a
   helper script shipped with the skill, and `SKILL.md` starts where judgment starts.
+- **A skill follows `openai/skills`.** Before authoring or restructuring one, read
+  [`skills/.system/skill-creator/SKILL.md`](https://github.com/openai/skills/blob/main/skills/.system/skill-creator/SKILL.md)
+  and Anthropic's
+  [skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices),
+  which give the same rules. A body past 5,000 words is split. One past 3,000 is considered for a
+  split, and kept whole only with its reason in `skill-size.test.mjs`'s `KEPT`, which fails the test
+  until it is there. A `description` stays within 1,024 characters (`skill-frontmatter.test.mjs`).
 - **Edit a gate in place, one working step at a time.** The session's lease permits it, and a hook
   is live as soon as it changes, so add a function before its call and run `bash -n` and the suite
   straight after. If the auto-mode classifier refuses an edit, revert what landed and tell Eugene.
