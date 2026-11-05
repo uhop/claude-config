@@ -622,6 +622,12 @@ the next stop, with what was done meanwhile; silence is neither an answer nor co
 the pick: reflect 2026-10-08, apodict `b2eadfb5` and `d347c372`; the cost: vault-storage 2026-10-28,
 _"Q159: how difficult to do (b)? What are drawbacks?"_, the 2026-10-30 report, M2).
 
+**A design note's questions reach him after a fresh read.** Before a message asks him to rule on a
+design note's questions, wherever they are written, spawn the `design-reader` agent with the note's
+path and the message as it will be sent. Fix what it read wrong, raise each commitment the goal may
+not need as a "whether" question or cut it, and open the message with its paraphrase. Run it on a
+note again only when its design changed ([[projects/claude-config/decisions]] D71).
+
 **A reply answers only what it names.** "next" or "#229: your pick" waives no step the stop promised
 and answers no question it left out: do the step, restate the question at the next stop, and check
 both before a pass over many notes or projects. A design-change question at the top of a reply also

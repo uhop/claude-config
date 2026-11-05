@@ -48,6 +48,10 @@ untouched.
   duplicate passes: Sonnet at `medium` effort with `omitClaudeMd`, told not to call the advisor and
   to report in five lines at most. A `general-purpose` sub-agent inherits the session's
   `effortLevel` and advisor instead.
+- `design-reader.md` — reads one design note with no session context, before the note's questions go
+  to the user, and reports what it proposes and what it commits the work to that the author's
+  message does not show: Sonnet at `medium` effort with `omitClaudeMd`, read-only. A session loads
+  agent types when it starts, so one started before the install cannot spawn it.
 
 ### `hooks/`
 

@@ -11,7 +11,7 @@ the installer.
 CLAUDE.md             # Global rules, loaded by every session on every host
 settings.json         # Harness settings: hooks, permissions, model, plugins
 install.mjs           # Links the entries below into ~/.claude/; dry-run by default
-agents/               # Sub-agent types (vault-sweep.md)
+agents/               # Sub-agent types (vault-sweep.md, design-reader.md)
 commands/             # Slash commands kept as plain prompts
 hooks/                # Scripts the harness runs on tool and session events
 ├── lib/              # What the hooks share: the shell command parser, the lease token
