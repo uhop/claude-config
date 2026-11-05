@@ -1,11 +1,13 @@
 ---
 name: tmux
-description: "Remote control tmux sessions for interactive CLIs — REPLs (python, node), debuggers (lldb, gdb), and other TTY/full-screen apps — by sending keystrokes, scraping pane output, and polling for prompts. Uses a private socket isolated from the user's own tmux."
+description: "Remote control tmux sessions for interactive CLIs — REPLs (python, node), debuggers (lldb, gdb), and other TTY/full-screen apps — by sending keystrokes, scraping pane output, and polling for prompts. Uses a private socket isolated from the user's own tmux. Only where `HERDR_ENV` is not 1: inside a Herdr session, run interactive programs in a Herdr pane instead, whether or not the user named Herdr."
 ---
 
 # tmux Skill
 
 > Vendored 2026-08-06 from [mitsuhiko/agent-stuff](https://github.com/mitsuhiko/agent-stuff) (Apache-2.0). Local fixes: `-L "$SOCKET"` → `-S "$SOCKET"` (`-L` takes a socket *name*, `-S` a path); `-S` on `wait-for-text.sh`, and tmux's error on its timeout; targets by session name, since a config's `base-index` moves window 0; `find-sessions.sh`'s format, which printed a literal `\t` and no start time on tmux 3.6; helper paths that run from any directory.
+
+**Inside a Herdr session (`HERDR_ENV=1`), use a Herdr pane, not this skill**, whether or not the user named Herdr (ruled 2026-11-04), so the work runs on the terminal path the user works in: `herdr pane split --current --direction right --cwd "$PWD" --no-focus`, then `herdr pane run`, `herdr pane wait-output --regex '(?m)^>>>' --source recent-unwrapped --timeout 15000`, and `herdr pane read`. Read the tail and `herdr pane close` a pane you split once its work ends. The `herdr` skill has the rest.
 
 Use tmux as a programmable terminal multiplexer for interactive work. Works on Linux and macOS with stock tmux. A private socket keeps agent sessions off the user's own server, but a server on it still loads the user's config unless you start it with `-f /dev/null`.
 
