@@ -19,6 +19,9 @@
 # payload's `last_assistant_message`: the transcript is written asynchronously
 # and lags the turn (hooks reference), so its tail is only the fallback for a
 # Claude Code before 2.1.47 (reflect 2026-10-04, 5 false blocks after 8548b9b).
+# A declared shell still costs one block when no `sleep` timer is live beside it,
+# since an idle session says nothing when the run's estimate passes (reflect
+# 2026-11-05 P1: four overruns he had to ask about, in three sessions).
 #
 # FAILS OPEN, silently: no jq, no node, no transcript, a sub-agent run
 # (agent_id present) all exit 0 with no output. The lister is
@@ -52,7 +55,7 @@ lister="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../skills/bg-shells/bg-s
 [[ -f "$lister" ]] || exit 0
 
 live=$(node "$lister" --json --live --session="$transcript" 2>/dev/null |
-  jq -r '.[].shells[] | "\(.shell_id)\t\(.launched_this_turn)\t\(if .description == "" then .command else .description end)"' 2>/dev/null) || exit 0
+  jq -r '.[].shells[] | "\(.shell_id)\t\(.launched_this_turn)\t\(.command | test("^\\s*(command\\s+)?sleep\\s+[0-9]"))\t\(if .description == "" then .command else .description end)"' 2>/dev/null) || exit 0
 [[ -n "$live" ]] || exit 0
 
 state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-bg-shells"
@@ -72,23 +75,33 @@ for (const line of require("fs").readFileSync(0, "utf8").split("\n")) {
 }
 process.stdout.write(last);' 2>/dev/null) || closing=""
 
+timer_live=false
+printf '%s\n' "$live" | cut -f3 | command grep -qx true && timer_live=true
+
 new=""
-while IFS=$'\t' read -r id this_turn desc || [[ -n "$id" ]]; do
+untimed=""
+while IFS=$'\t' read -r id this_turn timer desc || [[ -n "$id" ]]; do
   [[ -n "$id" ]] || continue
   command grep -qxF "$id" "$marker" && continue
   if [[ -n "$closing" && "$closing" == *"$id"* ]]; then
     printf '%s\n' "$id" >>"$marker"
+    [[ "$timer" == "true" || "$timer_live" == "true" ]] || untimed+="${untimed:+, }$id"
     continue
   fi
   [[ "$this_turn" == "true" ]] && continue
   new+="$id"$'\t'"$desc"$'\n'
 done <<<"$live"
-[[ -n "$new" ]] || exit 0
+[[ -n "$new" || -n "$untimed" ]] || exit 0
 
-printf '%s' "$new" | cut -f1 >>"$marker"
+reason=""
+if [[ -n "$new" ]]; then
+  printf '%s' "$new" | cut -f1 >>"$marker"
+  n=$(printf '%s' "$new" | command grep -c .)
+  list=$(printf '%s' "$new" | awk -F'\t' '{d = substr($2, 1, 70); gsub(/[[:space:]]+/, " ", d); printf "%s%s (%s)", (NR > 1 ? "; " : ""), $1, d}')
+  reason="[bg-shells] $n background shell(s) still live: $list. A live shell is not part of a finished turn: TaskStop each one you no longer need (a watcher dies with its producer), or say in one line which one must keep running and why, then finish."
+fi
+if [[ -n "$untimed" ]]; then
+  reason+="${reason:+ }[bg-shells] $untimed declared as still running, with no timer set. Start a background \`sleep\` that ends at the run's estimate, so an overrun is reported before he has to ask; a server or a watcher with no end needs none (CLAUDE.md § Tools; reflect 2026-11-05, P1)."
+fi
 
-n=$(printf '%s' "$new" | command grep -c .)
-list=$(printf '%s' "$new" | awk -F'\t' '{d = substr($2, 1, 70); gsub(/[[:space:]]+/, " ", d); printf "%s%s (%s)", (NR > 1 ? "; " : ""), $1, d}')
-
-jq -n --arg r "[bg-shells] $n background shell(s) still live: $list. A live shell is not part of a finished turn: TaskStop each one you no longer need (a watcher dies with its producer), or say in one line which one must keep running and why, then finish." \
-  '{decision: "block", reason: $r}'
+jq -n --arg r "$reason" '{decision: "block", reason: $r}'

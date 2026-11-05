@@ -11,10 +11,13 @@ node run.mjs ask --arm rule --all          # also the private sessions the local
 node run.mjs score --arm rule
 ```
 
-Which repositories are private, and which of them `--all` may send, is listed in
-`~/.config/reflect/jev-private.json` on the machine, never in this repository:
-`{"private": ["-home-you-Open-<repo>", …], "sendable": […]}`, by project directory as
-`~/.claude/projects/` names it. Every command refuses to run without it.
+`build` asks GitHub for each project's visibility, through its transcript's working directory, its
+`origin` remote, and `gh repo view`. A project is private unless GitHub reports it `PUBLIC`: no
+remote, no `gh`, or an error counts as private, and `build` prints each project's verdict. A private
+project is sent only with `--all`, and only when `~/.config/reflect/jev-private.json` on the
+machine, never in this repository, lists it as sendable: `{"sendable": ["-home-you-Open-<repo>"]}`,
+by project directory as `~/.claude/projects/` names it. An optional `"private": […]` there keeps a
+public project from being sent too. With no file, nothing private is sent.
 
 `labels.json` is the pre-registered label set: every turn a reflect report cited since 2026-08-25,
 the reports' false positives, and hand labels for the withheld class, written before any answer. The

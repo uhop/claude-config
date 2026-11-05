@@ -1,1 +1,5 @@
 __pycache__/
+skills/reflect/jev-marker/scan.json
+skills/reflect/jev-marker/states.json
+skills/reflect/jev-marker/responses-*.json
+skills/reflect/jev-marker/score-*.json

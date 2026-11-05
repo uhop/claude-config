@@ -1069,7 +1069,10 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/tools]]
 - **State the cost of a long run before starting it.** When a run will take more than a few minutes
   (a simulation, a census, a benchmark sweep), give its estimated wall time in the message that
   starts it, and make it write a progress line as it goes. A Stop-hook reply about a run still going
-  says how far along it is and how long is left, not only that it must keep running. An
+  says how far along it is and how long is left, not only that it must keep running. A turn that
+  ends waiting on a run also starts a background `sleep` that ends at the estimate; when it fires
+  with the run still going, say how far along it is and how long is left, or stop the run if what is
+  left is not needed, and stop the timer when the run reports first (the 2026-11-05 report, P1). An
   investigation he waits on counts as a long run: every few minutes, say what you have ruled out and
   what you read next (reflect 2026-10-22 M4).
 - **Classifier outage ≠ command failure.** A tool call failing with "_\<model\> is temporarily
@@ -1204,7 +1207,8 @@ hook stays quiet in the turn that launched a shell and raises it at a later Stop
 ([[projects/claude-config/decisions]] D45). A shell that must keep running past its own turn is
 named by its id in that turn's closing message, with why; the hook reads that as the declaration and
 does not block for it (reflect 2026-10-03: 14 firings in a week, every one a gate that had to
-finish).
+finish), unless no `sleep` timer is live beside it, which costs one block (§ Tools, the long-run
+rule; reflect 2026-11-05, P1).
 
 **Herdr panes are a third registry, and this is the one he watches.** Background shells and
 background agents live in a status line; a pane sits in his window. A pane you split is yours to

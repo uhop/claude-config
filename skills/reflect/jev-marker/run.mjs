@@ -7,14 +7,15 @@
 // reflect report cited since that date, by epoch or by session and minute, as
 // `signal`, the reports' "False positives" as `fp`, and hand labels for the
 // withheld class written before any answer was seen (labels.json). Floor: the
-// scanner's own `correction` cue on the same turns. Private repositories are
-// built and never sent unless `--all` says so; which ones are private, and
-// which of them may be sent, is listed in PRIVATE_FILE, kept on the machine.
+// scanner's own `correction` cue on the same turns. A project is private unless
+// GitHub reports its repository PUBLIC; a private one is built and never sent
+// unless `--all` says so and LISTS_FILE, kept on the machine, marks it sendable.
 //
 //   node run.mjs build --scan scan.json                → states.json
 //   node run.mjs ask --arm before|after|rule [--all] [--limit N] → responses-<arm>.json (needs TYPESAFE_API_KEY)
 //     --all adds the private repositories the list marks sendable; the others are never asked or scored
 //   node run.mjs score --arm before|after              → score-<arm>.json + a summary
+import {execFileSync} from 'node:child_process';
 import {readFileSync, writeFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {dirname, join} from 'node:path';
@@ -37,25 +38,47 @@ const PRICE_PER_INPUT_TOKEN = 0.042 / 1e6;
 const CONCURRENCY = 6;
 const THRESHOLDS = [0.5, 0.7, 0.9];
 const ARMS = ['before', 'after', 'rule'];
-// Kept out of this public repository (2026-10-14); without it nothing runs, since a missing list would send everything.
-const PRIVATE_FILE = join(homedir(), '.config', 'reflect', 'jev-private.json');
-const readPrivate = () => {
+// Kept out of this public repository (2026-10-14). Privacy itself comes from GitHub: a hand list went stale (reflect 2026-11-05, P2).
+const LISTS_FILE = join(homedir(), '.config', 'reflect', 'jev-private.json');
+const readLists = () => {
+  let text;
   try {
-    const {private: all, sendable} = JSON.parse(readFileSync(PRIVATE_FILE, 'utf8'));
-    if (!Array.isArray(all) || !Array.isArray(sendable))
-      throw new TypeError('"private" and "sendable" must be arrays of project directories');
-    return [new Set(all), new Set(sendable)];
+    text = readFileSync(LISTS_FILE, 'utf8');
   } catch (error) {
-    console.error(
-      `run.mjs: cannot read ${PRIVATE_FILE}: ${error.message}\n` +
-        'It lists {"private": ["-home-…-Open-<repo>", …], "sendable": [<the private ones --all may send>]}.'
+    if (error.code === 'ENOENT') return [new Set(), new Set()];
+    throw error;
+  }
+  const {private: listed = [], sendable = []} = JSON.parse(text);
+  if (!Array.isArray(listed) || !Array.isArray(sendable))
+    throw new TypeError(
+      `${LISTS_FILE}: "private" and "sendable" must be arrays of project directories`
     );
-    process.exit(2);
+  return [new Set(listed), new Set(sendable)];
+};
+const [LISTED_PRIVATE, SENDABLE_PRIVATE] = readLists();
+// Fails closed: no remote, no `gh`, or any error reads as not PUBLIC.
+const visibilityOf = cwd => {
+  try {
+    const url = execFileSync('git', ['-C', cwd, 'remote', 'get-url', 'origin'], {
+      encoding: 'utf8',
+      timeout: 10_000,
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim();
+    const slug = url.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1];
+    if (!slug) return 'UNKNOWN';
+    return (
+      execFileSync('gh', ['repo', 'view', slug, '--json', 'visibility', '-q', '.visibility'], {
+        encoding: 'utf8',
+        timeout: 30_000,
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim() || 'UNKNOWN'
+    );
+  } catch {
+    return 'UNKNOWN';
   }
 };
-// `--all` reaches SENDABLE_PRIVATE only; a NEVER_SEND project is neither asked nor scored.
-const [PRIVATE, SENDABLE_PRIVATE] = readPrivate();
-const NEVER_SEND = new Set([...PRIVATE].filter(p => !SENDABLE_PRIVATE.has(p)));
+// A private project is asked and scored only when `--all` is given and the file marks it sendable.
+const neverSend = s => s.private && !SENDABLE_PRIVATE.has(s.project);
 const TURN_MAX = 1500;
 const BEFORE_MAX = 700;
 const AFTER_MAX = 500;
@@ -155,18 +178,22 @@ const build = () => {
     bySession.get(k).push(t);
   }
   const states = [];
+  const visibility = new Map();
   let skipped = 0;
   for (const [k, turns] of bySession) {
     const [project, session] = k.split('/');
     const path = join(homedir(), '.claude', 'projects', project, `${session}.jsonl`);
-    let rows;
+    let rows,
+      cwd = '';
     try {
       rows = readFileSync(path, 'utf8')
         .split('\n')
         .filter(Boolean)
         .map(l => {
           try {
-            return asHumanRow(JSON.parse(l));
+            const raw = JSON.parse(l);
+            if (!cwd && typeof raw.cwd === 'string') cwd = raw.cwd;
+            return asHumanRow(raw);
           } catch {
             return null;
           }
@@ -175,6 +202,9 @@ const build = () => {
     } catch {
       continue;
     }
+    if (!visibility.has(project)) visibility.set(project, cwd ? visibilityOf(cwd) : 'UNKNOWN');
+    const shown = visibility.get(project);
+    const isPrivate = shown !== 'PUBLIC' || LISTED_PRIVATE.has(project);
     const want = new Map(turns.map(t => [t.ts, t]));
     for (let i = 0; i < rows.length; ++i) {
       const row = rows[i];
@@ -200,7 +230,8 @@ const build = () => {
         project,
         session: session.slice(0, 8),
         ts_iso: t.ts_iso,
-        private: PRIVATE.has(project),
+        visibility: shown,
+        private: isPrivate,
         skip,
         regex: {
           correction: !!t.correction,
@@ -231,6 +262,15 @@ const build = () => {
   process.stdout.write(
     `${n} states from ${bySession.size} sessions; ${skipped} skipped as non-steering; askable ${askable.length} (public ${pub.filter(s => !s.skip).length}, private ${askable.length - pub.filter(s => !s.skip).length})\n`
   );
+  for (const [project, v] of visibility) {
+    const sends =
+      v === 'PUBLIC' && !LISTED_PRIVATE.has(project)
+        ? 'sent'
+        : SENDABLE_PRIVATE.has(project)
+          ? 'sent with --all'
+          : 'never sent';
+    process.stdout.write(`  ${project}: ${v}, ${sends}\n`);
+  }
 };
 
 const stateFor = (s, arm) => {
@@ -287,14 +327,13 @@ const ask = async () => {
   const arm = opt('--arm', 'before');
   if (!ARMS.includes(arm)) throw new Error(`unknown --arm ${arm}`);
   const {states} = JSON.parse(readFileSync(join(here, 'states.json'), 'utf8'));
+  if (states.some(s => s.visibility === undefined)) {
+    process.stderr.write('states.json predates the visibility check; run build again\n');
+    process.exit(2);
+  }
   const all = flag('--all');
   const todo = states
-    .filter(
-      s =>
-        !s.skip &&
-        !NEVER_SEND.has(s.project) &&
-        (!s.private || (all && SENDABLE_PRIVATE.has(s.project)))
-    )
+    .filter(s => !s.skip && (!s.private || (all && SENDABLE_PRIVATE.has(s.project))))
     .slice(0, Number(opt('--limit', states.length)));
   const out = new Array(todo.length);
   let next = 0,
@@ -340,7 +379,7 @@ const score = () => {
   );
   const byId = new Map(results.filter(r => r.answers).map(r => [r.id, r.answers]));
   const rows = states
-    .filter(s => byId.has(s.id) && !NEVER_SEND.has(s.project))
+    .filter(s => byId.has(s.id) && !neverSend(s))
     .map(s => ({...s, p: byId.get(s.id), lab: labels[String(s.ts)] ?? null}));
   const pos = rows.filter(r => r.lab?.label === 'signal');
   const fps = rows.filter(r => r.lab?.label === 'fp');

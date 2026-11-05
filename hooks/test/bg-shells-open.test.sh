@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for ../bg-shells-open.sh (Stop) and the lister under it, on transcripts built here: a shell
 # is quiet in the turn that launched it, raised once at a later Stop while it is live, and left
-# alone when the closing message names it, or when it ended or was stopped.
+# alone when the closing message names it with a `sleep` timer live, or when it ended or was
+# stopped. Named with no timer live, it is raised once for the timer.
 #
 # Exit non-zero on any failure. No framework: the repo has none.
 
@@ -28,10 +29,10 @@ meta() { jq -nc --arg t "$1" '{type: "user", isMeta: true, message: {role: "user
 say() { jq -nc --arg t "$1" '{type: "assistant", message: {role: "assistant", content: [{type: "text", text: $t}]}}' >>"$T"; }
 queued() { jq -nc --arg t "$1" '{type: "attachment", attachment: {type: "queued_command", prompt: $t}}' >>"$T"; }
 
-# launch <id> [description]: the tool_use and its modern result.
+# launch <id> [description] [command]: the tool_use and its modern result.
 launch() {
-  jq -nc --arg u "use-$1" --arg d "${2:-Run the long job}" \
-    '{type: "assistant", message: {role: "assistant", content: [{type: "tool_use", id: $u, name: "Bash", input: {command: "sleep 100", description: $d}}]}}' >>"$T"
+  jq -nc --arg u "use-$1" --arg d "${2:-Run the long job}" --arg c "${3:-npm run census}" \
+    '{type: "assistant", message: {role: "assistant", content: [{type: "tool_use", id: $u, name: "Bash", input: {command: $c, description: $d}}]}}' >>"$T"
   jq -nc --arg u "use-$1" --arg i "$1" \
     '{type: "user", toolUseResult: {backgroundTaskId: $i}, message: {role: "user", content: [{type: "tool_result", tool_use_id: $u, content: "started"}]}}' >>"$T"
 }
@@ -61,6 +62,7 @@ stop() {
 
 quiet() { [[ $rc -eq 0 && -z "$out" ]] && ok || bad "$1 (rc=$rc out=$out)"; }
 raised() { [[ $rc -eq 0 && "$out" == *'"decision"'*'"block"'* && "$out" == *"$2"* ]] && ok || bad "$1 (rc=$rc out=$out)"; }
+timer() { launch "$1" 'Wake at the estimate' "${2:-sleep 900}"; }
 
 # ── a shell is quiet in the turn that launched it ──
 fresh; user 'go'; launch bshell01; say 'Waiting.'
@@ -106,20 +108,38 @@ stop 'Later.'; raised 'and the younger at its own later Stop' bshell07
 # ── the closing message names it ──
 fresh; user 'go'; launch bshell08; say 'Started.'
 stop 'Started.'; quiet 'first turn, for the naming case'
-user 'next'; say 'bshell08 must keep running.'
-stop 'bshell08 must keep running.'; quiet 'named in a later turn: no block'
+user 'next'; timer btimer08; say 'bshell08 must keep running.'
+stop 'bshell08 must keep running.'; quiet 'named in a later turn with a timer: no block'
 user 'more'; say 'Fine.'
-stop 'Fine.'; quiet 'and it stays declared'
+stop 'Fine.'; raised 'a timer left running is raised like any shell' btimer08
+[[ "$out" != *bshell08* ]] && ok || bad "the declared shell stays declared (out=$out)"
 
-fresh; user 'go'; launch bshell09; say 'bshell09 keeps running.'
-stop 'bshell09 keeps running.'; quiet 'named in its own turn: no block'
-user 'next'; say 'Later.'
+fresh; user 'go'; launch bshell09; timer btimer09 'sleep 600; echo past the estimate'; say 'bshell09 keeps running.'
+stop 'bshell09 keeps running.'; quiet 'named in its own turn with a timer: no block'
+user 'next'; notify btimer09; say 'Later.'
 stop 'Later.'; quiet 'and it stays declared after that'
+
+# Named with no timer live: raised once, for the timer.
+fresh; user 'go'; launch bshell14 'Run the mutation pass'; say 'bshell14 must keep running.'
+stop 'bshell14 must keep running.'; raised 'named with no timer: raised for one' bshell14
+[[ "$out" == *'no timer'* && "$out" == *'sleep'* ]] && ok || bad "the block asks for a timer (out=$out)"
+[[ "$out" != *'still live'* ]] && ok || bad "a declared shell is not called forgotten (out=$out)"
+user 'next'; say 'Fine.'
+stop 'Fine.'; quiet 'raised for the timer once per shell'
+
+fresh; user 'go'; launch bshell15; say 'Started.'
+stop 'Started.'; quiet 'first turn, for the late naming with no timer'
+user 'next'; launch bshell16; say 'bshell15 must keep running.'
+stop 'bshell15 must keep running.'; raised 'named in a later turn with no timer: raised' bshell15
+[[ "$out" != *bshell16* ]] && ok || bad "the shell launched this turn stays out (out=$out)"
+
+fresh; user 'go'; timer btimer17; say 'btimer17 wakes me at the estimate.'
+stop 'btimer17 wakes me at the estimate.'; quiet 'a named timer needs no timer of its own'
 
 # With no last_assistant_message, the transcript's last text is the closing message.
 fresh; user 'go'; launch bshell10; say 'Started.'
 stop ''; quiet 'first turn, for the fallback case'
-user 'next'; say 'bshell10 must keep running.'
+user 'next'; timer btimer10; say 'bshell10 must keep running.'
 stop ''; quiet 'the transcript names it when the payload has no closing message'
 
 # ── it ended, or was stopped ──
