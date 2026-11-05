@@ -319,9 +319,12 @@ leases: a single-agent session that owns its cwd repo never files one.
   patch that has since changed. Then stream the artifact to a file in
   `~/.cache/<project>/` rather than into your context — `vault-curl
   /handoffs/<id>/artifact -s > ~/.cache/<project>/handoff-<id>.patch` — and
-  **validation-first**: `git apply --check`, and only then `git apply --3way`,
-  which leaves the change in the working tree for his commit (claude-config
-  D73). Apply a handoff when it arrives, live files included; one that loosens
+  **validation-first**: `git apply --check`, and only then `git apply`, which
+  leaves the change unstaged in the working tree for his commit (claude-config
+  D73), beside any other unstaged work. Only when the plain form refuses a
+  patch whose base moved, use `git apply --3way`: it needs each touched file's
+  index to match its working tree, and it stages what it applies, so follow it
+  with `git restore --staged <files>` to keep the change in `git diff`. Apply a handoff when it arrives, live files included; one that loosens
   a gate or a permission (a `permissions` change in `settings.json`, a gate
   made to allow what it refused) waits for his word (D73). After your own gates
   pass on the applied result, `vault_handoff_verify` with the `HEAD` it was
