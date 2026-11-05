@@ -88,6 +88,14 @@ prose.
 Also not a tell: a third-party quotation that trips a pattern. Quotations are inviolable (blog
 feedback 4.8).
 
+Also not a tell: a mirrored pair that reports a finding, such as "The measurement was right and the
+explanation was wrong." That is his published wording. The mirrored antithesis as a figure ("a crash
+is the wrong answer to a wrong argument, and a `TypeError` is the right one"; he posted "an answer
+to a wrong argument should be a `TypeError` not a crash") has no mechanical check. Measured
+2026-11-04, a regular expression hits findings far more often than figures, and `bin/voicecheck`
+scored that draft below his rewrite. Catch it by reading: when symmetry is the only reason a word is
+in the sentence, write the plain claim.
+
 The Orwell pass (2026-09-07) added his own words that Orwell's lists would flag: _in order to_ (32
 pre-LLM hits), _is able to_, _the fact that_, _take into account_, _in terms of_, _leverage_,
 _paradigm_, _methodology_, _per se_, _e.g._ / _i.e._ (57 hits; Google's ban stands for
