@@ -57,7 +57,9 @@ untouched.
 
 `PreToolUse` / `PostToolUse` scripts that gate or react to tool calls. Currently:
 
-- `git-commit-gate.sh` — reinstates the old default-deny for `git commit`, but allows it in projects
+- `git-commit-gate.sh` — reinstates the old default-deny for `git commit` and the other verbs that
+  make a commit (`am`, `merge`, `cherry-pick`, `revert`, `rebase`, a `pull` that may merge; their
+  `--ff-only`, `--squash`, `--no-commit`, and `--abort` forms make none), but allows it in projects
   that opt in by creating `.claude/git-commit-allowed`, which it refuses an agent's write to outside
   the temp and cache directories. Wired in via `settings.json`'s `hooks.PreToolUse`. A free
   substring pre-filter, then the shared parser (`hooks/lib/shell_segments.py`, the lease gate's)

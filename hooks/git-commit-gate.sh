@@ -3,7 +3,9 @@
 #
 # Reinstates the default-deny behavior that used to live in
 # settings.json's permissions.deny — but checks a per-project opt-in marker
-# first. A `git commit` is allowed only when `.claude/git-commit-allowed`
+# first. A `git commit`, or another verb that makes a commit (`am`, `merge`,
+# `cherry-pick`, `revert`, `rebase`, a `pull` that may merge; 8e, 2026-11-05),
+# is allowed only when `.claude/git-commit-allowed`
 # exists at or above the directory the commit runs in — the tool call's cwd
 # after any `cd`/`pushd` in the command, or git's own `-C` — so a
 # `cd <marked repo> && git commit` from an unmarked cwd passes and a
@@ -87,17 +89,20 @@ fi
 # is missing, the old `git commit`-adjacent regex decides; if it fails on a
 # command, that command is treated as the verb — this gate defaults to deny.
 word='(^|[^a-zA-Z0-9_-])'
-if [[ ! ( "$cmd" =~ ${word}git([^a-zA-Z0-9_-]|$) && "$cmd" =~ ${word}commit([^a-zA-Z0-9_-]|$) ) ]]; then
+# A verb that makes a commit is one, a pull only when it may merge (8e).
+verbs='commit|am|merge|cherry-pick|revert|rebase|pull'
+if [[ ! ( "$cmd" =~ ${word}git([^a-zA-Z0-9_-]|$) && "$cmd" =~ ${word}($verbs)([^a-zA-Z0-9_-]|$) ) ]]; then
   exit 0
 fi
 
-# The parser prints one line per commit site that needs the marker — the
-# directory the verb runs in, `?` when a variable leaves it unknown — and nothing
-# when the words are data or the site is a scratch repository or a linked
+# The parser prints one line per commit site that needs the marker — the verb, a
+# tab, and the directory it runs in, `?` when a variable leaves it unknown — and
+# nothing when the words are data or the site is a scratch repository or a linked
 # worktree. Parser unavailable
 # or failing: the pre-2026-09-06 regex decides, gaps and all, at the cwd.
 sites=
-[[ "$cmd" =~ ${word}git[[:space:]]+commit([^a-zA-Z0-9_-]|$) ]] && sites="$cwd"
+[[ "$cmd" =~ ${word}git[[:space:]]+(commit|am|merge|cherry-pick|revert|rebase)([^a-zA-Z0-9_-]|$) ]] &&
+  sites="${BASH_REMATCH[2]}"$'\t'"$cwd"
 # In a function, since Bash 3.2 can fail to parse a heredoc inside `$( … )`
 # (hook-syntax.test.mjs).
 commit_sites() {
@@ -111,6 +116,18 @@ VALUE_OPTS = {'-b', '-B', '--reason', '--branch', '--initial-branch', '-o', '--o
               '-u', '--upload-pack', '--reference', '--template', '--separate-git-dir', '--object-format',
               '--ref-format', '--shallow-since', '--shallow-exclude', '--server-option', '--bundle-uri'}
 env, made, added = {}, [], []
+
+# Every verb that makes a commit is one (8e, 2026-11-05); these forms of them make none.
+COMMIT_VERBS = {'commit', 'am', 'merge', 'cherry-pick', 'revert', 'rebase', 'pull'}
+NO_COMMIT = {'--abort', '--quit', '--show-current-patch', '--edit-todo'}
+NO_COMMIT_BY_VERB = {'merge': {'--ff-only', '--squash', '--no-commit'}, 'pull': {'--ff-only'},
+                     'cherry-pick': {'-n', '--no-commit'}, 'revert': {'-n', '--no-commit'}}
+
+def makes_commit(verb, args):
+    if verb not in COMMIT_VERBS:
+        return False
+    flags = set(args)
+    return verb == 'commit' or not (flags & (NO_COMMIT | NO_COMMIT_BY_VERB.get(verb, set())))
 
 def covers(root, path):
     return path == root or path.startswith(root + '/')
@@ -140,7 +157,7 @@ def needs_no_marker(site):
 
 def sites(cmd, eff, depth=0):
     if depth > 3:
-        return [None]
+        return [('commit', None)]
     out = []
     text, bodies = parse_heredocs(cmd)
     for prefix, body, quoted, rest in bodies:
@@ -170,30 +187,32 @@ def sites(cmd, eff, depth=0):
                 d = made_repo(verb, args[k + 1:], site)
                 if d:
                     (added if verb == 'worktree' else made).append(d)
-            elif verb == 'commit' and (site is None or not needs_no_marker(site)):
-                out.append(site)
+            elif makes_commit(verb, args[k + 1:]) and (site is None or not needs_no_marker(site)):
+                out.append((verb, site))
         elif name in SHELLS:
             for a in nonflag:
                 out += sites(a, eff, depth + 1)
         elif name == 'ssh':
-            out += [None for _ in sites(ssh_command(args), None, depth + 1)]
+            out += [(verb, None) for verb, _ in sites(ssh_command(args), None, depth + 1)]
     return out
 
-for site in sites(os.environ.get('CMD', ''), sys.argv[2]):
-    print(site if site else '?')
+for verb, site in sites(os.environ.get('CMD', ''), sys.argv[2]):
+    print(f'{verb}\t{site or "?"}')
 PY
 }
 if [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
-  sites=$(commit_sites || printf '%s\n' "$cwd")
+  sites=$(commit_sites || printf '%s\t%s\n' "${sites%%$'\t'*}" "$cwd")
+  [[ "$sites" == $'\t'* ]] && sites="commit$sites"
 fi
 [[ -z "$sites" ]] && exit 0
 
 unmarked=
-while IFS= read -r site || [[ -n "$site" ]]; do
+verb=commit
+while IFS=$'\t' read -r verb site || [[ -n "$site" ]]; do
   [[ -z "$site" ]] && continue
   if [[ "$site" == '?' ]]; then
     cat >&2 <<EOF
-git commit denied by ~/.claude/hooks/git-commit-gate.sh — it cannot read the directory the commit runs in, so it could be any repository: a variable this command does not assign, or another host over ssh.
+git $verb denied by ~/.claude/hooks/git-commit-gate.sh — it cannot read the directory the commit runs in, so it could be any repository: a variable this command does not assign, or another host over ssh.
 
 Spell the path, or assign the variable in the same command. Commit on another host from a session there.
 EOF
@@ -215,8 +234,11 @@ EOF
 done <<<"$sites"
 [[ -z "$unmarked" ]] && exit 0
 
+also=
+[[ "$verb" != commit ]] &&
+  also=$'\n\n'"A git $verb makes a commit, as \`git commit\` does. \`--ff-only\`, \`--squash\`, \`--no-commit\`, and \`--abort\` make none."
 cat >&2 <<EOF
-git commit denied by ~/.claude/hooks/git-commit-gate.sh — no opt-in marker at or above $unmarked.
+git $verb denied by ~/.claude/hooks/git-commit-gate.sh — no opt-in marker at or above $unmarked.$also
 
 The marker is the person's to create, so leave this commit to them.
 

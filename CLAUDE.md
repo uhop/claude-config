@@ -21,14 +21,16 @@ infer the decision from an unreleased changeset on `main`, from a docket/task li
 agent wrote), or from a generic "deal with it"; surface "main has unreleased work" as information,
 not as a task. He decides _when_ — he may deliberately batch more items before cutting a version.
 
-Asking is also useless because of the gate itself: `hooks/git-commit-gate.sh` blocks `git commit`
-unless `.claude/git-commit-allowed` exists at or above the directory the commit runs in — the cwd
-after any `cd` in the command, or git's `-C` (since 2026-09-06; before that the session cwd alone
-decided, which denied a `cd <marked repo> && git commit` from an unmarked cwd) — (a per-project
-opt-in marker, which only he writes (the gate refuses an agent's write) — only a couple of repos
-carry it; `find ~/Open -path '*/.claude/git-commit-allowed'` answers _which_, don't hardcode the
-list; a scratch repository under the temp or cache directory and a linked worktree need none, and a
-site the gate cannot read is denied). `push` / `tag` / `publish` are in `settings.json`'s absolute
+Asking is also useless because of the gate itself: `hooks/git-commit-gate.sh` blocks `git commit`,
+and every other verb that makes a commit (`am`, `merge`, `cherry-pick`, `revert`, `rebase`, a `pull`
+that may merge; since 2026-11-05), unless `.claude/git-commit-allowed` exists at or above the
+directory the commit runs in — the cwd after any `cd` in the command, or git's `-C` (since
+2026-09-06; before that the session cwd alone decided, which denied a
+`cd <marked repo> && git commit` from an unmarked cwd) — (a per-project opt-in marker, which only he
+writes (the gate refuses an agent's write) — only a couple of repos carry it;
+`find ~/Open -path '*/.claude/git-commit-allowed'` answers _which_, don't hardcode the list; a
+scratch repository under the temp or cache directory and a linked worktree need none, and a site the
+gate cannot read is denied). `push` / `tag` / `publish` are in `settings.json`'s absolute
 `permissions.deny` — a hook can't reopen a deny — and since that deny matches a literal prefix,
 `hooks/destructive-op-gate.sh` denies the spellings it misses (git's and npm's global options before
 the verb: `git -C <dir> tag` ran on 2026-09-29), so a typed one is refused **everywhere, on every

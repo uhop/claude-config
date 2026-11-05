@@ -141,6 +141,38 @@ check ALLOW "git -C $OUTSIDE worktree add -q -b t /var/tmp/gate-absent HEAD && g
 check DENY  "git -C $OUTSIDE commit -m x"
 check DENY  "git -C $OUTSIDE worktree add -b t /var/tmp/gate-absent && git -C /var/tmp/gate-absent-2 commit -m x"
 TMPDIR="$OUTSIDE/tmp" check DENY "git -C $OUTSIDE/tmp/fixture commit -m x"
+# ── the other verbs that make a commit are commits (8e, 2026-11-05) ──
+for v in am merge cherry-pick revert rebase pull; do
+  check DENY  "git $v x"
+  check DENY  "git -C $OUTSIDE $v x"
+  check DENY  "cd $OUTSIDE && git $v x"
+  check ALLOW "git -C $LINKED $v x"
+  check ALLOW "git $v x" "$MARKED"
+done
+check DENY  "git merge --no-ff topic"
+check DENY  "git merge --continue"
+check DENY  "git rebase --continue"
+check DENY  "git cherry-pick --continue"
+check DENY  "git am --continue"
+check DENY  "git pull --rebase"
+check ALLOW "git merge --ff-only origin/main"
+check ALLOW "git pull --ff-only"
+check ALLOW "git -C $OUTSIDE pull --ff-only origin main"
+check ALLOW "git merge --squash topic"
+check ALLOW "git merge --no-commit topic"
+check ALLOW "git merge --abort"
+check ALLOW "git rebase --abort"
+check ALLOW "git rebase --quit"
+check ALLOW "git cherry-pick -n abc"
+check ALLOW "git cherry-pick --abort"
+check ALLOW "git revert --no-commit abc"
+check ALLOW "git am --abort"
+check ALLOW "git merge-base HEAD main"
+check ALLOW "git merge-base --is-ancestor HEAD main"
+check ALLOW "git log --grep 'git rebase x'"
+check ALLOW "echo 'git merge x' > notes"
+out=$(jq -nc --arg c "git -C $OUTSIDE rebase main" '{tool_name:"Bash", tool_input:{command:$c}, cwd:"/"}' | bash "$HOOK" 2>&1 >/dev/null)
+[[ "$out" == "git rebase denied"* ]] && ((++pass)) || { ((++fail)); echo "FAIL  the denial must name the verb: $out"; }
 # ── a verb behind shell syntax, `xargs`, or `find -exec` is a verb (2026-11-02) ──
 check DENY  "for d in a b; do $V -m x; done"
 check DENY  "if true; then $V -m x; fi"
@@ -272,6 +304,8 @@ jq -nc --arg c "echo \"$V\"" --arg d "$PLAIN" '{tool_name:"Bash", tool_input:{co
 [ $? -eq 2 ] && ((++pass)) || { ((++fail)); echo "FAIL  no lib: quoted words must fall back to DENY"; }
 jq -nc --arg c "$V -m x" --arg d "$MARKED" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
 [ $? -eq 0 ] && ((++pass)) || { ((++fail)); echo "FAIL  no lib: a marked cwd must still pass"; }
+jq -nc --arg c "git rebase main" --arg d "$PLAIN" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
+[ $? -eq 2 ] && ((++pass)) || { ((++fail)); echo "FAIL  no lib: another verb that makes a commit must deny"; }
 # ── parser failing: the same, at the cwd ──
 mkdir -p "$MISSING/lib"; echo 'raise ValueError' > "$MISSING/lib/shell_segments.py"
 jq -nc --arg c "$V -m x" --arg d "$MARKED" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
