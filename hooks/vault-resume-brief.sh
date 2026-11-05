@@ -73,9 +73,12 @@ if [[ $code == 200 ]] && [[ $(jq -r '.workflow.active // false' <<<"$resp" 2>/de
     "$PROGRAM_CLERK_URL/notes/query" | jq -r '.total // 0' 2>/dev/null)
   [[ ${active:-0} -gt 0 ]] && merged=$(jq '.workflow.active = true' <<<"$resp" 2>/dev/null) && resp=$merged
 fi
+# skills/vault/vault-settings.mjs's KEY_RENEWAL, verbatim, as its test checks (8d).
+renewal='make a new key on /ui/keys.html (a fresh sign-in), save it in ~/.env, and start a new session from a new shell or after `. ~/.env`, since a running session keeps the key it started with'
+export renewal
 # A refused key is the one failure the session must hear of: the day it expires, the hooks go quiet (D210).
 if [[ $code == 401 ]]; then
-  echo "[vault] the vault refused PROGRAM_CLERK_KEY (401): expired or recalled; make a new key on /ui/keys.html (a fresh sign-in)"
+  echo "[vault] the vault refused PROGRAM_CLERK_KEY (401): expired or recalled; $renewal"
   exit 0
 fi
 [[ $code == 200 ]] || exit 0
@@ -111,7 +114,7 @@ jq -r '
       "[vault] key \(.name) expires \(
         if $left < 86400 then "within a day"
         else "in \($days) day\(if $days == 1 then "" else "s" end)" end
-      ) (\(.expiresAt[0:10])); make a new one on /ui/keys.html (a fresh sign-in)"
+      ) (\(.expiresAt[0:10])); \(env.renewal)"
     end
   end),
   # a handoff waits for a session in its own project, so the others name it (vault-storage D402);

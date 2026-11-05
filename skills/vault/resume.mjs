@@ -23,6 +23,7 @@ import {owedOf} from './resume-owed.mjs';
 import {styledOf, withoutControls} from './resume-style.mjs';
 import {readTrackers} from './trackers.mjs';
 import {projectOf} from './vault-project.mjs';
+import {envFileKey, refusedKeyLine, vaultSettings} from './vault-settings.mjs';
 
 const script = relative => fileURLToPath(new URL(relative, import.meta.url));
 const FLEET = script('../fleet-status/fleet-status.mjs');
@@ -575,6 +576,17 @@ const projectOfCwd = async () => {
   return projectOf(root.code === 0 ? root.stdout.trim() : process.cwd());
 };
 
+const envFile = () => {
+  try {
+    return readFileSync(join(homedir(), '.env'), 'utf8');
+  } catch {
+    return '';
+  }
+};
+
+// A 401 says whether ~/.env holds a key this session never read (8d).
+const refusedKey = () => refusedKeyLine(vaultSettings().token, envFileKey(envFile()));
+
 const main = async () => {
   const {values, positionals} = parseArgs({
     options: {json: {type: 'boolean'}, prepare: {type: 'boolean'}, session: {type: 'string'}},
@@ -598,9 +610,10 @@ const main = async () => {
     });
   const statePromise = timed(
     'state',
-    call('POST', `/system/resume-project?project=${encodeURIComponent(project)}`).then(r =>
-      expectJson(r, `the resume state of ${project}`)
-    )
+    call('POST', `/system/resume-project?project=${encodeURIComponent(project)}`).then(r => {
+      if (r.status === 401) throw new Error(refusedKey());
+      return expectJson(r, `the resume state of ${project}`);
+    })
   );
   const queuePromise = timed('queue', orElse(queueOf(call, project), null, 'The queue'));
   const notesPromise = queuePromise.then(queue => queue?.notes ?? null);
