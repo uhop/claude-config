@@ -658,9 +658,10 @@ claims). `vault_lease_list({resource: "repo:<normalized-remote-url>"})`, then
 - **Held by someone else → don't race it**: name the holder, work in a disposable worktree
   (`git -C <sibling> worktree add <scratch> -b <topic>`), commit there, and file a handoff addressed
   to the role `repo:<…>` with the patch; if the holder is a reachable local session (`ListAgents`),
-  `SendMessage` it the handoff id after filing — the record first, the doorbell second. Keep the
-  branch until the handoff resolves. The Agent tool's `isolation: "worktree"` does the same for
-  delegated work.
+  `SendMessage` it the handoff id after filing — the record first, the doorbell second. Name the
+  worktree and branch in the handoff's body and keep them until the recipient applies the work and
+  removes them; remove them yourself when the recipient is on another host. The Agent tool's
+  `isolation: "worktree"` does the same for delegated work.
 - **Unclaimed but dirty → don't claim**: someone's in-flight state is there (possibly his); worktree
   as above, and say the tree was dirty. **The one exception is dirt that is this session's own
   earlier burst.** Before the worktree, check three things: the dirty paths are exactly the files
@@ -714,8 +715,10 @@ left).
 
 **The lease holder reads its handoff inbox at every breather:**
 `vault_handoff_list({project: "<name>", status: "open"})` during a long run's wait, at each work
-stop, and at the wrap, then apply what arrived ([[projects/agent-workflow/feedback]] § The lease
-holder reads its handoff inbox at every breather).
+stop, and at the wrap, then apply what arrived, live files included, and remove the submitter's
+worktree and branch; a handoff that loosens a gate or a permission waits for his word
+([[projects/claude-config/decisions]] D73; [[projects/agent-workflow/feedback]] § The lease holder
+reads its handoff inbox at every breather).
 
 **The owner that applies a handoff names its commit, and the outcome is the owner's.** The subject
 goes in the owner's own stop report and in its reply to the requester. The requester never writes

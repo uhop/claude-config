@@ -204,7 +204,7 @@ claimed", which is why the claim moved into a hook.
   - **Held by someone else → don't race it**: name the holder to the user,
     work in a disposable worktree, commit there, file the result as a
     handoff (below) with the patch, doorbell via `SendMessage` if the holder
-    is reachable. Keep the branch until it resolves.
+    is reachable. Keep the branch until its recipient applies the work (below).
   - **Unclaimed but dirty → do not claim**: someone's in-flight state is
     present (possibly the user's); worktree + handover, and say so. One
     exception: the dirt is this session's own earlier side-claimed burst,
@@ -262,8 +262,12 @@ leases: a single-agent session that owns its cwd repo never files one.
   is `{host, session, repo?}`, provenance save one use: `repo`, your project's
   repository as `github.com/<owner>/<name>`, lists the handoff in your
   project's resume once it is returned (server ≥ 2026-10-22, vault-storage
-  D403), so pass it. **Keep
-  your branch/worktree until the handoff resolves**; it is the backup copy.
+  D403), so pass it. **Name your worktree's path and branch in `body`**, since
+  an upload re-points `ref` at the spool, and **keep them until the recipient
+  applies the work**: they are the backup copy, and the recipient removes them
+  (below). A recipient on another host cannot reach them, so there you remove
+  them once the handoff is `done`. A `returned` or `rejected` one keeps them for
+  the rework, and you remove them when you drop it.
   **Declare what the work changes** in `touches: [{kind, key, operation}]`
   (`kind`: `file` | `symbol` | `schema` | `config` | `api`; `operation`:
   `add` | `extend` | `modify` | `replace` | `remove` | `rename`; server ≥
@@ -288,7 +292,7 @@ leases: a single-agent session that owns its cwd repo never files one.
   time, so it no longer depends on your worktree surviving. **Then record the
   gates you ran** with `vault_handoff_verify({id, check, sha, exit, by})`, one
   call per check, `sha` being the head commit your gates ran on (the owner
-  passes the applied commit after `git am`). The record also carries the
+  passes the `HEAD` it applied the patch on). The record also carries the
   artifact's sha256 at that moment, and every read shows it `stale` once the
   artifact is replaced (server ≥ 2026-09-16, vault-storage D51; before that
   the sha was compared with the base commit, which no gate runs on, so every
@@ -297,12 +301,24 @@ leases: a single-agent session that owns its cwd repo never files one.
 - **Applying one** (you are the owner): read the inbox item's `overlaps`
   and each verification's `stale` first — an overlap is another in-flight
   handoff on the same file or symbol, a stale pass is a gate that ran on a
-  patch that has since changed. Then stream the artifact to a file rather
-  than into your context — `vault-curl /handoffs/<id>/artifact -s >
-  work.patch` — and **validation-first**: `git apply --check work.patch`, and
-  only then `git am --3way < work.patch`. After your own gates pass on the
-  applied result, `vault_handoff_verify` with the applied sha, so the record
-  carries both sides' checks. A patch that will not apply is a `rejected`
+  patch that has since changed. Then stream the artifact to a file in
+  `~/.cache/<project>/` rather than into your context — `vault-curl
+  /handoffs/<id>/artifact -s > ~/.cache/<project>/handoff-<id>.patch` — and
+  **validation-first**: `git apply --check`, and only then `git apply --3way`,
+  which leaves the change in the working tree for his commit (claude-config
+  D73). Apply a handoff when it arrives, live files included; one that loosens
+  a gate or a permission (a `permissions` change in `settings.json`, a gate
+  made to allow what it refused) waits for his word (D73). After your own gates
+  pass on the applied result, `vault_handoff_verify` with the `HEAD` it was
+  applied on, so the record carries both sides' checks. **Then remove the
+  submitter's worktree and branch** when `from.host` is yours:
+  `git -C <repo> worktree remove --force <path>`, since a worktree can hold a
+  `node_modules` link or build output, and `git -C <repo> branch -D <branch>`,
+  since an applied patch never makes the branch's tip an ancestor of `main`
+  and `-d` refuses it. Resolving deletes the artifact and the branch delete
+  leaves its commit unreachable, so until his commit the working tree and the
+  patch file are the only copies: keep the file until the commit is in
+  `git log`. A patch that will not apply is a `rejected`
   resolution with the failure in `result`, never a silent drop; the submitter
   wakes on the status, rebases, and resubmits the same handoff.
 - **Waiting on one**: poll `vault_handoff_get({id})` and watch `status`. When
