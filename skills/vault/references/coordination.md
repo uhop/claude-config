@@ -142,8 +142,9 @@ infrastructure trouble. It reconstructs your holder id as
 block your own edits**; the message prints both sides when that happens.
 
 **Your own repo is claimed for you — mechanically (ruled 2026-08-18).**
-`hooks/vault-lease-claim.sh` (SessionStart) claims the cwd repo with
-`priority: "cwd"` under the holder id below; `hooks/vault-lease-gate.sh`
+`hooks/vault-lease-claim.sh` (SessionStart) claims the cwd repo with rank 10
+and `takeover_after` 3600, what the hooks call `cwd` (the server knows only the
+numbers, vault-storage D606), under the holder id below; `hooks/vault-lease-gate.sh`
 renews it on activity — every edit through the PreToolUse gate, and every
 tool call through the same script's `--touch` mode on PostToolUse
 (2026-09-05, so a Bash-only or MCP-only session stays live) — and re-claims
@@ -190,8 +191,9 @@ claimed", which is why the claim moved into a hook.
   `repo:github.com/uhop/deep6`; a repo with no remote keys as
   `repo:<host>:<path>` — then `git -C <repo> status --porcelain`.
   - **Unclaimed and clean → side-claim, edit directly, release, tell the
-    user.** `vault_lease_claim({resource, holder, priority: "side",
-    attestation: "clean at <short-sha>"})`, keep the `claim_token` it
+    user.** `vault_lease_claim({resource, holder, attestation: "clean at
+    <short-sha>"})`, which names no rank and so is what the hooks call a side
+    claim; a `cwd` session takes it at once. Keep the `claim_token` it
     returns, edit the working tree, run that repo's gates,
     `vault_lease_release({resource, holder, claim_token})`, then report "mods done in
     `<repo>` — review, commit, push". No worktree, no branch — the daily
@@ -224,7 +226,8 @@ claimed", which is why the claim moved into a hook.
   cwd lease's token on disk themselves; a side lease the agent forgets is
   not released at SessionEnd, since the hooks do not have its token. The
   operator holds as
-  `kind: "human"` (no TTL, never preempted) and claims via the UI;
+  `kind: "human"` (no TTL, never preempted) and claims via the UI, since an
+  agent's key gets a 403 there (vault-storage D606);
   `vault_lease_transfer` with `to_kind: "human"` is the "please review and
   commit" handover.
 - **While holding a side lease**: it is yours for the burst — release it
@@ -249,9 +252,11 @@ leases: a single-agent session that owns its cwd repo never files one.
 
 - **Filing one** (you are not the owner): work in a disposable worktree,
   then `vault_handoff_create({idempotency_key, project, to, kind, ref, from,
-  body})`. `kind` is `review-branch` | `apply-patch` | `answer-question` |
-  `run-check`; `ref` is `{type: "worktree" | "branch", value}` — omit it for a
-  pure question. **The idempotency key is mandatory and must be yours to
+  body})`. The server reads neither `kind` nor `ref` (vault-storage D605), so
+  these are this skill's own: `kind` is `review-branch`, `apply-patch`,
+  `answer-question`, or `run-check`; `ref` is `{type, value}`, the type
+  `worktree`, `branch`, or `url` for a pull request, never `spool`, which the
+  server sets on an upload. Omit `ref` for a pure question. **The idempotency key is mandatory and must be yours to
   regenerate**: a failed create is ambiguous, and retrying with the same key
   returns the original (`status: "existing"`) instead of filing twice. `from`
   is `{host, session, repo?}`, provenance save one use: `repo`, your project's
@@ -307,7 +312,10 @@ leases: a single-agent session that owns its cwd repo never files one.
   `/vault resume`, since it is attached to the repo rather than to your
   session.
 - **Receiving them** (you hold the lease): `/vault resume`'s project block
-  carries the inbox — claiming a repo means inheriting it. Claim before
+  carries the inbox — claiming a repo means inheriting it. Between resumes,
+  read it with `vault_handoff_list({project: "<name>", status: "open"})`, never
+  by the role, which goes stale when a repository moves (2026-11-01: a handoff
+  to a moved repository's old remote read as an empty inbox). Claim before
   reviewing (`vault_handoff_claim({id, holder})`, same holder id as the
   lease, keeping the `claim_token` it returns), then resolve exactly once,
   passing that token: `done` (you applied it — you own any

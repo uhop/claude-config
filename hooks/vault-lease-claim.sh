@@ -84,9 +84,7 @@ fi
 # token its first start saved (D67).
 token=""
 declare -F lease_token_of >/dev/null && token=$(lease_token_of "$me" "$resource")
-body=$(jq -cn --arg r "$resource" --arg h "$me" --arg t "$token" \
-  '{resource: $r, holder: $h, kind: "agent", priority: "cwd"}
-   + (if $t == "" then {} else {claim_token: $t} end)') || exit 0
+body=$(lease_cwd_claim_body "$resource" "$me" "$token") || exit 0
 
 # -w appends the status on its own line so a 409 body is still readable
 # (curl -f would discard it, and the 409 body is the whole point).
@@ -105,7 +103,7 @@ case "$code" in
       def ttl: ((.lease.expires_at // "" | if . == "" then null else
         ((. | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - now) / 3600 | floor end) // null);
       def hours: (ttl | if . == null then "" else " (TTL \(.)h)" end);
-      if .status == "preempted" and .prior.priority == "cwd" then
+      if .status == "preempted" and .prior.takeover_after != null then
         "[vault] lease: \($r) — claimed (cwd) as \($me)\(hours), taking over from \(.prior.holder), " +
         "unrenewed since \(.prior.renewed_at) (a cwd lease yields after an hour without renewal). " +
         "Renews on activity; released at session end."
@@ -130,7 +128,7 @@ case "$code" in
         "[vault] lease: \($r) is held by \(.holder) (human, operator-held). Ask before editing this " +
         "working tree; work goes in a worktree + a handoff to \"\($r)\"."
       else
-        "[vault] lease: \($r) is held by \(.holder) (\(.priority // "agent"), since \(.claimed_at // "?"), " +
+        "[vault] lease: \($r) is held by \(.holder) (\(if .takeover_after != null then "cwd" else "side" end), since \(.claimed_at // "?"), " +
         "renewed \(.renewed_at // "?")) — you are SUBORDINATE as \($me): read freely; every edit goes " +
         "worktree + handoff to \"\($r)\" (SendMessage the holder if ListAgents shows it). Taking the " +
         "lease is the operator'"'"'s: the force release in /ui/agents.html. A cwd lease left unrenewed " +

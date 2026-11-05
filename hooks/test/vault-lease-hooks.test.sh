@@ -100,6 +100,10 @@ else
   holder=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -r '.items[0].holder // ""')
   [[ "$holder" == "$ME1" ]] && ok || bad "server must show $ME1 as holder (got '$holder')"
 
+  # 1b. the hooks' `cwd` reaches the server as numbers (vault-storage D606)
+  standing=$(curl -sf "${hdr[@]}" --get --data-urlencode "resource=$RES" "$live_url/leases" | jq -c '.items[0] | [.rank, .takeover_after, .priority]')
+  [[ "$standing" == "[10,3600,null]" ]] && ok || bad "claim: must send rank 10 and takeover_after 3600, no priority (got '$standing')"
+
   # 1a. the claim token is kept on disk for renew and release (vault-storage D67)
   tokenfile() { printf '%s/claude-vault-lease/tokens/%s/%s' "${XDG_STATE_HOME:-$HOME/.local/state}" "${1//\//_}" "$(printf '%s' "$RES" | cksum | tr -d ' ')"; }
   [[ -s "$(tokenfile "$ME1")" ]] && ok || bad "claim: the claim token must be saved"
@@ -121,7 +125,7 @@ else
 
   # 4. session 2 in the same repo: 409 → subordinate line, and its edits are blocked
   run "$CLAIM" "$(jq -nc --arg c "$W" --arg s "$S2" '{session_id:$s,cwd:$c}')"
-  [[ $rc -eq 0 && "$out" == *"held by $ME1"* && "$out" == *SUBORDINATE* ]] && ok || bad "claim: second cwd session must be told it is subordinate (out=$out)"
+  [[ $rc -eq 0 && "$out" == *"held by $ME1 (cwd, since"* && "$out" == *SUBORDINATE* ]] && ok || bad "claim: second cwd session must be told it is subordinate (out=$out)"
   rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease/$(printf '%s' "$RES" | cksum | tr -d ' ')"
   run "$GATE" "$(jq -nc --arg f "$W/a.txt" --arg s "$S2" --arg c "$W" '{tool_name:"Edit",tool_input:{file_path:$f},session_id:$s,cwd:$c}')"
   [[ $rc -eq 2 ]] && ok || bad "gate: second session's edit must be blocked (rc=$rc)"

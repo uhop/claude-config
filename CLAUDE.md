@@ -648,7 +648,7 @@ claims). `vault_lease_list({resource: "repo:<normalized-remote-url>"})`, then
 - **Unclaimed and clean → side-claim it, edit its working tree directly, release when the burst is
   done, and tell him** — "mods done in `<repo>`: review, commit, push." No worktree, no branch, no
   merge dance:
-  `vault_lease_claim({resource, holder: "<host>/<session-prefix>", priority: "side", attestation: "clean at <sha>"})`
+  `vault_lease_claim({resource, holder: "<host>/<session-prefix>", attestation: "clean at <sha>"})`
   → edit → run that repo's gates → `vault_lease_release` with the `claim_token` the claim returned.
   This is the daily case (no other agents running) and it replaces the 2026-08-08 "always a
   worktree" rule; Eugene: _"I would prefer direct modifications and notifying me that mods are done
@@ -713,9 +713,9 @@ changed one repository names it in the opening line with no table
 left).
 
 **The lease holder reads its handoff inbox at every breather:**
-`vault_handoff_list({to: "repo:<…>", status: "open"})` during a long run's wait, at each work stop,
-and at the wrap, then apply what arrived ([[projects/agent-workflow/feedback]] § The lease holder
-reads its handoff inbox at every breather).
+`vault_handoff_list({project: "<name>", status: "open"})` during a long run's wait, at each work
+stop, and at the wrap, then apply what arrived ([[projects/agent-workflow/feedback]] § The lease
+holder reads its handoff inbox at every breather).
 
 **The owner that applies a handoff names its commit, and the outcome is the owner's.** The subject
 goes in the owner's own stop report and in its reply to the requester. The requester never writes

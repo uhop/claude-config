@@ -20,7 +20,7 @@
 # Liveness rides here too (2026-08-18): when the lease is ours, an edit
 # renews it (throttled to once per RENEW_EVERY seconds), and when the edited
 # repo is the session's own cwd repo and nobody holds it — the TTL lapsed, or
-# the server restarted — the edit re-claims it (`priority: cwd`). Both are
+# the server restarted — the edit re-claims it (rank 10). Both are
 # best-effort and never block; they exist so `renewed_at` means "still
 # active" and a lapsed own-repo lease heals on the next touch instead of
 # leaving the next session unable to tell a live neighbour from a ghost.
@@ -191,9 +191,7 @@ lookup() {
 claim_cwd() {
   local resource=$1 cf body raw code resp parsed
   cf=$(cache_file_of "$resource")
-  body=$(jq -cn --arg r "$resource" --arg h "$me" --arg t "$(lease_token_of "$me" "$resource")" \
-    '{resource: $r, holder: $h, kind: "agent", priority: "cwd"}
-     + (if $t == "" then {} else {claim_token: $t} end)') || return 1
+  body=$(lease_cwd_claim_body "$resource" "$me" "$(lease_token_of "$me" "$resource")") || return 1
   raw=$(curl -s --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
     -w $'\n%{http_code}' "$PROGRAM_CLERK_URL/leases/claim") || return 1
   code=${raw##*$'\n'}
