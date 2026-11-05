@@ -115,6 +115,7 @@ Q=~/.claude/skills/vault/queue-items.mjs
 "$Q" file <name> --title T [--section backlog] [--source S] --body-file F   # replaces by title or source
 "$Q" move <name> "<title or slug>" --section active
 "$Q" archive <name> "<title or slug>" --reason shipped --trail "D123, abc1234."
+"$Q" trackers <name> [--json]   # where its work is tracked, validated
 ```
 
 `file` starts a queue for a project with none.

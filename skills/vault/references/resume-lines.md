@@ -82,7 +82,7 @@ Before
 starting on a ticket, read what the vault holds about it:
 `vault_links({key: "<the source>"})` (or `{url}` for any link) lists
 the notes and queue items that mention it (vault-storage D112).
-`vault_project_trackers({project})` reads the same view outside the
+`queue-items.mjs trackers <project>` reads the same view outside the
 resume flow.
 
 `vault_resume_bundle` still answers the raw blocks, for `/vault learn` and for a

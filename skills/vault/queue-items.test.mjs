@@ -13,7 +13,9 @@ import {
   openFields,
   owedItems,
   slugOf,
-  uniqueName
+  uniqueName,
+  queueOf,
+  trackersOf
 } from './queue-items.mjs';
 
 test('slugOf names a file as the server names a piece', () => {
@@ -383,4 +385,29 @@ test('file starts a queue for a project with none, and refuses a real queue.md',
   answer = 'projects/p/queue.md';
   await assert.rejects(fileItem('p', {title: 'Third.', body: 'Text.'}, call), /one note/);
   assert.ok(!vault.notes.has('projects/p/queue/third.md'), 'nothing written');
+});
+
+test('queueOf answers the items and the declaration from one query; trackersOf asks for the note', async () => {
+  const about = {
+    path: 'projects/p/queue/_about.md',
+    frontmatter: {type: 'meta', trackers: [{kind: 'github', ref: 'o/r', role: 'secondary'}]}
+  };
+  const lead = {path: 'projects/p/queue/_lead.md', frontmatter: {type: 'meta'}};
+  const item = {path: 'projects/p/queue/one.md', frontmatter: {title: 'One'}};
+  const asked = [];
+  const call = async (method, url, {json} = {}) => {
+    asked.push({url, match: json.match});
+    return Response.json({items: json.match ? [about, lead] : [about, lead, item]});
+  };
+  const {notes, trackers} = await queueOf(call, 'p');
+  assert.deepEqual(notes, [item], 'the folder notes are not items');
+  assert.equal(trackers.primary.kind, 'vault', 'no primary declared: the vault is');
+  assert.equal(trackers.trackers.find(t => t.kind === 'github').ref, 'o/r');
+  assert.equal(asked.length, 1);
+
+  assert.equal((await trackersOf('p', call)).declared, true);
+  assert.deepEqual(asked[1], {url: '/notes/query', match: {type: 'meta'}});
+
+  const none = async () => Response.json({items: []});
+  assert.equal((await trackersOf('p', none)).declared, false, 'no queue reads as the default');
 });

@@ -18,9 +18,10 @@ import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
-import {client, expectJson, itemsFrom, openNotes, owedFrom} from './queue-items.mjs';
+import {client, expectJson, itemsFrom, owedFrom, queueOf} from './queue-items.mjs';
 import {owedOf} from './resume-owed.mjs';
 import {styledOf, withoutControls} from './resume-style.mjs';
+import {readTrackers} from './trackers.mjs';
 import {projectOf} from './vault-project.mjs';
 
 const script = relative => fileURLToPath(new URL(relative, import.meta.url));
@@ -595,14 +596,19 @@ const main = async () => {
     promise.finally(() => {
       timings[name] = Math.round(performance.now() - started);
     });
-  const bundlePromise = timed(
+  const statePromise = timed(
     'state',
     call('POST', `/system/resume-project?project=${encodeURIComponent(project)}`).then(r =>
       expectJson(r, `the resume state of ${project}`)
     )
   );
-  const notesPromise = timed('queue', orElse(openNotes(call, project), null, 'The queue'));
+  const queuePromise = timed('queue', orElse(queueOf(call, project), null, 'The queue'));
+  const notesPromise = queuePromise.then(queue => queue?.notes ?? null);
   const itemsPromise = notesPromise.then(notes => (notes === null ? null : itemsFrom(notes)));
+  const bundlePromise = Promise.all([statePromise, queuePromise]).then(([state, queue]) => ({
+    ...state,
+    project: {...state.project, trackers: queue?.trackers ?? readTrackers(project)}
+  }));
   const takeInto =
     values.session === undefined
       ? undefined

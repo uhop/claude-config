@@ -40,16 +40,16 @@ trace=$(cd / && env PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL=http://1
 # a server ≥ 2026-09-30 carries queue.in_flight with each Active item's
 # source (vault-storage D108); an older one carries the titles only.
 prog=$(sed -n '/^jq -r/,/^'"'"' <<<"\$resp"/p' "$HOOK" | sed '1s/^jq -r .//; $d')
-brief='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A.","B."],"in_flight":[{"title":"A.","source":null},{"title":"B.","source":"github uhop/p#15"}],"inbox":2,"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"trackers":{"primary":{"kind":"github"},"line":"github uhop/p"},"sessions_unlogged":0}}'
+brief='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A.","B."],"in_flight":[{"title":"A.","source":null},{"title":"B.","source":"github uhop/p#15"}],"inbox":2,"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"sessions_unlogged":0}}'
 out=$(jq -r "$prog" <<<"$brief" 2>&1)
 [[ "$out" == *"ACTIVE: A. | B. (github uhop/p#15);"* ]] && ok || bad "in_flight: the source follows the title (out=$out)"
 [[ "$out" == *"; 2 in the inbox to triage; "* ]] && ok || bad "inbox: the count prints when non-zero (out=$out)"
 # Each in-flight ticket's stored state rides as upstream (vault-storage D111):
 # only a closed or merged one is marked.
-done='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A.","B.","C."],"in_flight":[{"title":"A.","source":"github uhop/p#1","upstream":"merged"},{"title":"B.","source":"github uhop/p#2","upstream":"open"},{"title":"C.","source":"github uhop/p#3","upstream":null}],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"trackers":{"primary":{"kind":"vault"}},"sessions_unlogged":0}}'
+done='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A.","B.","C."],"in_flight":[{"title":"A.","source":"github uhop/p#1","upstream":"merged"},{"title":"B.","source":"github uhop/p#2","upstream":"open"},{"title":"C.","source":"github uhop/p#3","upstream":null}],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"sessions_unlogged":0}}'
 out=$(jq -r "$prog" <<<"$done" 2>&1)
 [[ "$out" == *"ACTIVE: A. (github uhop/p#1, merged upstream) | B. (github uhop/p#2) | C. (github uhop/p#3);"* ]] && ok || bad "upstream: only a closed or merged ticket is marked (out=$out)"
-old='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A."],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"trackers":{"primary":{"kind":"vault"}},"sessions_unlogged":0}}'
+old='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":["A."],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"sessions_unlogged":0}}'
 out=$(jq -r "$prog" <<<"$old" 2>&1)
 [[ "$out" == *"ACTIVE: A.;"* ]] && ok || bad "titles only on an older server (out=$out)"
 [[ "$out" != *"inbox"* ]] && ok || bad "no inbox line without the count (out=$out)"
@@ -105,7 +105,7 @@ returned='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow
 out=$(jq -r "$prog" <<<"$returned" 2>&1)
 [[ "$out" == "[vault] lint ok"$'\n'"[vault] handoffs returned for rework over a day ago: github.com/apodictum/pc 1 (oldest 5 days); their filer resubmits them" ]] && ok ||
   bad "returned handoffs: a line by filer (out=$out)"
-owed='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":[],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"trackers":{"primary":{"kind":"vault"}},"sessions_unlogged":0,"handoffs_returned":2}}'
+owed='{"lint":{"ok":true,"total_issues":0},"suggestions_pending":0,"workflow":{"active":false,"clarify_pending":0},"latest_log":null,"project":{"name":"p","queue":{"active":[],"backlog":0,"ready":0,"blocked":0,"hygiene":[]},"feedback":null,"sessions_unlogged":0,"handoffs_returned":2}}'
 out=$(jq -r "$prog" <<<"$owed" 2>&1)
 [[ "$out" == *"[vault] p: 0/0 backlog ready; 2 of its handoffs returned for rework"* ]] && ok ||
   bad "the filer's project line counts its returned handoffs (out=$out)"

@@ -66,7 +66,12 @@ import {execFile, execFileSync} from 'node:child_process';
 import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import {fileItem as fileQueueItem, SOURCE_HELP, SOURCE_RE} from '../vault/queue-items.mjs';
+import {
+  fileItem as fileQueueItem,
+  SOURCE_HELP,
+  SOURCE_RE,
+  trackersOf
+} from '../vault/queue-items.mjs';
 import {projectOf} from '../vault/vault-project.mjs';
 import {vaultSettings} from '../vault/vault-settings.mjs';
 
@@ -389,14 +394,11 @@ const readBaseline = async project => {
 const sameRepo = (a, b) => a?.toLowerCase() === b?.toLowerCase();
 
 // The GitHub repositories a project's `trackers:` declares (vault-storage D95):
-// the only private ones collected. A server without the route answers 404.
+// the only private ones collected.
 const PROJECT_NAME_RE = /^[a-z0-9][a-z0-9.-]*$/;
 const trackedReposOf = async project => {
   if (!PROJECT_NAME_RE.test(project)) return [];
-  const r = await vaultFetch(`/projects/${project}/trackers`);
-  if (r.status === 404) return [];
-  if (!r.ok) throw new Error(`GET /projects/${project}/trackers: ${r.status} ${r.statusText}`);
-  const {trackers = []} = await r.json();
+  const {trackers} = await trackersOf(project);
   return trackers
     .filter(t => t.kind === 'github')
     .map(t => /^([^/\s]+)\/([^/\s]+)$/.exec(t.ref ?? ''))

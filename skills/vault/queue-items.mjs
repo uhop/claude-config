@@ -12,8 +12,10 @@
 //                        [--blocked-by B] (--body B | --body-file F)
 //   queue-items.mjs move <project> <title or slug> --section S [--priority N]
 //   queue-items.mjs archive <project> <title or slug> --reason R [--trail T]
+//   queue-items.mjs trackers <project> [--json]
 
 import {readFileSync} from 'node:fs';
+import {readTrackers, trackerLine} from './trackers.mjs';
 import {vaultSettings} from './vault-settings.mjs';
 
 export const SECTIONS = ['inbox', 'active', 'backlog', 'watching'];
@@ -113,12 +115,28 @@ const queryAll = async (call, folder, match) => {
   }
 };
 
+const isItem = n => !SPECIAL.has(n.path.slice(n.path.lastIndexOf('/') + 1));
+
 const itemNotes = async (call, folder, match) =>
-  (await queryAll(call, folder, match)).filter(
-    n => !SPECIAL.has(n.path.slice(n.path.lastIndexOf('/') + 1))
-  );
+  (await queryAll(call, folder, match)).filter(isItem);
 
 export const openNotes = (call, project, match) => itemNotes(call, folderOf(project), match);
+
+const declarationIn = (project, notes) =>
+  readTrackers(
+    project,
+    notes.find(n => n.path === `${folderOf(project)}/_about.md`)?.frontmatter.trackers
+  );
+
+/** The open notes and the tracker declaration, from the one query a resume makes. */
+export const queueOf = async (call, project) => {
+  const notes = await queryAll(call, folderOf(project));
+  return {notes: notes.filter(isItem), trackers: declarationIn(project, notes)};
+};
+
+/** A project's tracker declaration, validated; `type: meta` leaves the items out of the query. */
+export const trackersOf = async (project, call = client()) =>
+  declarationIn(project, await queryAll(call, folderOf(project), {type: 'meta'}));
 
 const shaped = n => ({
   title: n.frontmatter.title ?? n.title,
@@ -375,7 +393,7 @@ const main = async () => {
   const opts = parseArgs(process.argv.slice(2));
   const [command, project, ref] = opts._;
   if (!command || (!project && command !== 'fleet')) {
-    throw new Error('usage: queue-items.mjs list|file|move|archive <project> …, or fleet');
+    throw new Error('usage: queue-items.mjs list|file|move|archive|trackers <project> …, or fleet');
   }
   const priority = opts.priority === undefined ? undefined : Number(opts.priority);
   const show = value => console.log(JSON.stringify(value, null, 2));
@@ -414,6 +432,13 @@ const main = async () => {
       return show(await moveItem(project, ref, {section: opts.section, priority}));
     case 'archive':
       return show(await archiveItem(project, ref, {reason: opts.reason, trail: opts.trail}));
+    case 'trackers': {
+      const view = await trackersOf(project);
+      if (opts.json) return show(view);
+      console.log(trackerLine(view));
+      for (const problem of view.problems) console.log(`problem: ${problem}`);
+      return undefined;
+    }
     default:
       throw new Error(`unknown command: ${command}`);
   }

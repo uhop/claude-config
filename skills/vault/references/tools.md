@@ -125,7 +125,7 @@ Registered as `mcp__vault__<name>`; fetch schemas with
 | One section of a document, with the document's etag | `vault_read_section` (adapter ≥ 0.7.0) |
 | Frontmatter only, no body | `vault_read_meta` |
 | A note's committed versions, and the note as it was at one | `vault_history`, then `vault_read_file` with `at` and the version's own `path` (adapter ≥ 0.13.0; server ≥ 2026-09-30, vault-storage D115); before that adapter, `vault-curl /history -G --data-urlencode 'path=<path>'` and `vault-curl '/vault/<path>?at=<sha>'` |
-| Where a project's work is tracked and which tracker is primary | `vault_project_trackers` (adapter ≥ 0.12.0; § Note format on declaring it) |
+| Where a project's work is tracked and which tracker is primary | `queue-items.mjs trackers <project>` (`--json` for the whole view; § Note format on declaring it) |
 | What changed in a project's notes and queue since a time or a commit | `vault_project_changes` (adapter ≥ 0.13.0; server ≥ 2026-09-30, vault-storage D117); before that adapter, `vault-curl '/projects/<name>/changes?since=<ISO\|Nd\|sha>'` |
 | List a folder | `vault_list_folder` |
 | Search | `vault_search` (`mode=lexical` default, `semantic` opt-in); each match carries `at`, its headings and its queue item, which `vault_read_span` and `vault_replace`'s `within` take as they stand, so an edit follows a search with no read (adapter ≥ 0.18.0) |

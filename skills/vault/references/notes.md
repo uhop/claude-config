@@ -113,8 +113,10 @@ Rules:
   write back (empty means read-only); `url` where a person opens it (derived
   for GitHub).
   Declare it with `vault_patch_fm` on the queue, never by rewriting the note;
-  `GET /projects/{name}/trackers` and the resume brief and bundle read it
-  back, validated, with malformed entries named in `problems`.
+  `queue-items.mjs trackers <project>` and a resume read it back, validated
+  by `trackers.mjs` with malformed entries named in `problems`, and the server
+  reads only each entry's `kind`, `ref`, and `url` to resolve links
+  (vault-storage 11d-2c).
 - **Relations are typed edges, declared at write time** (vault-storage D92,
   2026-09-28). The author knows the note's point best, so a write says what
   the note relates to and how, in the frontmatter's `edges:` map:

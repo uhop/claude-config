@@ -138,11 +138,10 @@ On findings, decide (the linter won't):
 
 Declare or change where a project's work is tracked: the `trackers:` list in
 the project's `queue/_about.md` frontmatter (vault-storage D95). A setting that
-needs decisions and credentials is set from the agent, and the project page's
-Trackers card shows the declaration without a way to change it (Eugene,
-2026-09-29). GitHub first; Linear and Jira when he has subscriptions.
+needs decisions and credentials is set from the agent (Eugene, 2026-09-29), and
+the project page names this command. GitHub first; Linear and Jira when he has subscriptions.
 
-1. **Read what stands:** `vault_project_trackers({project})`; report
+1. **Read what stands:** `queue-items.mjs trackers <project> --json`; report
    `primary`, the list, and any `problems`.
 2. **Ask** with `AskUserQuestion`, one tracker at a time: `kind` (`github`,
    `linear`, `jira`; the vault itself needs no entry), `ref` (`owner/repo` for
@@ -163,9 +162,9 @@ Trackers card shows the declaration without a way to change it (Eugene,
    folder note (`vault_list_pieces({file_prefix:
    "projects/<name>/queue/_about.md"})` gives the id); an object member is accepted (checked 2026-09-29), and
    `remove` with the same value drops an entry. Never rewrite the note for it.
-5. **Read it back** with `vault_project_trackers` and report the validated
-   view; a non-empty `problems` list is a malformed entry, fixed in the same
-   turn. Point the user at the project page's Trackers card.
+5. **Read it back** with `queue-items.mjs trackers <project> --json` and report
+   the validated view; a non-empty `problems` list is a malformed entry, fixed
+   in the same turn.
 
 What a note records about each tracker's objects, and which of the vendor's
 tools reads them, is in the per-tool notes under

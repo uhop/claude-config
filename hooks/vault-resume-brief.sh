@@ -145,7 +145,6 @@ jq -r '
         (if .queue.blocked > 0 then "\(.queue.blocked) blocked" else null end),
         ((.queue.hygiene // []) | if length > 0 then "queue hygiene \(length): \(.[0])" else null end),
         (if .feedback then "feedback.md updated \(.feedback.updated)" else null end),
-        (if (.trackers.primary.kind // "vault") != "vault" then "tracked in \(.trackers.line)" else null end),
         (if (.sessions_unlogged // 0) > 0 then "\(.sessions_unlogged) session(s) ended without a log" else null end),
         (if (.handoffs_returned // 0) > 0 then "\(.handoffs_returned) of its handoffs returned for rework" else null end)
       ] | join_present)

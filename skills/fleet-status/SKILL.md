@@ -241,7 +241,7 @@ you write the body:
 ```
 
 - **The section follows the project's declaration** (vault-storage D109, 2026-09-30). Read
-  `vault_project_trackers({project})` once per project before filing: with no GitHub entry, or
+  `queue-items.mjs trackers <project>` once per project before filing: with no GitHub entry, or
   one whose `intake` is `reflect`, file under Active as above; `intake: triage` files under the
   Inbox (`--section Inbox`; the server creates the section first in the file), where the user triages
   it; `intake: none` files nothing, and the events go to the digest and the
