@@ -747,6 +747,16 @@ before you can check, label it a hypothesis, not a finding, and say what would c
 confident-but-wrong "here's why" costs more than a hedged "let me check": it sends the user chasing
 a phantom and burns trust in the next answer.
 
+**Debug from a model of the defect, one change at a time.** Before a fix, know how the failure
+happens. An obvious defect, such as a typo, is its own repro. For one that is not, write down the
+hypotheses and a way to reproduce each, and read the whole error a run prints, since a `head`,
+`tail`, or `grep` of the output can drop the line that names the cause. List what you believe is
+true and check each belief, the one you are surest of included, the way an `apodictum` query writes
+out its atoms and assumptions before it asks. Then change one thing per run, and undo a change that
+left the failure in place before you try the next, so the diff that ships holds the fix alone (Miko
+Pawlikowski's LinkedIn post on debugging, 2026-11-06; [[projects/agent-workflow/feedback]] § Debug
+from a model of the defect).
+
 **Generalized to all argumentation:** whenever making an argument — defending a design, justifying a
 recommendation, weighing trade-offs — mark each supporting claim's epistemic status explicitly:
 **factual** (verified, measured, read from source — say where) vs. **speculative** (expected,
