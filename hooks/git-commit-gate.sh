@@ -54,7 +54,7 @@ cwd=$(jq -r '.cwd // ""' <<<"$payload")
 # The marker is the person's to write, since it decides where an agent may commit
 # (D47). A write to it is refused unless it is a fixture under the temp or the
 # cache directory. It fails open with no parser, and it reads what `write_targets`
-# reads, so a script, a whole `.claude` copied in, or a heredoc a shell runs passes.
+# reads, so a script already on disk or a whole `.claude` copied in passes.
 marker_writes() {
   CMD="$cmd" EDITED="$edited" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" "$cwd" <<'PY' 2>/dev/null
 import os, sys
@@ -117,7 +117,7 @@ commit_sites() {
   CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" "$cwd" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import (parse_heredocs_at, heredoc_runs, segment_spans, run_tokens, ssh_command, git_split,
+from shell_segments import (parse_heredocs_at, heredoc_runs_at, segment_spans, run_tokens, ssh_command, git_split,
                             substitutions, substitution_spans, unread_words, SHELLS, DEPTH, HOME, read_assignment, resolve_path, checkout_of, Subshells, in_scratch_place)
 
 VALUE_OPTS = {'-b', '-B', '--reason', '--branch', '--initial-branch', '-o', '--origin', '-c', '--config', '--depth', '-j', '--jobs',
@@ -171,8 +171,7 @@ def sites(cmd, eff, depth=0):
     # Code inside a segment runs at the directory in force there, after the cds before it (8r).
     inner = substitution_spans(text)
     for prefix, body, quoted, rest, at in bodies:
-        if heredoc_runs(prefix, rest, text):
-            inner.append((body, at))
+        inner += [(body, run) for run in heredoc_runs_at(prefix, rest, text, at)]
         if not quoted:
             inner += [(s, at) for s in substitutions(body, quotes=False)]
     inner.sort(key=lambda b: b[1])

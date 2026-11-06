@@ -442,20 +442,27 @@ def runs_what_it_writes(line, text):
     or `ssh` reads, or piped into a shell. A script written and run by one command is code, whatever
     its text looked like when it was written; a file it only reads is data, and what an interpreter
     runs stays unread (D42)."""
+    return bool(runs_what_it_writes_at(line, text, text.find(line)))
+
+
+def runs_what_it_writes_at(line, text, start):
+    """runs_what_it_writes as the offsets in text where each segment that runs the file starts,
+    for the line at start, so a script is read where it runs, after the cds before it (8s)."""
     targets = (_written(m.group(1)) for m in REDIRECT_RE.finditer(line))
     written = [t for t in targets if not t.startswith('/dev/')]
-    rest = text.replace(line, '', 1)
-    spans = segment_spans(rest)
+    cut = len(line)
+    rest = text[:start] + text[start + cut:]
+    spans, runs = segment_spans(rest), []
     for base in filter(None, map(os.path.basename, written)):
         # The whole name only: `bash x.sh` runs no file named `a` (8h).
         named = re.compile(r'(^|[^\w.-])' + re.escape(base) + r'($|[^\w./-])')
-        for (seg, _), (after, at) in zip(spans, spans[1:] + [('', 0)]):
+        for (seg, here), (after, at) in zip(spans, spans[1:] + [('', 0)]):
             toks = run_tokens(seg) if named.search(seg) else []
             # Piped means `|`: `chmod +x s.sh && bash -n s.sh` pipes nothing (8t).
             piped = rest[at - 2:at] != '||' and rest[at - 1:at] == '|'
             if toks and (_runs_file(toks, base) or piped and command_name(after) in SHELLS):
-                return True
-    return False
+                runs.append(here if here < start else here + cut)
+    return runs
 
 
 def _runs_file(toks, base):
@@ -473,9 +480,16 @@ def _runs_file(toks, base):
 def heredoc_runs(prefix, rest, text):
     """Whether the heredoc's body can run: a shell or a runner receives it (`bash <<X`,
     `a && bash <<X`, `cat <<X | bash`), or it goes to a file the command runs."""
-    return (runs_its_text(segments(prefix)[-1])
-            or any(runs_its_text(s) for s in segments(rest)[1:])
-            or runs_what_it_writes(prefix + rest, text))
+    return bool(heredoc_runs_at(prefix, rest, text, text.find(prefix + rest) + len(prefix)))
+
+
+def heredoc_runs_at(prefix, rest, text, at):
+    """heredoc_runs as the offsets in text where the body runs, for the operator at `at`: there for a
+    shell that receives it, and at each segment that runs it later in its line or the file it goes to,
+    after the cds before that segment (8s)."""
+    runs = [at] if runs_its_text(segments(prefix)[-1]) else []
+    runs += [at + o for s, o in segment_spans(rest)[1:] if runs_its_text(s)]
+    return runs + runs_what_it_writes_at(prefix + rest, text, at - len(prefix))
 
 
 def mask_quoted(seg):
@@ -775,8 +789,8 @@ def write_targets(cmd, base):
     `rm`, `mkdir`, `touch`, `chmod`, `truncate`, `prettier --write`, `npm install`, mutating `git` verbs (at their
     directory, never `worktree`, never `apply --check`), and a path-like `--store`, `--out`, `--output`, or `-o`.
     The path is None when the token holds what the command does not say. A heredoc body no shell runs is
-    data; a write inside a substitution, a shell's string (8q), or a heredoc a shell runs (8t) is a write,
-    at the directory in force where it stands."""
+    data; a write inside a substitution or a shell's string (8q) is a write at the directory in force where it
+    stands, and one in a heredoc a shell runs (8t) where each segment that runs it stands (8s)."""
     env, targets = {}, []
 
     def resolve(tok, eff):
@@ -793,8 +807,7 @@ def write_targets(cmd, base):
         text, bodies = parse_heredocs_at(cmd)
         inner = substitution_spans(text)
         for prefix, body, quoted, rest, at in bodies:
-            if heredoc_runs(prefix, rest, text):
-                inner.append((body, at))
+            inner += [(body, run) for run in heredoc_runs_at(prefix, rest, text, at)]
             if not quoted:
                 inner += [(s, at) for s in substitutions(body, quotes=False)]
         inner.sort(key=lambda b: b[1])

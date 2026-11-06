@@ -148,6 +148,17 @@ check DENY  $'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ncd '"$PLAIN"$'\nsh
 check ALLOW "D=$MARKED; cd \"\$D\" && x=\$($V -m x)"
 check DENY  $'cat > s.sh <<\'EOF\'\necho $(echo $(echo $(echo $('"$V"$' -m x))))\nEOF\nbash s.sh'
 check DENY  $'cat > $\'x y\' <<EOF\n'"$V"$' -m x\nEOF\n"./x y"'
+# a script a heredoc writes runs where each segment that runs it stands, after the cds before it (8s, 2026-11-06)
+S8="$PLAIN/s.sh"
+check DENY  $'cat > '"$S8"$' <<\'EOF\'\n'"$V"$' -m x\nEOF\ncd '"$PLAIN"$'; bash '"$S8" "$MARKED"
+check ALLOW $'cat > '"$S8"$' <<\'EOF\'\n'"$V"$' -m x\nEOF\ncd '"$MARKED"$'; bash '"$S8"
+check DENY  $'cat > '"$S8"$' <<\'EOF\' && cd '"$PLAIN"$' && bash '"$S8"$'\n'"$V"$' -m x\nEOF' "$MARKED"
+check ALLOW $'cat > '"$S8"$' <<\'EOF\' && cd '"$MARKED"$' && bash '"$S8"$'\n'"$V"$' -m x\nEOF'
+check DENY  $'cat > '"$S8"$' <<\'EOF\'\n'"$V"$' -m x\nEOF\nbash '"$S8"$'; cd '"$PLAIN"$'; bash '"$S8" "$MARKED"
+check DENY  $'cat > '"$S8"$' <<\'EOF\' && bash '"$S8"$'\n'"$V"$' -m x\nEOF\ncd '"$PLAIN"$'; bash '"$S8" "$MARKED"
+check DENY  $'cat > '"$S8"$' <<\'EOF\'\n'"$V"$' -m x\nEOF\ncd '"$PLAIN"$'; cat '"$S8"$' | bash' "$MARKED"
+check DENY  $'cat > '"$S8"$' <<\'EOF\'\n'"$V"$' -m x\nEOF\n(cd '"$PLAIN"$' && bash '"$S8"$')' "$MARKED"
+check ALLOW $'cat > '"$S8"$' <<\'EOF\'\n'"$V"$' -m x\nEOF\n(cd '"$PLAIN"$' && true); bash '"$S8" "$MARKED"
 check DENY  "git -C \$'\\x2ftmp' commit -m x" "$MARKED"
 check DENY  "git -C \$'\\057tmp' commit -m x" "$MARKED"
 check ALLOW "( cd $MARKED && echo \$'a\\' )b' ; $V -m x )"
@@ -397,6 +408,9 @@ check ALLOW $'cat > s.sh <<\'EOF\'\n'"$V"$' -m x\nEOF\ncat s.sh || bash'
 check ALLOW $'cat > s.js <<\'EOF\'\n'"$V"$' -m x\nEOF\nFP=$(node s.js | cat)'
 check DENY  $'\\\n'"$V"$' -m x'
 check DENY  $'cd '"$PLAIN"$' && \\\n'"$V"$' -m x'
+# ...and where a later segment runs it (8s, 2026-11-06)
+check DENY  $'cat > '"$S8"$' <<\'EOF\'\ntouch '"$M"$'\nEOF\ncd '"$OUTSIDE"$'; bash '"$S8" "$PLAIN"
+check ALLOW $'cat > '"$S8"$' <<\'EOF\'\ntouch '"$M"$'\nEOF\ncd '"$PLAIN"$'; bash '"$S8" "$OUTSIDE"
 # the marker's name split by a quote or an escape is the marker (8k, 2026-11-05)
 check DENY  "touch .claude/git-commit-allow''ed" "$OUTSIDE"
 check DENY  "touch .claude/git-commit-allowe\\d" "$OUTSIDE"
