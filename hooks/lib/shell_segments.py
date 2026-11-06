@@ -739,6 +739,8 @@ def checkout_of(path):
 
 MUTATING_GIT = {'add', 'am', 'apply', 'checkout', 'cherry-pick', 'clean', 'commit', 'merge', 'mv',
                 'pull', 'rebase', 'reset', 'restore', 'revert', 'rm', 'stash', 'switch'}
+# `S=$(git stash create)` is a read of the tree, now that a substitution's writes are read (8q).
+STASH_READS = {'list', 'show', 'create'}
 ALL_ARGS = {'rm', 'rmdir', 'mkdir', 'touch', 'unlink', 'tee'}
 SKIP_ONE = {'chmod', 'chown', 'truncate'}
 DEST_LAST = {'cp', 'mv', 'rsync', 'ln', 'install'}
@@ -752,8 +754,9 @@ def write_targets(cmd, base):
     """What a command writes, as (token, path): redirections, `sed -i`, `tee`, `cp`/`mv`/`rsync`/`ln` destinations,
     `rm`, `mkdir`, `touch`, `chmod`, `truncate`, `prettier --write`, `npm install`, mutating `git` verbs (at their
     directory, never `worktree`, never `apply --check`), and a path-like `--store`, `--out`, `--output`, or `-o`.
-    The path is None when the token holds what the command does not say. Heredoc bodies are data."""
-    env = {}
+    The path is None when the token holds what the command does not say. Heredoc bodies are data; a write
+    inside a substitution or a shell's string is a write, at the directory in force where it stands (8q)."""
+    env, targets = {}, []
 
     def resolve(tok, eff):
         if not tok or tok in ('-', '/dev/null') or tok.startswith(('&', '<')) or '{}' in tok:
@@ -763,99 +766,117 @@ def write_targets(cmd, base):
                 tok = tok[:tok.index(ch)]
         return resolve_path(tok, eff, env)
 
-    text, _ = strip_heredocs(cmd)
-    targets, eff, scope = [], base, Subshells()
+    def walk(cmd, eff, depth):
+        if depth > DEPTH:
+            return
+        text, bodies = parse_heredocs_at(cmd)
+        inner = substitution_spans(text)
+        for _, body, quoted, _, at in bodies:
+            if not quoted:
+                inner += [(s, at) for s in substitutions(body, quotes=False)]
+        inner.sort(key=lambda b: b[1])
+        spans, drained, scope = segment_spans(text), 0, Subshells()
 
-    def add(tok):
-        targets.append((tok, resolve(tok, eff)))
+        def add(tok):
+            targets.append((tok, resolve(tok, eff)))
 
-    for seg in segments(text):
-        eff = scope.enter(seg, eff)
-        if read_assignment(seg, eff, env):
-            continue
-        toks = run_tokens(seg, redirects=True)
-        if not toks:
-            continue
-        rest, j = [], 0
-        while j < len(toks):
-            t = toks[j]
-            m = re.match(r'^(\d*|&)(>>?\|?)(.*)$', t)
-            if m:
-                tgt = m.group(3)
-                if not tgt and j + 1 < len(toks):
-                    tgt = toks[j + 1]
+        for n, (seg, _) in enumerate(spans):
+            eff = scope.enter(seg, eff)
+            end = spans[n + 1][1] if n + 1 < len(spans) else len(text) + 1
+            while drained < len(inner) and inner[drained][1] < end:
+                walk(inner[drained][0], eff, depth + 1)
+                drained += 1
+            if read_assignment(seg, eff, env):
+                continue
+            toks = run_tokens(seg, redirects=True)
+            if not toks:
+                continue
+            rest, j = [], 0
+            while j < len(toks):
+                t = toks[j]
+                m = re.match(r'^(\d*|&)(>>?\|?)(.*)$', t)
+                if m:
+                    tgt = m.group(3)
+                    if not tgt and j + 1 < len(toks):
+                        tgt = toks[j + 1]
+                        j += 1
+                    if tgt and not tgt.startswith('&'):
+                        add(tgt)
                     j += 1
-                if tgt and not tgt.startswith('&'):
-                    add(tgt)
+                    continue
+                rest.append(t)
                 j += 1
+            toks = rest
+            if not toks:
                 continue
-            rest.append(t)
-            j += 1
-        toks = rest
-        if not toks:
-            continue
-        name, args = os.path.basename(toks[0]), toks[1:]
-        nonflag = [a for a in args if not a.startswith('-')]
-        if name in ('cd', 'pushd'):
-            eff = resolve(nonflag[0], eff) if nonflag else HOME
-        elif name == 'sed':
-            if not any(a == '-i' or a.startswith('-i') or a.startswith('--in-place') for a in args):
-                continue
-            files, saw_script, k = [], False, 0
-            while k < len(args):
-                a = args[k]
-                if a in ('-e', '-f', '--expression', '--file'):
-                    saw_script = True
-                    k += 2
+            name, args = os.path.basename(toks[0]), toks[1:]
+            nonflag = [a for a in args if not a.startswith('-')]
+            if name in ('cd', 'pushd'):
+                eff = resolve(nonflag[0], eff) if nonflag else HOME
+            elif name == 'sed':
+                if not any(a == '-i' or a.startswith('-i') or a.startswith('--in-place') for a in args):
                     continue
-                if a.startswith(('--expression=', '--file=')):
-                    saw_script = True
+                files, saw_script, k = [], False, 0
+                while k < len(args):
+                    a = args[k]
+                    if a in ('-e', '-f', '--expression', '--file'):
+                        saw_script = True
+                        k += 2
+                        continue
+                    if a.startswith(('--expression=', '--file=')):
+                        saw_script = True
+                        k += 1
+                        continue
+                    if a.startswith('-'):
+                        k += 1
+                        continue
+                    files.append(a)
                     k += 1
-                    continue
-                if a.startswith('-'):
-                    k += 1
-                    continue
-                files.append(a)
-                k += 1
-            if not saw_script:
-                files = files[1:]
-            for f in files:
-                add(f)
-        elif name in ALL_ARGS:
-            for a in nonflag:
-                add(a)
-        elif name in SKIP_ONE:
-            for a in nonflag[1:]:
-                add(a)
-        elif name in DEST_LAST:
-            if '-t' in args and args.index('-t') + 1 < len(args):
-                add(args[args.index('-t') + 1])
-            elif len(nonflag) >= 2:
-                add(nonflag[-1])
-        elif name == 'git':
-            verb, cdir = git_verb(args)
-            if verb in MUTATING_GIT and not (verb == 'apply' and '--check' in args):
-                targets.append((cdir or '', resolve(cdir, eff) if cdir else eff))
-        elif name in ('npx', 'prettier'):
-            if 'prettier' in toks[:2] and ('--write' in args or '-w' in args):
+                if not saw_script:
+                    files = files[1:]
+                for f in files:
+                    add(f)
+            elif name in ALL_ARGS:
                 for a in nonflag:
-                    if a != 'prettier':
-                        add(a)
-        elif name in ('npm', 'pnpm', 'yarn'):
-            if nonflag and nonflag[0] in NPM_WRITES:
-                targets.append(('', eff))
-        if name in NO_VALUE_O:
-            continue
-        for k, a in enumerate(args):
-            flag, _, val = a.partition('=')
-            if flag not in OUT_FLAGS:
+                    add(a)
+            elif name in SKIP_ONE:
+                for a in nonflag[1:]:
+                    add(a)
+            elif name in DEST_LAST:
+                if '-t' in args and args.index('-t') + 1 < len(args):
+                    add(args[args.index('-t') + 1])
+                elif len(nonflag) >= 2:
+                    add(nonflag[-1])
+            elif name == 'git':
+                verb, cdir, k = git_split(args)
+                sub = args[k + 1] if k + 1 < len(args) else ''
+                if (verb in MUTATING_GIT and not (verb == 'apply' and '--check' in args)
+                        and not (verb == 'stash' and sub in STASH_READS)):
+                    targets.append((cdir or '', resolve(cdir, eff) if cdir else eff))
+            elif name in SHELLS:
+                for a in nonflag:
+                    walk(a, eff, depth + 1)
+            elif name in ('npx', 'prettier'):
+                if 'prettier' in toks[:2] and ('--write' in args or '-w' in args):
+                    for a in nonflag:
+                        if a != 'prettier':
+                            add(a)
+            elif name in ('npm', 'pnpm', 'yarn'):
+                if nonflag and nonflag[0] in NPM_WRITES:
+                    targets.append(('', eff))
+            if name in NO_VALUE_O:
                 continue
-            if not val and k + 1 < len(args):
-                val = args[k + 1]
-            if not val.startswith('-') and ('/' in val or '.' in val or val.startswith('~')):
-                add(val)
-    return targets
+            for k, a in enumerate(args):
+                flag, _, val = a.partition('=')
+                if flag not in OUT_FLAGS:
+                    continue
+                if not val and k + 1 < len(args):
+                    val = args[k + 1]
+                if not val.startswith('-') and ('/' in val or '.' in val or val.startswith('~')):
+                    add(val)
 
+    walk(cmd, base, 0)
+    return targets
 
 def in_scratch_place(path):
     """Under the temp or the cache directory, where a repository or a marker is a fixture."""

@@ -44,7 +44,8 @@
 # redirections, `sed -i`, `tee`, `cp`/`mv`/`rsync`/`ln` destinations, `rm`,
 # `mkdir`, `touch`, `chmod`, `truncate`, `prettier --write`, `npm install`,
 # the working-tree-mutating `git` verbs (never `worktree`, never
-# `apply --check`), and a path-like value of `--store`, `--out`, `--output`
+# `apply --check`, never `stash list`, `show`, or `create`), the writes inside a
+# substitution or a shell's string (8q), and a path-like value of `--store`, `--out`, `--output`
 # or `-o` after any command (2026-09-25: `node ~/Open/apodict/bin/ledger.js
 # record --store <apodict path>` wrote into a held apodict twice in one day;
 # 30 days held 2,934 such flags, 6 naming another repo, all `--store`).
