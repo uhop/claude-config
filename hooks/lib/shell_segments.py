@@ -3,8 +3,8 @@
 One parser for three gates (vault-lease-gate.sh, git-commit-gate.sh,
 destructive-op-gate.sh; D14: a shape added here is a shape all see). Heredoc bodies are data unless a shell
 receives them; segments split on unquoted `;`, `|`, `||`, `&&` and newlines, a `#` comment dropped;
-a substitution inside single quotes or a comment is data (8f); every quote reader knows `$'...'`, where a
-backslash escapes, and shlex gets the word it stands for (8g);
+a substitution inside single quotes or a comment is data (8f); the quote readers walk one stepper, `_units`
+(8j), which knows `$'...'`, where a backslash escapes, and shlex gets the word it stands for (8g);
 tokens come from shlex with redirections left out, wherever they sit
 (`split_redirects`, a here-string kept for what runs its input), and the wrapper prefixes and the shell syntax heading
 a segment skipped (assignments, `command`, `env`, `timeout`, `do`, `then`, `!`,
@@ -69,22 +69,44 @@ def _opens(text, i):
     return "$'" if dollars % 2 else "'"
 
 
-def _outside_quotes(line, pos):
-    """True when pos is in neither a quoted string nor a comment."""
-    q, j = None, 0
-    while j < pos:
-        c = line[j]
+def _units(text, start=0, backticks=False, comments=False):
+    """The one quote reader (8j): each unit of text from start as (start, end, quote before, quote
+    after), a character, or a backslash and the character it escapes outside quotes and in `"` or
+    `$'`; an escape that ends the text ends past it. A quote is what _opens names; with backticks a
+    backtick is one, and with comments a comment is one, from its `#` to its line's end."""
+    q, i, n = None, start, len(text)
+    while i < n:
+        c = text[i]
+        if q == '#':
+            if c != '\n':
+                yield i, i + 1, q, q
+                i += 1
+                continue
+            q = None
         if c == '\\' and q in (None, *ESCAPING):
-            j += 2
+            yield i, i + 2, q, q
+            i += 2
             continue
+        before = q
         if q:
             if c == q[-1]:
                 q = None
-        elif _comment_at(line, j):
+        elif comments and _comment_at(text, i):
+            q = '#'
+        elif c in '\'"' or backticks and c == '`':
+            q = _opens(text, i)
+        yield i, i + 1, before, q
+        i += 1
+
+
+def _outside_quotes(line, pos):
+    """True when pos is in neither a quoted string nor a comment."""
+    q = None
+    for i, _, before, q in _units(line, comments=True):
+        if i >= pos:
+            return before is None
+        if q == '#':
             return False
-        elif c in '\'"':
-            q = _opens(line, j)
-        j += 1
     return q is None
 
 
@@ -153,117 +175,73 @@ def segments(text):
 
 def segment_spans(text):
     """(segment, offset where it starts) per segment, as `segments` splits them (8r)."""
-    segs, cur, q, i, start = [], [], None, 0, 0
-    while i < len(text):
+    segs, cur, start, skip = [], [], 0, False
+    for i, j, before, after in _units(text, comments=True):
         c = text[i]
-        if q:
-            cur.append(c)
-            if c == '\\' and q in ESCAPING and i + 1 < len(text):
-                cur.append(text[i + 1])
-                i += 2
-                continue
-            if c == q[-1]:
-                q = None
-        elif _comment_at(text, i):
-            i = _line_end(text, i)
+        if skip or after == '#':
+            skip = False
             continue
-        elif c in '\'"':
-            q = _opens(text, i)
-            cur.append(c)
-        elif c == '\\' and i + 1 < len(text):
-            cur.append(c)
-            cur.append(text[i + 1])
-            i += 2
-            continue
+        if before or after or j - i == 2:
+            cur.append(text[i:j])
         elif c in ';\n':
             segs.append((''.join(cur), start))
             cur, start = [], i + 1
         elif c == '|' and text[i - 1:i] != '>':
             segs.append((''.join(cur), start))
-            cur = []
-            if i + 1 < len(text) and text[i + 1] == '|':
-                i += 1
-            start = i + 1
-        elif c == '&':
-            prev = text[i - 1] if i else ''
-            nxt = text[i + 1] if i + 1 < len(text) else ''
-            if prev in ('<', '>') or nxt == '>':
-                cur.append(c)
-            else:
-                segs.append((''.join(cur), start))
-                cur = []
-                if nxt == '&':
-                    i += 1
-                start = i + 1
+            cur, skip = [], text[i + 1:i + 2] == '|'
+            start = i + 1 + skip
+        elif c == '&' and text[i - 1:i] not in ('<', '>') and text[i + 1:i + 2] != '>':
+            segs.append((''.join(cur), start))
+            cur, skip = [], text[i + 1:i + 2] == '&'
+            start = i + 1 + skip
         else:
             cur.append(c)
-        i += 1
     segs.append((''.join(cur), start))
     return segs
 
 
 def _word_end(seg, i):
     """Where the shell word starting at i ends; a `$( … )` in it holds spaces."""
-    q, depth, n = None, 0, len(seg)
-    while i < n:
-        c = seg[i]
-        if q:
-            if c == '\\' and q in ESCAPING:
-                i += 1
-            elif c == q[-1]:
-                q = None
-        elif c == '\\':
-            i += 1
-        elif c in '\'"`':
-            q = _opens(seg, i)
-        elif c == '(' and (depth or seg[i - 1:i] == '$'):
+    depth, end = 0, i
+    for k, end, before, after in _units(seg, i, backticks=True):
+        if before or after or end - k == 2:
+            continue
+        c = seg[k]
+        if c == '(' and (depth or seg[k - 1:k] == '$'):
             depth += 1
         elif c == ')' and depth:
             depth -= 1
         elif not depth and (c.isspace() or c in '<>'):
-            break
-        i += 1
-    return i
+            return k
+    return end
 
 
 def split_redirects(seg):
     """(the segment with each redirection and its target removed, wherever it sits, so what is left
     is the command's own words; the words of its here-strings). Quoted text stays."""
-    out, here, q, i, n = [], [], None, 0, len(seg)
+    out, here, i, n = [], [], 0, len(seg)
     while i < n:
-        c = seg[i]
-        if q:
-            if c == '\\' and q in ESCAPING:
-                out += seg[i:i + 2]
-                i += 2
+        for k, j, before, after in _units(seg, i, backticks=True):
+            m = None if before or after or j - k == 2 else REDIRECT_OP.match(seg, k)
+            if not m:
+                out += seg[k:j]
                 continue
-            if c == q[-1]:
-                q = None
-        elif c in '\'"`':
-            q = _opens(seg, i)
-        elif c == '\\':
-            out += seg[i:i + 2]
-            i += 2
-            continue
+            d = len(out)
+            while d and out[d - 1].isdigit():
+                d -= 1
+            # `2>x` names a descriptor; `file2>x` is a word and a redirection.
+            if d == 0 or out[d - 1].isspace():
+                del out[d:]
+            i = m.end()
+            while i < n and seg[i] in ' \t':
+                i += 1
+            end = _word_end(seg, i)
+            if m.group() == '<<<':
+                here.append(seg[i:end])
+            i = end
+            break
         else:
-            m = REDIRECT_OP.match(seg, i)
-            if m:
-                j = len(out)
-                while j and out[j - 1].isdigit():
-                    j -= 1
-                # `2>x` names a descriptor; `file2>x` is a word and a redirection.
-                if j == 0 or out[j - 1].isspace():
-                    del out[j:]
-                i = m.end()
-                while i < n and seg[i] in ' \t':
-                    i += 1
-                end = _word_end(seg, i)
-                if m.group() == '<<<':
-                    here.append(seg[i:end])
-                i = end
-                continue
-        out.append(c)
-        i += 1
+            break
     return ''.join(out), here
 
 
@@ -495,48 +473,17 @@ def heredoc_runs_at(prefix, rest, text, at):
 def mask_quoted(seg):
     """The segment with the text of its quoted strings removed, the quotes kept. A word left
     is one the shell would see as a word, so a whitespace reading cannot mistake a string for a call."""
-    out, q, i = [], None, 0
-    while i < len(seg):
-        c = seg[i]
-        if q:
-            if c == '\\' and q in ESCAPING:
-                i += 2
-                continue
-            if c == q[-1]:
-                q = None
-                out.append(c)
-        elif c in '\'"':
-            q = _opens(seg, i)
-            out.append(c)
-        elif c == '\\':
-            out.append(seg[i:i + 2])
-            i += 2
-            continue
-        else:
-            out.append(c)
-        i += 1
-    return ''.join(out)
+    return ''.join(seg[i:j] for i, j, before, after in _units(seg) if before is None or after is None)
 
 
 def _quoted_spans(seg):
     """(start, end, quote) per closed quoted string, from its opening quote to past its closing one."""
-    spans, q, start, i = [], None, 0, 0
-    while i < len(seg):
-        c = seg[i]
-        if q:
-            if c == '\\' and q in ESCAPING:
-                i += 2
-                continue
-            if c == q[-1]:
-                spans.append((start, i + 1, q))
-                q = None
-        elif c == '\\':
-            i += 2
-            continue
-        elif c in '\'"':
-            q = _opens(seg, i)
+    spans, start = [], 0
+    for i, j, before, after in _units(seg):
+        if before is None and after:
             start = i
-        i += 1
+        elif before and after is None:
+            spans.append((start, j, before))
     return spans
 
 
@@ -580,32 +527,10 @@ def git_verb(args):
 def _blank_single_quoted(text):
     """text with each single-quoted string's inside blanked, same length. A `'` inside double
     quotes, or escaped, opens none; in a `$'...'` string a backslash escapes the next character."""
-    out, q, i = list(text), None, 0
-    while i < len(text):
-        c = text[i]
-        if q in ("'", "$'"):
-            if c == '\\' and q == "$'":
-                out[i:i + 2] = ' ' * len(out[i:i + 2])
-                i += 2
-                continue
-            if c == "'":
-                q = None
-            else:
-                out[i] = ' '
-        elif c == '\\':
-            i += 2
-            continue
-        elif q == '"':
-            if c == '"':
-                q = None
-        elif _comment_at(text, i):
-            end = _line_end(text, i)
-            out[i:end] = ' ' * (end - i)
-            i = end
-            continue
-        elif c in '\'"':
-            q = _opens(text, i)
-        i += 1
+    out = list(text)
+    for i, j, before, after in _units(text, comments=True):
+        if before == after in ("'", "$'") or after == '#':
+            out[i:j] = ' ' * len(out[i:j])
     return ''.join(out)
 
 
