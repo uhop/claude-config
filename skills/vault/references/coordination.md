@@ -218,8 +218,8 @@ claimed", which is why the claim moved into a hook.
     see any host's working tree — and the attestation goes in the event log.
   - **Held by someone else → don't race it**: name the holder to the user,
     work in a disposable worktree, commit there, file the result as a
-    handoff (below) with the patch, doorbell via `SendMessage` if the holder
-    is reachable. Keep the branch until its recipient applies the work (below).
+    handoff (below) with the patch, and ring the bell (§ Ring the bell, below).
+    Keep the branch until its recipient applies the work (below).
   - **Unclaimed but dirty → do not claim**: someone's in-flight state is
     present (possibly the user's); worktree + handover, and say so. One
     exception: the dirt is this session's own earlier side-claimed burst,
@@ -313,6 +313,26 @@ leases: a single-agent session that owns its cwd repo never files one.
   the sha was compared with the base commit, which no gate runs on, so every
   real verification read stale), so a pass on an older patch is shown, never
   trusted.
+- **Ring the bell, and ring back** (Eugene, 2026-11-06: *"Instruct other
+  agents on the same computer to ring a bell"*, then *"And notify them back,
+  if on the same computer."*). Every handoff rings, a `run-check` and a
+  question included. The record is the work, and the ring tells a live
+  session it is there, so ring after the create, the artifact, and the
+  verifications: call `ListAgents`, then `SendMessage` every peer named after
+  the target repository's basename (`apodict-22` for
+  `repo:github.com/uhop/apodict`, by repo as above), one line with the
+  handoff id, its kind, the role, and your holder id. Put your own name, from
+  `ListAgents`'s "This session is …" line, in `body` as `Ring back: <name>`,
+  since the owner cannot derive it: a peer's name comes from its cwd, which
+  neither `from.repo` nor the holder id carries (vault-storage's sessions file
+  as `github.com/apodictum/pc`). With no peer named after the repository, say
+  in your stop report that the handoff waits for a session there. The owner,
+  after resolving, sends the `Ring back:` name one line with the id, the
+  resolution, and the result's summary when `ListAgents` lists it; a
+  submitter that is gone reads the outcome at its next resume. The drift this
+  closes: on 2026-11-06 nine `run-check` handoffs from two sessions waited 14
+  to 17 hours, though an apodict session was live through every filing and
+  neither filer called `ListAgents`.
 - **Applying one** (you are the owner): read the inbox item's `overlaps`
   and each verification's `stale` first — an overlap is another in-flight
   handoff on the same file or symbol, a stale pass is a gate that ran on a
@@ -352,7 +372,10 @@ leases: a single-agent session that owns its cwd repo never files one.
   carries the inbox — claiming a repo means inheriting it. Between resumes,
   read it with `vault_handoff_list({project: "<name>", status: "open"})`, never
   by the role, which goes stale when a repository moves (2026-11-01: a handoff
-  to a moved repository's old remote read as an empty inbox). Claim before
+  to a moved repository's old remote read as an empty inbox). A ring is a
+  breather: claim and apply the handoff it names before the work in hand goes
+  on, and read the inbox between the rounds of a long pass too (a sweep, a
+  census), since such a pass is where the 2026-11-06 nine waited. Claim before
   reviewing (`vault_handoff_claim({id, holder})`, same holder id as the
   lease, keeping the `claim_token` it returns), then resolve exactly once,
   passing that token: `done` (you applied it — you own any

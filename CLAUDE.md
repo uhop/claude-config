@@ -659,11 +659,10 @@ claims). `vault_lease_list({resource: "repo:<normalized-remote-url>"})`, then
   repo is then exactly my change, which is the review unit the worktree used to provide.
 - **Held by someone else → don't race it**: name the holder, work in a disposable worktree
   (`git -C <sibling> worktree add <scratch> -b <topic>`), commit there, and file a handoff addressed
-  to the role `repo:<…>` with the patch; if the holder is a reachable local session (`ListAgents`),
-  `SendMessage` it the handoff id after filing — the record first, the doorbell second. Name the
-  worktree and branch in the handoff's body and keep them until the recipient applies the work and
-  removes them; remove them yourself when the recipient is on another host. The Agent tool's
-  `isolation: "worktree"` does the same for delegated work.
+  to the role `repo:<…>` with the patch, then ring the bell (below). Name the worktree and branch in
+  the handoff's body and keep them until the recipient applies the work and removes them; remove
+  them yourself when the recipient is on another host. The Agent tool's `isolation: "worktree"` does
+  the same for delegated work.
 - **Unclaimed but dirty → don't claim**: someone's in-flight state is there (possibly his); worktree
   as above, and say the tree was dirty. **The one exception is dirt that is this session's own
   earlier burst.** Before the worktree, check three things: the dirty paths are exactly the files
@@ -715,12 +714,21 @@ changed one repository names it in the opening line with no table
 ([[projects/agent-workflow/feedback]] § A stop's repository table lists the repositories with work
 left).
 
+**A handoff rings a bell on this machine, and its owner rings back.** After filing any handoff, a
+`run-check` included, `SendMessage` every `ListAgents` peer named after the target repository with
+the id, and put your own `ListAgents` name in the body as `Ring back: <name>`; with no such peer,
+say in the stop report that it waits for a session there. The owner sends that name the outcome when
+it resolves. The record comes first, the ring second (Eugene, 2026-11-06; protocol: the vault skill
+`references/coordination.md` § Ring the bell, and ring back; [[projects/agent-workflow/feedback]] §
+A handoff rings a bell, and its owner rings back).
+
 **The lease holder reads its handoff inbox at every breather:**
-`vault_handoff_list({project: "<name>", status: "open"})` during a long run's wait, at each work
-stop, and at the wrap, then apply what arrived, live files included, and remove the submitter's
-worktree and branch, never with `--force`, which would delete work it still holds; a handoff that
-loosens a gate or a permission waits for his word ([[projects/claude-config/decisions]] D73;
-[[projects/agent-workflow/feedback]] § The lease holder reads its handoff inbox at every breather).
+`vault_handoff_list({project: "<name>", status: "open"})` on a ring, during a long run's wait,
+between a long pass's rounds, at each work stop, and at the wrap, then apply what arrived, live
+files included, and remove the submitter's worktree and branch, never with `--force`, which would
+delete work it still holds; a handoff that loosens a gate or a permission waits for his word
+([[projects/claude-config/decisions]] D73; [[projects/agent-workflow/feedback]] § The lease holder
+reads its handoff inbox at every breather).
 
 **The owner that applies a handoff names its commit, and the outcome is the owner's.** The subject
 goes in the owner's own stop report and in its reply to the requester. The requester never writes
