@@ -42,7 +42,6 @@ SSH_VALUE_OPTS = {'-i', '-p', '-o', '-l', '-J', '-F', '-L', '-R', '-D', '-b', '-
 EXEC_FLAGS = {'-exec', '-execdir', '-ok', '-okdir'}
 _fresh = itertools.count()
 PREFIX = {'command', 'nice', 'time', 'exec', 'sudo', 'doas', 'builtin', 'nohup'}
-TICKS_RE = re.compile(r'`([^`]*)`')
 SHELLS = {'bash', 'sh', 'zsh', 'dash', 'ksh', 'eval'}
 # How deep the gates follow code inside code: twice the deepest of 74,995 recorded commands (4, 8p).
 DEPTH = 8
@@ -283,14 +282,15 @@ def _ansi_c(body):
 
 def _split(text):
     """shlex.split, with each `$'...'` given as the single-quoted word it stands for and each `$"`
-    as `"`: shlex reads `$'it\\'s'` as an unclosed quote, and `$'commit'` as `$commit` (8g)."""
+    as `"`: shlex reads `$'it\\'s'` as an unclosed quote, and `$'commit'` as `$commit` (8g). A
+    backslash that ends the text is a character, as bash reads it (8i)."""
     out, q, i, n = [], None, 0, len(text)
     while i < n:
         c, nxt = text[i], text[i + 1:i + 2]
         if q == "'":
             q = None if c == "'" else q
         elif c == '\\' or c + nxt == '$$':
-            out.append(text[i:i + 2])
+            out.append(text[i:i + 2] if nxt else '\\\\')
             i += 2
             continue
         elif q == '"':
@@ -391,6 +391,16 @@ class Subshells:
         self.saved += [eff] * max(delta, 0)
         self.closing = max(-delta, 0)
         return eff
+
+
+def unread_words(seg):
+    """The words of a segment shlex cannot read, its quotes and backslashes dropped; none for one it
+    reads. A gate reads such a segment by them, so a misreading denies the verb, not passes it (8i)."""
+    try:
+        _split(bare(split_redirects(bare(seg))[0]))
+        return set()
+    except ValueError:
+        return set(re.findall(r'[A-Za-z0-9_-]+', re.sub(r'[\'"\\]', '', seg)))
 
 
 def command_name(seg):
@@ -584,7 +594,7 @@ def substitutions(text, quotes=True):
     inside single quotes is data (8f); an unquoted heredoc body passes False, since the shell
     expands it whatever quotes it holds."""
     scan = _blank_single_quoted(text) if quotes else text
-    bodies, rest, i = [], list(scan), 0
+    bodies, i = [], 0
     while i < len(scan):
         if scan[i] == '\\':
             i += 2
@@ -592,11 +602,18 @@ def substitutions(text, quotes=True):
         if scan.startswith('$(', i):
             end = _closing_paren(scan, i + 1)
             bodies.append(text[i + 2:end])
-            rest[i:end + 1] = ' ' * len(rest[i:end + 1])
+            i = end + 1
+            continue
+        if scan[i] == '`':
+            # An escaped backtick is a character, never a delimiter (8i).
+            end = i + 1
+            while end < len(scan) and scan[end] != '`':
+                end += 2 if scan[end] == '\\' else 1
+            bodies.append(text[i + 1:end])
             i = end + 1
             continue
         i += 1
-    return bodies + [text[m.start(1):m.end(1)] for m in TICKS_RE.finditer(''.join(rest))]
+    return bodies
 
 
 def expand(tok, eff, env):

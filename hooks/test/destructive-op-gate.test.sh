@@ -207,6 +207,17 @@ check ALLOW 'echo $(gh pr view 1 --json title -q ".title | ascii_downcase")'
 check ALLOW "echo '\$(git push origin main)'"
 check DENY  $'cat > s.sh <<\'EOF\'\necho $(echo $(echo $(echo $(gh issue create --title x))))\nEOF\nbash s.sh'
 check DENY  $'cat > s.sh <<\'EOF\'\necho $(echo $(echo $(echo $(git push origin main))))\nEOF\nbash s.sh'
+# a segment shlex cannot read is read by its words; an escaped backtick or parenthesis is a character (8i, 2026-11-05)
+check DENY  'git push origin "unclosed'
+check DENY  'git tag "unclosed'
+check DENY  'npm publish "unclosed'
+check ALLOW 'git log --grep "unclosed'
+check ALLOW 'git status; echo push "unclosed'
+check ALLOW 'npm ls; echo publish "unclosed'
+check ALLOW "t=\$'git pu\\'\\'sh origin main'"
+check ALLOW 'X="git push origin main"'
+check ALLOW "echo \"Run \\\`git push\\\` yourself\""
+check ALLOW 'echo git push \)'
 check DENY  'xargs gh issue create --title x'
 check DENY  'find . -name x -exec gh issue close 1 \;'
 check DENY  'parallel gh issue close ::: 1 2'

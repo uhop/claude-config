@@ -94,7 +94,8 @@ fi
 # and pass (8f, 2026-11-05; 2026-09-06: the substring alone blocked
 # two vault writes whose payload mentioned the verb in prose). If the parser
 # is missing, the old `git commit`-adjacent regex decides; if it fails on a
-# command, that command is treated as the verb — this gate defaults to deny.
+# command, that command is treated as the verb — this gate defaults to deny. A
+# segment shlex cannot read that names the verb is a commit at its directory (8i).
 word='(^|[^a-zA-Z0-9_-])'
 # A verb that makes a commit is one, a pull only when it may merge (8e).
 verbs='commit|am|merge|cherry-pick|revert|rebase|pull'
@@ -117,7 +118,7 @@ commit_sites() {
 import os, sys
 sys.path.insert(0, sys.argv[1])
 from shell_segments import (parse_heredocs, heredoc_runs, segments, run_tokens, ssh_command, git_split, substitutions,
-                            SHELLS, DEPTH, HOME, read_assignment, resolve_path, checkout_of, Subshells, in_scratch_place)
+                            unread_words, SHELLS, DEPTH, HOME, read_assignment, resolve_path, checkout_of, Subshells, in_scratch_place)
 
 VALUE_OPTS = {'-b', '-B', '--reason', '--branch', '--initial-branch', '-o', '--origin', '-c', '--config', '--depth', '-j', '--jobs',
               '-u', '--upload-pack', '--reference', '--template', '--separate-git-dir', '--object-format',
@@ -182,6 +183,10 @@ def sites(cmd, eff, depth=0):
             continue
         toks = run_tokens(seg)
         if not toks:
+            named = unread_words(seg)
+            verbs = sorted(named & COMMIT_VERBS) if 'git' in named else []
+            if verbs and (eff is None or not needs_no_marker(eff)):
+                out.append((verbs[0], eff))
             continue
         name, args = os.path.basename(toks[0]), toks[1:]
         nonflag = [a for a in args if not a.startswith('-')]

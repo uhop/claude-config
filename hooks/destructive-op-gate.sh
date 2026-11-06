@@ -367,7 +367,7 @@ reserved_verbs() {
   CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import parse_heredocs, heredoc_runs, segments, run_tokens, ssh_command, git_split, substitutions, SHELLS, DEPTH
+from shell_segments import parse_heredocs, heredoc_runs, segments, run_tokens, ssh_command, git_split, substitutions, unread_words, SHELLS, DEPTH
 
 NPM_VALUE_OPTS = {'-C', '-w'}
 
@@ -405,6 +405,11 @@ def reserved(cmd, depth=0):
     for seg in segments(text):
         toks = run_tokens(seg)
         if not toks:
+            named = unread_words(seg)
+            if 'git' in named:
+                out += ['git ' + v for v in ('push', 'tag') if v in named]
+            if {'npm', 'publish'} <= named:
+                out.append('npm publish')
             continue
         name, args = os.path.basename(toks[0]), toks[1:]
         if name == 'git':

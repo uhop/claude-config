@@ -117,6 +117,21 @@ check ALLOW "echo \\\$($V -m x)"
 check ALLOW "echo \$(git log -1 --format=\"%s (%h)\")"
 check ALLOW "git log -1 && echo \$((1 + 2)) commit"
 check ALLOW $'cat > s.sh <<\'EOF\'\necho $(echo $(echo $(git log --grep commit)))\nEOF\nbash s.sh'
+# a segment shlex cannot read is read by its words; an escaped backtick or parenthesis is a character (8i, 2026-11-05)
+check DENY  "$V -m \"unclosed"
+check DENY  "git pu''ll \"unclosed"
+check ALLOW "$V -m \"unclosed" "$MARKED"
+check ALLOW "D=\$(mktemp -d) && git init -q \"\$D\" && cd \"\$D\" && $V -m \"unclosed"
+check ALLOW "git log --grep \"unclosed"
+check ALLOW "git status; echo commit \"unclosed"
+check DENY  "x=\"\`echo \\\`date\\\` ; $V -m y\`\""
+check ALLOW "echo \"Run \\\`$V\\\` yourself\""
+check ALLOW "echo $V \\)"
+check ALLOW "echo $V \\\\\\\\"
+check ALLOW $'echo '"$V"$' \\\n'
+check ALLOW $'echo '"$V"$' \\\\\n'
+check ALLOW $'echo '"$V"$' \\\\\\\n'
+check ALLOW "t=\$'git com\\'\\'mit -m x'"
 check DENY  $'cat > s.sh <<\'EOF\'\necho $(echo $(echo $(echo $('"$V"$' -m x))))\nEOF\nbash s.sh'
 check DENY  $'cat > $\'x y\' <<EOF\n'"$V"$' -m x\nEOF\n"./x y"'
 check DENY  "git -C \$'\\x2ftmp' commit -m x" "$MARKED"
