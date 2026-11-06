@@ -91,9 +91,11 @@ if [[ $mode == edit ]]; then
       mode=bash
       # Cheap pre-filter before anything else runs: a command with no write
       # indicator costs one jq and exits — this path runs on every Bash call.
+      # It reads the text without quotes and backslashes, and a `$'...'` string
+      # always passes, so `c''p` and `$'\x63p'` are read (8n).
       cmd=$(jq -r '.tool_input.command // ""' <<<"$payload" 2>/dev/null)
       [[ -n "$cmd" ]] || exit 0
-      [[ "$cmd" =~ (sed[[:space:]]+-|>|tee|cp[[:space:]]|mv[[:space:]]|rm[[:space:]]|rmdir|mkdir|touch|chmod|chown|truncate|ln[[:space:]]|rsync|install|prettier|npm[[:space:]]|pnpm[[:space:]]|yarn[[:space:]]|git[[:space:]]|--store|--out|[[:space:]]-o[[:space:]=]) ]] || exit 0
+      [[ "$cmd" == *"\$'"* || "${cmd//[\'\"\\]/}" =~ (sed[[:space:]]+-|>|tee|cp[[:space:]]|mv[[:space:]]|rm[[:space:]]|rmdir|mkdir|touch|chmod|chown|truncate|ln[[:space:]]|rsync|install|prettier|npm[[:space:]]|pnpm[[:space:]]|yarn[[:space:]]|git[[:space:]]|--store|--out|[[:space:]]-o[[:space:]=]) ]] || exit 0
       [[ -x /usr/bin/python3 ]] || exit 0
       ;;
     *) exit 0 ;;
