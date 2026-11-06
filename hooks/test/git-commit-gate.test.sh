@@ -75,6 +75,28 @@ check DENY  "echo a#b && $V -m x"
 check DENY  "echo \${#x} && $V -m x"
 check DENY  "echo \"a \$($V -m 'x') b\""
 check DENY  $'cat <<EOF\n\'$('"$V"$' -m x)\'\nEOF'
+# a `$'...'` string ends at its unescaped quote, and its word is the one it stands for (8g, 2026-11-05)
+check DENY  "echo \$'a\\'b' ; $V -m x"
+check DENY  $'echo $\'a\\\'b\'\n'"$V"$' -m x'
+check DENY  "$V -m \$'it\\'s'"
+check DENY  "git \$'commit' -m x"
+check DENY  "git \$\"commit\" -m x"
+check DENY  $'echo $\'it\\\'s <<EOF\'\n'"$V"$' -m x\nEOF'
+check DENY  $'echo "a\\"b <<EOF"\n'"$V"$' -m x\nEOF'
+check DENY  "echo \\\$'a\\' ; $V -m x"
+check DENY  "echo \$\$'a\\' ; $V -m x"
+check DENY  ">\$'a\\' b' $V -m x"
+check DENY  "git -C \$'a\\' >b' commit -m x"
+check DENY  "echo \\\$'a\\' \$($V -m x) 'b'"
+check DENY  "$V -m \$\$'a\\' 'b'"
+check DENY  "$V -m '\$'\"x\""
+check DENY  "$V -m \"\$'x\" it\\'s"
+check DENY  $'cat > $\'x y\' <<EOF\n'"$V"$' -m x\nEOF\n"./x y"'
+check DENY  "git -C \$'\\x2ftmp' commit -m x" "$MARKED"
+check DENY  "git -C \$'\\057tmp' commit -m x" "$MARKED"
+check ALLOW "( cd $MARKED && echo \$'a\\' )b' ; $V -m x )"
+check ALLOW "echo \$'a\\'b ; $V -m x'"
+check ALLOW $'echo \\\' <<EOF\n'"$V"$' -m x\nEOF'
 # ── the opt-in marker ──
 check ALLOW "$V -m x" "$MARKED"
 check ALLOW "cd sub && $V -m x" "$MARKED"

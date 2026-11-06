@@ -3,7 +3,8 @@
 One parser for three gates (vault-lease-gate.sh, git-commit-gate.sh,
 destructive-op-gate.sh; D14: a shape added here is a shape all see). Heredoc bodies are data unless a shell
 receives them; segments split on unquoted `;`, `|`, `||`, `&&` and newlines, a `#` comment dropped;
-a substitution inside single quotes or a comment is data (8f);
+a substitution inside single quotes or a comment is data (8f); every quote reader knows `$'...'`, where a
+backslash escapes, and shlex gets the word it stands for (8g);
 tokens come from shlex with redirections left out, wherever they sit
 (`split_redirects`, a here-string kept for what runs its input), and the wrapper prefixes and the shell syntax heading
 a segment skipped (assignments, `command`, `env`, `timeout`, `do`, `then`, `!`,
@@ -49,17 +50,40 @@ RUNNERS = {'xargs', 'find', 'parallel', 'watch', 'ssh', 'env', 'time', 'timeout'
            'sudo', 'doas', 'command', 'exec', 'builtin'}
 
 
+ESCAPING = ('"', "$'")
+
+
+def _opens(text, i):
+    """The quote text[i] opens: `$'` after a `$` that neither a backslash nor `$$` takes, a string
+    in which a backslash escapes (8g); otherwise the character itself. Its closing quote is q[-1]."""
+    if text[i] != "'" or text[i - 1:i] != '$':
+        return text[i]
+    k = i
+    while k and text[k - 1] == '$':
+        k -= 1
+    j = k
+    while j and text[j - 1] == '\\':
+        j -= 1
+    dollars = i - k - (k - j) % 2
+    return "$'" if dollars % 2 else "'"
+
+
 def _outside_quotes(line, pos):
     """True when pos is in neither a quoted string nor a comment."""
-    q = None
-    for j, c in enumerate(line[:pos]):
+    q, j = None, 0
+    while j < pos:
+        c = line[j]
+        if c == '\\' and q in (None, *ESCAPING):
+            j += 2
+            continue
         if q:
-            if c == q:
+            if c == q[-1]:
                 q = None
         elif _comment_at(line, j):
             return False
         elif c in '\'"':
-            q = c
+            q = _opens(line, j)
+        j += 1
     return q is None
 
 
@@ -122,17 +146,17 @@ def segments(text):
         c = text[i]
         if q:
             cur.append(c)
-            if c == '\\' and q == '"' and i + 1 < len(text):
+            if c == '\\' and q in ESCAPING and i + 1 < len(text):
                 cur.append(text[i + 1])
                 i += 2
                 continue
-            if c == q:
+            if c == q[-1]:
                 q = None
         elif _comment_at(text, i):
             i = _line_end(text, i)
             continue
         elif c in '\'"':
-            q = c
+            q = _opens(text, i)
             cur.append(c)
         elif c == '\\' and i + 1 < len(text):
             cur.append(c)
@@ -170,14 +194,14 @@ def _word_end(seg, i):
     while i < n:
         c = seg[i]
         if q:
-            if c == '\\' and q == '"':
+            if c == '\\' and q in ESCAPING:
                 i += 1
-            elif c == q:
+            elif c == q[-1]:
                 q = None
         elif c == '\\':
             i += 1
         elif c in '\'"`':
-            q = c
+            q = _opens(seg, i)
         elif c == '(' and (depth or seg[i - 1:i] == '$'):
             depth += 1
         elif c == ')' and depth:
@@ -195,14 +219,14 @@ def split_redirects(seg):
     while i < n:
         c = seg[i]
         if q:
-            if c == '\\' and q == '"':
+            if c == '\\' and q in ESCAPING:
                 out += seg[i:i + 2]
                 i += 2
                 continue
-            if c == q:
+            if c == q[-1]:
                 q = None
         elif c in '\'"`':
-            q = c
+            q = _opens(seg, i)
         elif c == '\\':
             out += seg[i:i + 2]
             i += 2
@@ -238,6 +262,54 @@ def bare(seg):
     return seg.strip().lstrip('({').rstrip(')}').strip()
 
 
+ANSI_C_ESC = re.compile(r'\\(?:([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|u([0-9A-Fa-f]{1,4})|U([0-9A-Fa-f]{1,8})|c(.)|(.))', re.S)
+ANSI_C_CHARS = {'a': '\a', 'b': '\b', 'e': '\x1b', 'E': '\x1b', 'f': '\f', 'n': '\n', 'r': '\r', 't': '\t', 'v': '\v',
+                '\\': '\\', "'": "'", '"': '"', '?': '?'}
+
+
+def _ansi_c(body):
+    """A `$'...'` string's text, its escapes decoded as bash's QUOTING section lists them."""
+    def one(m):
+        octal, hex2, hex4, hex8, ctl, ch = m.groups()
+        if ctl is not None:
+            return chr(ord(ctl) & 0x1f)
+        if ch is not None:
+            return ANSI_C_CHARS.get(ch, '\\' + ch)
+        return chr(min(int(octal, 8) if octal else int(hex2 or hex4 or hex8, 16), 0x10FFFF))
+    return ANSI_C_ESC.sub(one, body)
+
+
+def _split(text):
+    """shlex.split, with each `$'...'` given as the single-quoted word it stands for and each `$"`
+    as `"`: shlex reads `$'it\\'s'` as an unclosed quote, and `$'commit'` as `$commit` (8g)."""
+    out, q, i, n = [], None, 0, len(text)
+    while i < n:
+        c, nxt = text[i], text[i + 1:i + 2]
+        if q == "'":
+            q = None if c == "'" else q
+        elif c == '\\' or c + nxt == '$$':
+            out.append(text[i:i + 2])
+            i += 2
+            continue
+        elif q == '"':
+            q = None if c == '"' else q
+        elif c + nxt == "$'":
+            j = i + 2
+            while j < n and text[j] != "'":
+                j += 2 if text[j] == '\\' else 1
+            out.append(shlex.quote(_ansi_c(text[i + 2:j])))
+            i = j + 1
+            continue
+        elif c + nxt == '$"':
+            i += 1
+            continue
+        elif c in '\'"':
+            q = c
+        out.append(c)
+        i += 1
+    return shlex.split(''.join(out))
+
+
 def command_tokens(seg, redirects=False):
     """shlex tokens of one segment with the wrapper prefixes skipped; [] when
     empty or unreadable. Redirections are left out unless the caller reads them."""
@@ -248,10 +320,10 @@ def command_tokens(seg, redirects=False):
     if not seg:
         return []
     try:
-        toks = _past_wrappers(shlex.split(seg))
+        toks = _past_wrappers(_split(seg))
         # What runs its input runs a here-string, as a heredoc's body (`heredoc_runs`).
         if toks and os.path.basename(toks[0]) in SHELLS | RUNNERS:
-            toks += [' '.join(shlex.split(w)) for w in here]
+            toks += [' '.join(_split(w)) for w in here]
         return toks
     except ValueError:
         return []
@@ -328,7 +400,11 @@ def runs_its_text(seg):
     return command_name(seg) in SHELLS | RUNNERS
 
 
-REDIRECT_RE = re.compile(r"""(?:>>?|\btee\s+(?:-a\s+)?)\s*("[^"]*"|'[^']*'|[^\s;|&<>]+)""")
+REDIRECT_RE = re.compile(r"""(?:>>?|\btee\s+(?:-a\s+)?)\s*(\$'(?:[^'\\]|\\.)*'|"[^"]*"|'[^']*'|[^\s;|&<>]+)""", re.S)
+
+
+def _written(word):
+    return _ansi_c(word[2:-1]) if word.startswith("$'") else word.strip('\'"')
 
 
 def runs_what_it_writes(line, text):
@@ -336,7 +412,7 @@ def runs_what_it_writes(line, text):
     or `ssh` reads, or piped into a shell. A script written and run by one command is code, whatever
     its text looked like when it was written; a file it only reads is data, and what an interpreter
     runs stays unread (D42)."""
-    targets = (m.group(1).strip('\'"') for m in REDIRECT_RE.finditer(line))
+    targets = (_written(m.group(1)) for m in REDIRECT_RE.finditer(line))
     written = [t for t in targets if not t.startswith('/dev/')]
     segs = segments(text.replace(line, '', 1))
     for base in map(os.path.basename, written):
@@ -362,14 +438,14 @@ def mask_quoted(seg):
     while i < len(seg):
         c = seg[i]
         if q:
-            if c == '\\' and q == '"':
+            if c == '\\' and q in ESCAPING:
                 i += 2
                 continue
-            if c == q:
+            if c == q[-1]:
                 q = None
                 out.append(c)
         elif c in '\'"':
-            q = c
+            q = _opens(seg, i)
             out.append(c)
         elif c == '\\':
             out.append(seg[i:i + 2])
@@ -433,7 +509,7 @@ def _blank_single_quoted(text):
             i = end
             continue
         elif c in '\'"':
-            q = "$'" if c == "'" and text[i - 1:i] == '$' else c
+            q = _opens(text, i)
         i += 1
     return ''.join(out)
 
@@ -470,7 +546,7 @@ def resolve_path(tok, eff, env):
 def mktemp_path(args, eff, env):
     """Where `mktemp <args>` creates, under a name of its own, since the real one is random."""
     try:
-        toks = shlex.split(args)
+        toks = _split(args)
     except ValueError:
         return None
     parent, template = None, None
@@ -498,7 +574,7 @@ def read_assignment(seg, eff, env):
         return mktemp_path(m.group(1), eff, env) or m.group(0)
     text = MKTEMP_RE.sub(fresh, seg).strip().lstrip('({').rstrip(')}').strip()
     try:
-        toks = shlex.split(text)
+        toks = _split(text)
     except ValueError:
         toks = text.split()
     if toks and toks[0] in KEYWORDS:

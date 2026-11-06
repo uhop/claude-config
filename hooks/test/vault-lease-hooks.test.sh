@@ -325,6 +325,8 @@ else
   [[ $rc -eq 0 ]] && ok || bad "bash: a subshell's cd must not move the write into held (rc=$rc)"
   bashrun "find . -name x -exec rm {} \\;" "$W" "$S2"
   [[ $rc -eq 0 ]] && ok || bad "bash: find's placeholder names no path (rc=$rc)"
+  bashrun "echo \$'a\\'b' ; command sed -i 's/a/b/' a.txt" "$W" "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: a write after a \$'...' string with an escaped quote must block, 8g (rc=$rc)"
   # 14. linked worktrees of a held repo are never blocked — Edit or Bash (the sanctioned path)
   WT=$(mktemp -d) && rmdir "$WT" && git -C "$W" worktree add -q "$WT" -b wt-test 2>/dev/null
   run "$GATE" "$(jq -nc --arg f "$WT/a.txt" --arg s "$S2" '{tool_name:"Edit",tool_input:{file_path:$f},session_id:$s,cwd:"/tmp"}')"
