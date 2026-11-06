@@ -189,8 +189,12 @@ W=$(mktemp -d)
      repeat. Keep the name of each existing topic whose sections stay
      together: a topic keeps the piece holding most of its text whatever its
      name, so a new name changes only the title.
-   - Send `vault_split` with `topics` and `expected_etag` from that read. On
-     a 412 the note changed: read it again and retry once.
+   - Send `vault_split` with `topics` and `expected_etag` from that read. An
+     adapter without the tool (0.19.0 and before) takes the route instead:
+     `vault-curl /vault/split -X POST -H 'Content-Type: application/json' -H 'If-Match: <etag>' --data-binary '{"path": "<note>", "topics": [...]}'`.
+     On a 412 the note changed: read it again and retry once. Never
+     `vault_join` a note to regroup it: a join deletes every piece, with its
+     record, history, and summary (vault-storage question 272).
    - Report the answer's `pieces`, `removed`, and `oversized`. A section
      past 20 KB by itself stays in `oversized`, for a person.
 
