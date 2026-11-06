@@ -53,8 +53,12 @@ D74; adapter ≥ 0.11.0). `vault_append`, `vault_replace`,
 `vault_replace_section`, `vault_remove_item`, and `vault_insert_item` take an
 optional `agent` patch, and `vault_move_item` takes `from_agent` and
 `to_agent`: the fields given are merged over the stored `agent:` block and
-the block is stamped current for the new body, so the note never reaches the
-sweep's stale queue. Pass `agent: {}` only when every statement in the
+the block is stamped current for the new body, so the edit files no stale
+suggestion of its own. The server's backstop still files one after ten body
+writes under one summary text, or a week with one (vault-storage D284, kept
+by question 276), and only the sweep's refresh, which reads the note, clears
+it: a bulk edit over notes with old summaries sends them through the next
+sweep. Pass `agent: {}` only when every statement in the
 summary is still true after the edit, as on an append to a rolling note
 (queue, archive, decisions, learnings, stack, feedback) of more entries of
 the kind it describes; pass `agent: {summary: "…"}` when your text opens
