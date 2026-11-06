@@ -379,6 +379,8 @@ check DENY  $'cat > s.sh <<\'EOF\'\ngit commit -m x\nEOF\nbash s.sh'
 check DENY  $'cat > s.sh <<\'EOF\'\ngit commit -m x\nEOF\ncat s.sh | bash'
 check ALLOW $'cat > x.md <<\'EOF\'\nThe spelling `git commit -m x` is refused.\nEOF\nq --body-file x.md'
 check ALLOW $'cat > x.md <<\'EOF\'\ngit commit -m x\nEOF\nwc -l x.md'
+check ALLOW $'cat > a <<\'EOF\'\ngit commit -m x\nEOF\nbash x.sh'
+check DENY  $'cat > s.sh <<\'EOF\'\ngit commit -m x\nEOF\neval "$(cat s.sh)"'
 check ALLOW 'git status 2> commit'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

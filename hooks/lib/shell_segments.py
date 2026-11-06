@@ -415,9 +415,11 @@ def runs_what_it_writes(line, text):
     targets = (_written(m.group(1)) for m in REDIRECT_RE.finditer(line))
     written = [t for t in targets if not t.startswith('/dev/')]
     segs = segments(text.replace(line, '', 1))
-    for base in map(os.path.basename, written):
+    for base in filter(None, map(os.path.basename, written)):
+        # The whole name only: `bash x.sh` runs no file named `a` (8h).
+        named = re.compile(r'(^|[^\w.-])' + re.escape(base) + r'($|[^\w./-])')
         for seg, after in zip(segs, segs[1:] + ['']):
-            toks = run_tokens(seg) if base in seg else []
+            toks = run_tokens(seg) if named.search(seg) else []
             if toks and (os.path.basename(toks[0]) in FILE_RUNNERS | {base} or command_name(after) in SHELLS):
                 return True
     return False
