@@ -26,7 +26,7 @@ in the same row.
 | The nearest existing tags for proposed names or a draft's text, before minting (§ Note format) | **`vault_tag_nearest`** (adapter ≥ 0.12.0; server ≥ 2026-09-28, vault-storage D82) | `vault-curl /tags/nearest -X POST -H 'Content-Type: application/json' --data-binary '{"tags": ["<name>", …]}'` |
 | Whole-document create or rewrite | **`vault_write_file`** (`expected_etag` when the read might be stale; `strict_tags: true` when the note carries `tags:`, `strict_edges: true` when it carries `edges:`, both adapter ≥ 0.12.0, § Note format) | `vault-put --fm/--body` |
 | Replace a note, archiving the old one | **`vault_supersede`** | `POST /vault/supersede` via `vault-curl` |
-| Split a note past its size bound into a folder of pieces, one per `##` section, the note archived with its `record_id` (§ A split note below) | **`vault_split`** (adapter after 0.19.0; server ≥ 2026-11-01, vault-storage D573) | `vault-curl /vault/split -X POST -H 'Content-Type: application/json' --data-binary '{"path": "<path>"}'` |
+| Split a note past its size bound into a folder of pieces, one per `##` section, the note archived with its `record_id`, or regroup a split note's pieces by topic (§ A split note, § Split by topic below) | **`vault_split`** (adapter after 0.19.0; server ≥ 2026-11-01, vault-storage D573) | `vault-curl /vault/split -X POST -H 'Content-Type: application/json' --data-binary '{"path": "<path>"}'` |
 | Join a split note back into one note, the archived note restored with the folder's text (§ A split note below) | **`vault_join`** (adapter after 0.19.0; server ≥ 2026-11-01, vault-storage D574) | `vault-curl /vault/join -X POST -H 'Content-Type: application/json' --data-binary '{"path": "<path>"}'` |
 | The notes directly in a folder whose frontmatter contains given fields, sorted by a field and paged, no bodies: the read under a folder of item notes (a skill's queue, decisions, a board) | **`vault_query`** (adapter after 0.19.0; server ≥ 2026-11-01, vault-storage D578; Postgres alone, a SQLite server answers 501) | `vault-curl /notes/query -X POST -H 'Content-Type: application/json' --data-binary '{"folder": "<folder>", "match": {"status": "active"}, "sort": "<field>"}'` |
 | Restore a note to one of its versions; content not yet committed is committed first, so it stays a version | **`vault_restore`** (adapter ≥ 0.13.0; server ≥ 2026-09-30, vault-storage D115) | `vault-curl /vault/restore -X POST -H 'Content-Type: application/json' --data-binary '{"path": "<path>", "sha": "<sha>"}'`, with `from_path` when a rename came between |
@@ -84,15 +84,23 @@ exactly once, a repeated heading taking the next occurrence, or the
 server answers 400 `invalid_topics` naming the headings left over; name
 a section by its number from 0 in place of its heading where like
 headings repeat ("What shipped"), so each lands in the topic meant
-(D577). To
-regroup a note already split one piece per section, `vault_join` it and
-split it again with `topics`. A topic piece is marked `grouped: true`
+(D577). With
+`topics` on a note already split, `vault_split` regroups its pieces in one
+transaction and archives nothing (server from 2026-11-06, vault-storage
+D622): every section goes to a topic piece unchanged, a topic keeps the
+existing piece holding most of its text, a topic piece ahead of an appended
+one, with its path, `record_id`, history, and summary, so a renamed topic
+only retitles it; any other topic is a new piece, and a piece no topic keeps
+is deleted and named in `removed`. Send `expected_etag` from the composed
+view as read. This is how a piece past its bound comes back under, its
+sections into more topics. A topic piece is marked `grouped: true`
 and carries its sections under their own headings. **In a grouped
 folder, append a new section to the topic piece it belongs to**
 (`vault_append` to that piece's path; `vault_list_pieces` lists the
 topics), so the folder stays a few topics; an append to the note's path
-still lands, as a piece of its own; gathering such pieces into their
-topics is a sweep step still planned (vault-storage's plan, 3g's rest).
+still lands, as a piece of its own, which lint lists under
+`ungrouped_pieces` and `/vault sweep` regroups into its topics (vault-storage
+D622).
 
 **Scripts cannot call MCP tools.** MCP is an agent-level surface, so
 `enrich-batch.mjs`, `related-batch.mjs`, `vault-triage.mjs`,

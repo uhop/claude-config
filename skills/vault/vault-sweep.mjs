@@ -38,7 +38,9 @@
 // (`size_bound`, vault-storage question 176) is left out: the server counts it nowhere either.
 //
 // The notes past their size bound are lint's live list (`size_bound`, vault-storage 3k), the one the
-// dashboard shows: the done report carries it, each note with its remedy, and dispatches nothing.
+// dashboard shows, and the notes split by topic with appended pieces outside their topics are its
+// `ungrouped_pieces` (D622): the agent splits and regroups them before `begin` (step 0), and the
+// done report carries both lists, what that step left.
 //
 // Every enrichment agent gets a holder: its enrich-batch prepare claims its
 // notes under that name (vault-storage D150), so a parallel sweep or ingest
@@ -220,7 +222,7 @@ const measure = async () => {
 };
 
 // the lint's verdict, read fresh: the sweep drains some of its checks and reports the rest; and its
-// list of the notes past their size bound, which it only reports
+// lists of the notes past their size bound and with pieces outside their topics, what step 0 left
 const closingLint = async () => {
   const lint = await api('GET', '/system/lint');
   const failing = Object.fromEntries(
@@ -232,6 +234,9 @@ const closingLint = async () => {
     lint: {ok: lint.ok, total_issues: lint.total_issues, failing},
     size_bound: (lint.checks?.size_bound?.samples ?? []).map(
       ({file_path, role, bytes, bound, remedy}) => ({file_path, role, bytes, bound, remedy})
+    ),
+    ungrouped_pieces: (lint.checks?.ungrouped_pieces?.samples ?? []).map(
+      ({file_path, role, ungrouped}) => ({file_path, role, ungrouped})
     )
   };
 };

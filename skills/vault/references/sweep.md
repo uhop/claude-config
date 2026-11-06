@@ -59,18 +59,16 @@ same stage run as parallel sub-agents):
   a suggestion is a request for a decision, and that one is made. Leaving
   it here is what gave the queue a permanent pending floor (measured
   2026-09-01: five pending, four of them logs).
-- **Notes past their size bound** are no queue: lint's advisory `size_bound`
-  lists them live, each with its role and remedy, the list the dashboard and
-  `reorg-batch measure` show too (vault-storage 3k), and a note leaves it at
-  the next read once it is back under. A note splits losslessly with
-  `vault_split` (vault-storage D573, § A split note), at no model cost, and a
-  piece, which `vault_split` refuses, is cut by hand; until a pilot on
-  `blog/api-series-plan` measures it, the sweep splits nothing by itself
-  (question 178). `/vault-reorg` curates lessons (2026-10-27, Eugene: _"a big
-  size should trigger a reorg"_), and `measure` prices it; a first
-  reorganization costs millions of agent tokens, so it runs on Eugene's word.
-  The done report lists each note under `size_bound`: name them in the summary
-  and act on none.
+- **What a split cannot cut, and `/vault-reorg`.** Lint's advisory
+  `size_bound` lists every note past its bound with its role and remedy
+  (vault-storage 3k), the list the dashboard and `reorg-batch measure` show
+  too. The sweep splits and regroups what `vault_split` can cut (§ Procedure,
+  step 0). The rest is a person's: a single section past the bound, a piece
+  with no `##` heading, and a record's piece, whose remedy says "by hand"; and
+  `/vault-reorg`, which curates lessons at millions of agent tokens and runs on
+  Eugene's word (2026-10-27, Eugene: _"a big size should trigger a reorg"_;
+  `measure` prices it). The done report lists each note still under
+  `size_bound`: name them in the summary.
 
 #### Ordering constraints
 
@@ -173,6 +171,31 @@ W=$(mktemp -d)
 # repeat dispatch → next until {status: "done"}
 ```
 
+0. **Split and regroup, before `begin`** (vault-storage questions 178, 270,
+   and 271, D622), so the sweep's enrichment covers the pieces this step
+   writes. Read lint's two advisory lists:
+   `vault-curl /system/lint -s | jq '{size_bound: .checks.size_bound.samples, ungrouped_pieces: .checks.ungrouped_pieces.samples}'`.
+   The work is each `size_bound` note whose `remedy` starts `vault_split`: a
+   whole note, or, when it reads `vault_split with topics on <note>`, a piece
+   whose note is regrouped; and each `ungrouped_pieces` note, a note split by
+   topic whose appended sections sit outside its topics (lint leaves out a
+   record's folder). A `decisions.md` splits with no topics, one note per
+   decision. Dispatch one `vault-sweep` agent per other note, in parallel,
+   with this brief:
+   - Read the note's composed view (`vault_read_file` with `include_etag` on
+     the note's path) and list its `##` sections with their sizes.
+   - Name topics that group whole sections a session reads together, each
+     under 20 KB, every section once, by its number from 0 where headings
+     repeat. Keep the name of each existing topic whose sections stay
+     together: a topic keeps the piece holding most of its text whatever its
+     name, so a new name changes only the title.
+   - Send `vault_split` with `topics` and `expected_etag` from that read. On
+     a 412 the note changed: read it again and retry once.
+   - Report the answer's `pieces`, `removed`, and `oversized`. A section
+     past 20 KB by itself stays in `oversized`, for a person.
+
+   In the final summary, name each note split or regrouped and each piece a
+   regroup removed, since a removed piece's own summary went with it.
 1. **`begin`** computes the action set, runs the one-shot endpoints
    itself (`cleanup-lint` ∥ `embed-pending` ∥ `expire-logs` ∥ `gc-tags`,
    the last deleting taxonomy tags no note carries unless `manual`,
@@ -246,9 +269,10 @@ W=$(mktemp -d)
    say the sweep does not drain it, since a converged sweep can leave a
    check that no stage covers (filed 2026-10-28: a sweep converged while
    `oversized_summaries` read 1). An advisory check (`size_bound`, the
-   notes past their size bound) counts toward neither `ok` nor `failing`;
-   the report's own `size_bound` list names every one. `begin --dry-run` prints
-   the same verdict and list.
+   notes past their size bound; `ungrouped_pieces`, the notes with appended
+   pieces outside their topics) counts toward neither `ok` nor `failing`;
+   the report's own `size_bound` and `ungrouped_pieces` lists name every one,
+   what step 0 left. `begin --dry-run` prints the same verdict and lists.
 
 A stuck kind isn't a failure — some suggestions legitimately need user
 input, and the sub-agent's `--auto` mode is conservative on ambiguity.
