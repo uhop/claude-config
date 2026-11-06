@@ -307,7 +307,7 @@ def leaves(cmd, nested, depth=0):
         if heredoc_runs(prefix, rest, text):
             out += leaves(body, 1, depth + 1)
         if not quoted:
-            for s in substitutions(body):
+            for s in substitutions(body, quotes=False):
                 out += leaves(s, 1, depth + 1)
     for s in substitutions(text):
         out += leaves(s, 1, depth + 1)
@@ -388,7 +388,7 @@ def reserved(cmd, depth=0):
         if heredoc_runs(prefix, rest, text):
             out += reserved(body, depth + 1)
         if not quoted:
-            for s in substitutions(body):
+            for s in substitutions(body, quotes=False):
                 out += reserved(s, depth + 1)
     for s in substitutions(text):
         out += reserved(s, depth + 1)

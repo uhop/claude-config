@@ -56,6 +56,25 @@ check ALLOW "git commit-tree HEAD^{tree} -m x"
 check ALLOW "printf '%s\\n' '$V'"
 check ALLOW "git status && git log -1"
 check ALLOW "vault-put x --append f"
+# a substitution inside single quotes never runs; in double quotes or a heredoc it does (8f, 2026-11-05)
+check ALLOW "echo 'a \`$V -m x\` b'"
+check ALLOW "echo '\$($V -m x)'"
+check ALLOW "sed -i 's/x \`git pull\` y/z/' README.md"
+check DENY  "echo \"it's \$($V -m x)\""
+check DENY  "echo 'a' \$($V -m x) 'b'"
+check DENY  "echo \\' \$($V -m x) \\'"
+check DENY  "echo \$'a\\'b' \$($V -m x)"
+check ALLOW "echo \$'see \$($V -m x) later'"
+# an apostrophe in a comment is a character, not a quote (a side note on 8f)
+check DENY  $'# don\'t retry\n'"$V"$' -m x'
+check DENY  $'# don\'t retry\necho $('"$V"$' -m x)'
+check DENY  $'ls # don\'t retry\necho $('"$V"$' -m x) # it\'s fine'
+check ALLOW $'# run $('"$V"$' -m x) later\nls'
+check DENY  $'ls # see <<EOF\n'"$V"$' -m x\nEOF'
+check DENY  "echo a#b && $V -m x"
+check DENY  "echo \${#x} && $V -m x"
+check DENY  "echo \"a \$($V -m 'x') b\""
+check DENY  $'cat <<EOF\n\'$('"$V"$' -m x)\'\nEOF'
 # ── the opt-in marker ──
 check ALLOW "$V -m x" "$MARKED"
 check ALLOW "cd sub && $V -m x" "$MARKED"

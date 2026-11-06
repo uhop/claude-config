@@ -2,7 +2,8 @@
 
 One parser for three gates (vault-lease-gate.sh, git-commit-gate.sh,
 destructive-op-gate.sh; D14: a shape added here is a shape all see). Heredoc bodies are data unless a shell
-receives them; segments split on unquoted `;`, `|`, `||`, `&&` and newlines;
+receives them; segments split on unquoted `;`, `|`, `||`, `&&` and newlines, a `#` comment dropped;
+a substitution inside single quotes or a comment is data (8f);
 tokens come from shlex with redirections left out, wherever they sit
 (`split_redirects`, a here-string kept for what runs its input), and the wrapper prefixes and the shell syntax heading
 a segment skipped (assignments, `command`, `env`, `timeout`, `do`, `then`, `!`,
@@ -49,11 +50,14 @@ RUNNERS = {'xargs', 'find', 'parallel', 'watch', 'ssh', 'env', 'time', 'timeout'
 
 
 def _outside_quotes(line, pos):
+    """True when pos is in neither a quoted string nor a comment."""
     q = None
-    for c in line[:pos]:
+    for j, c in enumerate(line[:pos]):
         if q:
             if c == q:
                 q = None
+        elif _comment_at(line, j):
+            return False
         elif c in '\'"':
             q = c
     return q is None
@@ -100,8 +104,19 @@ def strip_heredocs(cmd):
     return text, [b[:3] for b in bodies]
 
 
+def _comment_at(text, i):
+    """An unquoted `#` that starts a word comments out the rest of its line, an apostrophe included."""
+    return text[i] == '#' and (i == 0 or text[i - 1] in ' \t\n;&|()<>')
+
+
+def _line_end(text, i):
+    end = text.find('\n', i)
+    return len(text) if end < 0 else end
+
+
 def segments(text):
-    """Split on unquoted ; | || && and newlines. `>&`, `<&`, `&>`, `>|` belong to redirects."""
+    """Split on unquoted ; | || && and newlines. `>&`, `<&`, `&>`, `>|` belong to redirects.
+    A comment is dropped."""
     segs, cur, q, i = [], [], None, 0
     while i < len(text):
         c = text[i]
@@ -113,6 +128,9 @@ def segments(text):
                 continue
             if c == q:
                 q = None
+        elif _comment_at(text, i):
+            i = _line_end(text, i)
+            continue
         elif c in '\'"':
             q = c
             cur.append(c)
@@ -388,9 +406,44 @@ def git_verb(args):
     return (verb, cdir)
 
 
-def substitutions(text):
-    """The bodies of `$(...)` and backtick substitutions: executed, not data."""
-    return [m.group(1) or m.group(2) or '' for m in SUBST_RE.finditer(text)]
+def _blank_single_quoted(text):
+    """text with each single-quoted string's inside blanked, same length. A `'` inside double
+    quotes, or escaped, opens none; in a `$'...'` string a backslash escapes the next character."""
+    out, q, i = list(text), None, 0
+    while i < len(text):
+        c = text[i]
+        if q in ("'", "$'"):
+            if c == '\\' and q == "$'":
+                out[i:i + 2] = ' ' * len(out[i:i + 2])
+                i += 2
+                continue
+            if c == "'":
+                q = None
+            else:
+                out[i] = ' '
+        elif c == '\\':
+            i += 2
+            continue
+        elif q == '"':
+            if c == '"':
+                q = None
+        elif _comment_at(text, i):
+            end = _line_end(text, i)
+            out[i:end] = ' ' * (end - i)
+            i = end
+            continue
+        elif c in '\'"':
+            q = "$'" if c == "'" and text[i - 1:i] == '$' else c
+        i += 1
+    return ''.join(out)
+
+
+def substitutions(text, quotes=True):
+    """The bodies of `$(...)` and backtick substitutions: executed, not data. With `quotes`, one
+    inside single quotes is data (8f); an unquoted heredoc body passes False, since the shell
+    expands it whatever quotes it holds."""
+    scan = _blank_single_quoted(text) if quotes else text
+    return [text[m.start(g):m.end(g)] for m in SUBST_RE.finditer(scan) for g in (1, 2) if m.group(g) is not None]
 
 
 def expand(tok, eff, env):

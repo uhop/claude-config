@@ -84,7 +84,8 @@ fi
 # shell keywords, `xargs`, `parallel`, `watch`, `find -exec`, git's own `-C`/`-c`
 # — or sits in an executed context: a `$(...)`, a `bash -c` string, a heredoc a
 # shell receives, an unquoted heredoc's substitution. A heredoc body `cat` receives, a quoted string, a `git log
-# --grep` argument are data and pass (2026-09-06: the substring alone blocked
+# --grep` argument, a substitution inside single quotes, and a `#` comment are data
+# and pass (8f, 2026-11-05; 2026-09-06: the substring alone blocked
 # two vault writes whose payload mentioned the verb in prose). If the parser
 # is missing, the old `git commit`-adjacent regex decides; if it fails on a
 # command, that command is treated as the verb — this gate defaults to deny.
@@ -164,7 +165,7 @@ def sites(cmd, eff, depth=0):
         if heredoc_runs(prefix, rest, text):
             out += sites(body, eff, depth + 1)
         if not quoted:
-            for s in substitutions(body):
+            for s in substitutions(body, quotes=False):
                 out += sites(s, eff, depth + 1)
     for s in substitutions(text):
         out += sites(s, eff, depth + 1)

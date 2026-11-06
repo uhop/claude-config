@@ -152,7 +152,18 @@ check ALLOW 'time -f x gh api repos/o/r/issues'
 check ALLOW $'python3 - <<\'EOF\'\nprint("aws ssm put-parameter --name x")\nEOF'
 check ALLOW $'cat > notes.md <<\'EOF\'\ngh issue create --title x\nEOF'
 check ALLOW $'cat > notes.md <<EOF\naws s3 rm s3://b/k\nEOF'
+# a substitution inside single quotes never runs (8f, 2026-11-05)
+check ALLOW "echo 'see \`gh issue create --title x\` later'"
+check ALLOW "echo 'run \$(gh issue create --title x) later'"
+check ALLOW "sed -i 's/x \`git push\` y/z/' notes.md"
 # ── what those exemptions must not open: a command that runs its text, or text that still runs ──
+check DENY  "echo \"it's \$(gh issue create --title x)\""
+check DENY  "echo 'a' \$(gh issue create --title x) 'b'"
+check DENY  $'cat > f <<EOF\n\'$(gh issue create --title x)\'\nEOF'
+check DENY  $'cat > f <<EOF\n\'$(git push origin main)\'\nEOF'
+check DENY  $'# don\'t retry\ngh issue create --title x'
+check DENY  $'# don\'t retry\necho $(gh issue create --title x)'
+check ALLOW $'# gh issue create --title x, later\nls'
 check DENY  'xargs gh issue create --title x'
 check DENY  'find . -name x -exec gh issue close 1 \;'
 check DENY  'parallel gh issue close ::: 1 2'
