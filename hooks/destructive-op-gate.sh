@@ -54,6 +54,11 @@ tool=$(jq -r '.tool_name // ""' <<<"$payload" 2>/dev/null)
 
 cmd=$(jq -r '.tool_input.command // ""' <<<"$payload" 2>/dev/null)
 [[ -z "$cmd" ]] && exit 0
+# The word tests read the text without its quotes and backslashes, and a `$'...'` string
+# always goes to the parser, so `pu''sh`, `p\ush`, and `$'\x70ush'` are read (8k).
+flat=${cmd//[\'\"\\]/}
+ansi_c=0
+[[ "$cmd" == *"\$'"* ]] && ansi_c=1
 
 deny() {
   cat >&2 <<EOF
@@ -296,7 +301,7 @@ parser_records() {
   CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import parse_heredocs, heredoc_runs, runs_its_text, runs_what_it_writes, mask_quoted, segments, command_tokens, substitutions, without_redirects, bare, SHELLS
+from shell_segments import parse_heredocs, heredoc_runs, runs_its_text, runs_what_it_writes, mask_quoted, mask_values, segments, command_tokens, run_tokens, substitutions, without_redirects, bare, SHELLS
 
 def leaves(cmd, nested, depth=0):
     if depth > 3:
@@ -314,8 +319,13 @@ def leaves(cmd, nested, depth=0):
     for seg in segments(text):
         b = bare(seg)
         if b:
-            keep = not command_tokens(b) or runs_its_text(b) or runs_what_it_writes(b, text)
-            out.append((nested, bare(without_redirects(b if keep else mask_quoted(b))), b))
+            toks = run_tokens(mask_values(b))
+            if toks[:1] in (['gh'], ['aws']):
+                words = ' '.join(t if t and not any(c.isspace() for c in t) else "''" for t in toks)
+            else:
+                keep = not command_tokens(b) or runs_its_text(b) or runs_what_it_writes(b, text)
+                words = bare(without_redirects(b if keep else mask_quoted(b)))
+            out.append((nested, words, b))
         toks = command_tokens(seg)
         if toks and os.path.basename(toks[0]) in SHELLS:
             for a in toks[1:]:
@@ -330,7 +340,7 @@ PY
 
 parsed=0
 if [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
-  if [[ "$cmd" =~ ${word}(gh|aws)([^[:alnum:]_-]|$) || ( "$cmd" =~ ${word}git([^[:alnum:]_-]|$) && "$cmd" =~ ${word}clean([^[:alnum:]_-]|$) ) ]]; then
+  if [[ $ansi_c -eq 1 || "$flat" =~ ${word}(gh|aws)([^[:alnum:]_-]|$) || ( "$flat" =~ ${word}git([^[:alnum:]_-]|$) && "$flat" =~ ${word}clean([^[:alnum:]_-]|$) ) ]]; then
     while IFS=$'\037' read -r -d '' nested_seg seg raw; do
       parsed=1
       [[ -z "${seg// /}" ]] && continue
@@ -346,7 +356,7 @@ fi
 # and newlines) with no idea of quotes, which errs toward denying.
 nested_seg=0
 if (( ! parsed )); then
-  seglist=$(printf '%s' "$cmd" | sed -E 's/[0-9]*&?[<>]+[&|]?[[:space:]]*[^[:space:];|&]*/ /g; s/\|\||&&|;|\||&/\n/g')
+  seglist=$(printf '%s' "$flat" | sed -E 's/[0-9]*&?[<>]+[&|]?[[:space:]]*[^[:space:];|&]*/ /g; s/\|\||&&|;|\||&/\n/g')
   while IFS= read -r seg; do
     [[ -z "${seg// /}" ]] && continue
     analyze_segment "$seg"
@@ -418,7 +428,7 @@ print('\n'.join(reserved(os.environ.get('CMD', ''))))
 PY
 }
 
-if [[ "$cmd" =~ ${word}(git|npm)([^[:alnum:]_-]|$) && "$cmd" =~ ${word}(push|tag|clean|publish)([^[:alnum:]_-]|$) ]]; then
+if [[ $ansi_c -eq 1 || ( "$flat" =~ ${word}(git|npm)([^[:alnum:]_-]|$) && "$flat" =~ ${word}(push|tag|clean|publish)([^[:alnum:]_-]|$) ) ]]; then
   found=
   if [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
     found=$(reserved_verbs)

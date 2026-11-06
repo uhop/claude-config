@@ -171,6 +171,33 @@ check DENY  "git push origin \$'ma\\'in'"
 check DENY  "git \$'push' origin main"
 check DENY  "git \$\"tag\" x"
 check ALLOW "echo \$'a\\'b ; git push origin main'"
+# a verb split by a quote or an escape is the verb, and gh and aws are read by the words they receive (8k, 2026-11-05)
+check DENY  "git pu''sh origin main"
+check DENY  'git p\ush origin main'
+check DENY  "git \$'\\x70ush' origin main"
+check DENY  "g''it push origin main"
+check DENY  "np''m publish"
+check DENY  "git ta''g v1"
+check DENY  "git cl''ean -fd"
+check DENY  "g''h issue create --title x"
+check DENY  "gh issue cre''ate --title x"
+check DENY  "gh issue 'create' --title x"
+check DENY  "gh api -X 'POST' repos/o/r/issues"
+check DENY  'gh api --method "DELETE" repos/o/r/x'
+check DENY  "a''ws s3 rm s3://b/k"
+check DENY  "aws s3 'rm' s3://b/k"
+check DENY  "aws ec2 'terminate-instances' --instance-ids i-1"
+check DENY  "timeout 5 gh issue 'close' 1"
+check DENY  "\$'\\x67h' issue create --title x"
+check ALLOW "gh issue 'view' 1"
+check ALLOW "gh issue list --search 'is:open label:x'"
+check ALLOW "gh pr view 1 --json title -q '.title'"
+check ALLOW "gh issue create --title '-h' --help"
+check DENY  "gh issue create --title \$'\\x2dh'"
+check DENY  "gh issue create --title 'a -h'"
+check DENY  'gh issue create --title a\ -h'
+check ALLOW "echo \$'gh issue create --title x'"
+check ALLOW "git log --oneline 'pu''sh'"
 check DENY  'xargs gh issue create --title x'
 check DENY  'find . -name x -exec gh issue close 1 \;'
 check DENY  'parallel gh issue close ::: 1 2'
@@ -228,6 +255,10 @@ check DENY  'git clean -fd'
 check DENY  'echo "run gh issue create yourself"'
 check ALLOW 'gh pr view 1'
 check ALLOW 'ls -l'
+check DENY  "gh issue 'create' --title x"
+check DENY  "a''ws s3 rm s3://b/k"
+check DENY  "git cl''ean -fd"
+check ALLOW "printf \$'a\\tb\\n'"
 check DENY  'aws s3 cp ./x s3://b/k 2>/dev/null'
 check DENY  'aws s3 sync ./d s3://b/d 2>&1'
 check DENY  'gh 2>/dev/null issue create -t x'

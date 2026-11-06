@@ -459,7 +459,41 @@ def mask_quoted(seg):
     return ''.join(out)
 
 
-GIT_VALUE_OPTS = {'-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env'}
+def _quoted_spans(seg):
+    """(start, end, quote) per closed quoted string, from its opening quote to past its closing one."""
+    spans, q, start, i = [], None, 0, 0
+    while i < len(seg):
+        c = seg[i]
+        if q:
+            if c == '\\' and q in ESCAPING:
+                i += 2
+                continue
+            if c == q[-1]:
+                spans.append((start, i + 1, q))
+                q = None
+        elif c == '\\':
+            i += 2
+            continue
+        elif c in '\'"':
+            q = _opens(seg, i)
+            start = i
+        i += 1
+    return spans
+
+
+def mask_values(seg):
+    """The segment with each quoted string that starts with `-` as `''`: a value, never a flag.
+    Other quoted text stays, so `'create'` and `-X 'POST'` read (8k)."""
+    out, last = [], 0
+    for s, e, q in _quoted_spans(seg):
+        text = seg[s + 1:e - 1]
+        if (_ansi_c(text) if q == "$'" else text).startswith('-'):
+            out += [seg[last:s], "''"]
+            last = e
+    return ''.join(out) + seg[last:]
+
+
+GIT_VALUE_OPTS ={'-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env'}
 
 
 def git_split(args):

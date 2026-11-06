@@ -41,6 +41,11 @@ payload=$(cat)
 
 cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 edited=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$payload")
+# The word tests read the text without its quotes and backslashes, and a `$'...'` string
+# always goes to the parser, so `com''mit`, `c\ommit`, and `$'\x63ommit'` are read (8k).
+flat=${cmd//[\'\"\\]/}
+ansi_c=0
+[[ "$cmd" == *"\$'"* ]] && ansi_c=1
 
 lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
 cwd=$(jq -r '.cwd // ""' <<<"$payload")
@@ -67,7 +72,7 @@ for tok, path in writes:
         print(path or tok)
 PY
 }
-if [[ "$cmd$edited" == *git-commit-allowed* && -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
+if [[ ( "$flat$edited" == *git-commit-allowed* || $ansi_c -eq 1 ) && -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
   written=$(marker_writes) || written=
   if [[ -n "$written" ]]; then
     cat >&2 <<EOF
@@ -78,7 +83,8 @@ EOF
 fi
 
 # Two stages. The word test is the free pre-filter: no `git` and no `commit`
-# both present as words, nothing to decide. What passes it is read as a command by
+# both present as words once quotes and backslashes are dropped, and no `$'`
+# string, nothing to decide (8k). What passes it is read as a command by
 # the shared parser (hooks/lib/shell_segments.py, the lease gate's): the verb
 # counts when it heads a segment — after `cd foo &&`, wrappers, assignments,
 # shell keywords, `xargs`, `parallel`, `watch`, `find -exec`, git's own `-C`/`-c`
@@ -92,9 +98,9 @@ fi
 word='(^|[^a-zA-Z0-9_-])'
 # A verb that makes a commit is one, a pull only when it may merge (8e).
 verbs='commit|am|merge|cherry-pick|revert|rebase|pull'
-if [[ ! ( "$cmd" =~ ${word}git([^a-zA-Z0-9_-]|$) && "$cmd" =~ ${word}($verbs)([^a-zA-Z0-9_-]|$) ) ]]; then
-  exit 0
-fi
+named=0
+[[ "$flat" =~ ${word}git([^a-zA-Z0-9_-]|$) && "$flat" =~ ${word}($verbs)([^a-zA-Z0-9_-]|$) ]] && named=1
+((named || ansi_c)) || exit 0
 
 # The parser prints one line per commit site that needs the marker — the verb, a
 # tab, and the directory it runs in, `?` when a variable leaves it unknown — and
@@ -102,7 +108,7 @@ fi
 # worktree. Parser unavailable
 # or failing: the pre-2026-09-06 regex decides, gaps and all, at the cwd.
 sites=
-[[ "$cmd" =~ ${word}git[[:space:]]+(commit|am|merge|cherry-pick|revert|rebase)([^a-zA-Z0-9_-]|$) ]] &&
+[[ "$flat" =~ ${word}git[[:space:]]+(commit|am|merge|cherry-pick|revert|rebase)([^a-zA-Z0-9_-]|$) ]] &&
   sites="${BASH_REMATCH[2]}"$'\t'"$cwd"
 # In a function, since Bash 3.2 can fail to parse a heredoc inside `$( … )`
 # (hook-syntax.test.mjs).
@@ -202,7 +208,8 @@ for verb, site in sites(os.environ.get('CMD', ''), sys.argv[2]):
 PY
 }
 if [[ -x /usr/bin/python3 && -f "$lib/shell_segments.py" ]]; then
-  sites=$(commit_sites || printf '%s\t%s\n' "${sites%%$'\t'*}" "$cwd")
+  # A failing parser denies only a command that names the verb, not every `$'...'` one.
+  sites=$(commit_sites || ((!named)) || printf '%s\t%s\n' "${sites%%$'\t'*}" "$cwd")
   [[ "$sites" == $'\t'* ]] && sites="commit$sites"
 fi
 [[ -z "$sites" ]] && exit 0

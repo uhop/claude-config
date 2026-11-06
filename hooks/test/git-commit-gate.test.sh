@@ -91,6 +91,16 @@ check DENY  "echo \\\$'a\\' \$($V -m x) 'b'"
 check DENY  "$V -m \$\$'a\\' 'b'"
 check DENY  "$V -m '\$'\"x\""
 check DENY  "$V -m \"\$'x\" it\\'s"
+# a verb split by a quote or an escape is the verb (8k, 2026-11-05)
+check DENY  "git com''mit -m x"
+check DENY  'git c\ommit -m x'
+check DENY  'git "com"mit -m x'
+check DENY  "g''it commit -m x"
+check DENY  "git \$'\\x63ommit' -m x"
+check DENY  "git re''base main"
+check ALLOW "git com''mit -m x" "$MARKED"
+check ALLOW "git log --grep 'com''mit'"
+check ALLOW "printf \$'a\\tb\\n'"
 check DENY  $'cat > $\'x y\' <<EOF\n'"$V"$' -m x\nEOF\n"./x y"'
 check DENY  "git -C \$'\\x2ftmp' commit -m x" "$MARKED"
 check DENY  "git -C \$'\\057tmp' commit -m x" "$MARKED"
@@ -318,6 +328,10 @@ check DENY  "xargs touch $M" "$OUTSIDE"
 check DENY  "(cd $OUTSIDE && touch $M)"
 check DENY  "touch $OUTSIDE/$M" "$MARKED"
 check DENY  "touch $M; git status" "$OUTSIDE"
+# the marker's name split by a quote or an escape is the marker (8k, 2026-11-05)
+check DENY  "touch .claude/git-commit-allow''ed" "$OUTSIDE"
+check DENY  "touch .claude/git-commit-allowe\\d" "$OUTSIDE"
+check DENY  "touch \$'.claude/git-commit-allowe\\x64'" "$OUTSIDE"
 # the file tools
 edit_check() {
   local want="$1" tool="$2" path="$3"
@@ -347,12 +361,16 @@ jq -nc --arg c "$V -m x" --arg d "$MARKED" '{tool_name:"Bash", tool_input:{comma
 [ $? -eq 0 ] && ((++pass)) || { ((++fail)); echo "FAIL  no lib: a marked cwd must still pass"; }
 jq -nc --arg c "git rebase main" --arg d "$PLAIN" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
 [ $? -eq 2 ] && ((++pass)) || { ((++fail)); echo "FAIL  no lib: another verb that makes a commit must deny"; }
+jq -nc --arg c "git com''mit -m x" --arg d "$PLAIN" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
+[ $? -eq 2 ] && ((++pass)) || { ((++fail)); echo "FAIL  no lib: a verb split by quotes must deny (8k)"; }
 # ── parser failing: the same, at the cwd ──
 mkdir -p "$MISSING/lib"; echo 'raise ValueError' > "$MISSING/lib/shell_segments.py"
 jq -nc --arg c "$V -m x" --arg d "$MARKED" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
 [ $? -eq 0 ] && ((++pass)) || { ((++fail)); echo "FAIL  broken lib: a marked cwd must still pass"; }
 jq -nc --arg c "$V -m x" --arg d "$PLAIN" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
 [ $? -eq 2 ] && ((++pass)) || { ((++fail)); echo "FAIL  broken lib: an unmarked cwd must deny"; }
+jq -nc --arg c "printf \$'a\\tb\\n'" --arg d "$PLAIN" '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' | bash "$MISSING/git-commit-gate.sh" >/dev/null 2>&1
+[ $? -eq 0 ] && ((++pass)) || { ((++fail)); echo "FAIL  broken lib: a \$'...' string with no verb must pass (8k)"; }
 rm -rf "$MISSING"
 
 # ── a redirection is no word of the command, wherever it sits (2026-11-03) ──
