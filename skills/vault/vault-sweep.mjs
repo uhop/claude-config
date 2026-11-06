@@ -40,7 +40,8 @@
 // The notes past their size bound are lint's live list (`size_bound`, vault-storage 3k), the one the
 // dashboard shows, and the notes split by topic with appended pieces outside their topics are its
 // `ungrouped_pieces` (D622): the agent splits and regroups them before `begin` (step 0), and the
-// done report carries both lists, what that step left.
+// done report carries both lists, what that step left, and lint's `small_splits`, the split notes
+// under half their bound, which nothing joins back by itself (D623).
 //
 // Every enrichment agent gets a holder: its enrich-batch prepare claims its
 // notes under that name (vault-storage D150), so a parallel sweep or ingest
@@ -237,6 +238,9 @@ const closingLint = async () => {
     ),
     ungrouped_pieces: (lint.checks?.ungrouped_pieces?.samples ?? []).map(
       ({file_path, role, ungrouped}) => ({file_path, role, ungrouped})
+    ),
+    small_splits: (lint.checks?.small_splits?.samples ?? []).map(
+      ({file_path, role, bytes, bound}) => ({file_path, role, bytes, bound})
     )
   };
 };

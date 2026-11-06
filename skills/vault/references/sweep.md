@@ -272,7 +272,11 @@ W=$(mktemp -d)
    notes past their size bound; `ungrouped_pieces`, the notes with appended
    pieces outside their topics) counts toward neither `ok` nor `failing`;
    the report's own `size_bound` and `ungrouped_pieces` lists name every one,
-   what step 0 left. `begin --dry-run` prints the same verdict and lists.
+   what step 0 left. A third advisory list, `small_splits`, names the split
+   lessons and current views whose pieces add up to under half their bound:
+   name them in the summary, and join none, since whether to `vault_join` one
+   is Eugene's call (vault-storage question 273, D623). `begin --dry-run`
+   prints the same verdict and lists.
 
 A stuck kind isn't a failure — some suggestions legitimately need user
 input, and the sub-agent's `--auto` mode is conservative on ambiguity.
