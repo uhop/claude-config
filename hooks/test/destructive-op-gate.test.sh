@@ -419,8 +419,14 @@ check ALLOW 'aws --cli-error-format json ec2 describe-instances'
 # ── a written file is code when the command runs it, and data when it only reads it (2026-11-03) ──
 for v in 'git tag v1' 'git push origin main' 'npm publish' 'gh issue create -t x' 'aws s3 rm s3://b/k'; do
   body=$'cat > s.sh <<\'EOF\'\n'"$v"$'\nEOF\n'
-  for run in 'bash s.sh' 'sh s.sh' 'bash -x s.sh' 'source s.sh' '. ./s.sh' 'chmod +x s.sh; ./s.sh' 's.sh' 'bash < s.sh' 'cat s.sh | bash' 'sudo bash s.sh' 'timeout 5 bash s.sh' 'xargs bash s.sh' 'bash -c "bash s.sh"' 'ssh host < s.sh' 'cd /tmp; bash /tmp/s.sh'; do
+  for run in 'bash s.sh' 'sh s.sh' 'bash -x s.sh' 'source s.sh' '. ./s.sh' 'chmod +x s.sh; ./s.sh' 's.sh' 'bash < s.sh' 'cat s.sh | bash' 'sudo bash s.sh' 'timeout 5 bash s.sh' 'xargs bash s.sh' 'bash -c "bash s.sh"' 'ssh host < s.sh' 'cd /tmp; bash /tmp/s.sh' \
+             "ssh host 'sudo bash' < s.sh" "ssh host 'cd repo && bash' < s.sh" "ssh host 'sudo -u root bash' < s.sh" \
+             'ssh host bash -s < s.sh' "ssh host 'env X=1 bash' < s.sh"; do
     check DENY  "$body$run"
+  done
+  # an interpreter or a syntax check reads a file without running it as shell (8t, 2026-11-05)
+  for read in "ssh host 'node -' < s.sh" 'bash -n s.sh' "ssh host 'python3 -' < s.sh"; do
+    check ALLOW "$body$read"
   done
   note=$'cat > x.md <<\'EOF\'\nThe spelling `'"$v"$'` is refused.\nEOF\n'
   for read in 'q file p --body-file x.md' 'wc -l x.md' 'grep -c y x.md' 'jq . x.md' 'npx prettier --check x.md' 'rm x.md' 'cat x.md' 'cat x.md | grep y' 'vault-curl /x --data-binary @x.md' 'node x.md' 'python3 x.md'; do

@@ -384,6 +384,19 @@ check DENY  "cd .claude && x=\$(touch git-commit-allowed)" "$OUTSIDE"
 check ALLOW "x=\$(touch git-commit-allowed); cd .claude" "$OUTSIDE"
 check ALLOW "echo '\$(touch $M)'" "$OUTSIDE"
 check ALLOW $'cat > note.md <<\'EOF\'\n$(touch '"$M"$')\nEOF' "$OUTSIDE"
+# a heredoc a shell runs is code, where it stands (8t, 2026-11-05)
+check DENY  $'bash <<\'EOF\'\ntouch '"$M"$'\nEOF' "$OUTSIDE"
+check DENY  $'cat > s.sh <<\'EOF\'\ntouch '"$M"$'\nEOF\nbash s.sh' "$OUTSIDE"
+check DENY  $'cd .claude && sh <<\'EOF\'\ntouch git-commit-allowed\nEOF' "$OUTSIDE"
+check ALLOW $'cat > s.sh <<\'EOF\'\ntouch '"$M"$'\nEOF\nwc -l s.sh' "$OUTSIDE"
+check DENY  $'cat > s.sh <<\'EOF\'\n'"$V"$' -m x\nEOF\nssh host \'cd repo && sudo bash\' < s.sh'
+check ALLOW $'cat > s.sh <<\'EOF\'\n'"$V"$' -m x\nEOF\nssh host \'node -\' < s.sh'
+check ALLOW $'cat > s.sh <<\'EOF\'\n'"$V"$' -m x\nEOF\nbash -n s.sh'
+check ALLOW $'cat > s.sh <<\'EOF\'\n'"$V"$' -m x\nEOF\nchmod +x s.sh && bash -n s.sh'
+check ALLOW $'cat > s.sh <<\'EOF\'\n'"$V"$' -m x\nEOF\ncat s.sh || bash'
+check ALLOW $'cat > s.js <<\'EOF\'\n'"$V"$' -m x\nEOF\nFP=$(node s.js | cat)'
+check DENY  $'\\\n'"$V"$' -m x'
+check DENY  $'cd '"$PLAIN"$' && \\\n'"$V"$' -m x'
 # the marker's name split by a quote or an escape is the marker (8k, 2026-11-05)
 check DENY  "touch .claude/git-commit-allow''ed" "$OUTSIDE"
 check DENY  "touch .claude/git-commit-allowe\\d" "$OUTSIDE"

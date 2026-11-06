@@ -296,14 +296,15 @@ def _ansi_c(body):
 def _split(text):
     """shlex.split, with each `$'...'` given as the single-quoted word it stands for and each `$"`
     as `"`: shlex reads `$'it\\'s'` as an unclosed quote, and `$'commit'` as `$commit` (8g). A
-    backslash that ends the text is a character, as bash reads it (8i)."""
+    backslash that ends the text is a character (8i), and a line continuation is nothing, as bash
+    reads them; shlex makes the continuation a newline word (8t)."""
     out, q, i, n = [], None, 0, len(text)
     while i < n:
         c, nxt = text[i], text[i + 1:i + 2]
         if q == "'":
             q = None if c == "'" else q
         elif c == '\\' or c + nxt == '$$':
-            out.append(text[i:i + 2] if nxt else '\\\\')
+            out.append('' if c + nxt == '\\\n' else text[i:i + 2] if nxt else '\\\\')
             i += 2
             continue
         elif q == '"':
@@ -347,7 +348,11 @@ def command_tokens(seg, redirects=False):
 def _past_wrappers(toks):
     while toks:
         t = toks[0]
-        if ASSIGN.match(t) or t in PREFIX or t in KEYWORDS or t.endswith('()') or CASE_ARM.match(t):
+        value = t.split('=', 1)[1] if ASSIGN.match(t) else ''
+        if value.startswith('$(') and ')' not in value and value[2:]:
+            # A substitution the split cut open: `FP=$(node x` runs `node` (8t).
+            toks = [value[2:]] + toks[1:]
+        elif ASSIGN.match(t) or t in PREFIX or t in KEYWORDS or t.endswith('()') or CASE_ARM.match(t):
             toks = toks[1:]
         elif t == 'function' or toks[1:2] == ['()']:
             toks = toks[2:]
@@ -439,15 +444,30 @@ def runs_what_it_writes(line, text):
     runs stays unread (D42)."""
     targets = (_written(m.group(1)) for m in REDIRECT_RE.finditer(line))
     written = [t for t in targets if not t.startswith('/dev/')]
-    segs = segments(text.replace(line, '', 1))
+    rest = text.replace(line, '', 1)
+    spans = segment_spans(rest)
     for base in filter(None, map(os.path.basename, written)):
         # The whole name only: `bash x.sh` runs no file named `a` (8h).
         named = re.compile(r'(^|[^\w.-])' + re.escape(base) + r'($|[^\w./-])')
-        for seg, after in zip(segs, segs[1:] + ['']):
+        for (seg, _), (after, at) in zip(spans, spans[1:] + [('', 0)]):
             toks = run_tokens(seg) if named.search(seg) else []
-            if toks and (os.path.basename(toks[0]) in FILE_RUNNERS | {base} or command_name(after) in SHELLS):
+            # Piped means `|`: `chmod +x s.sh && bash -n s.sh` pipes nothing (8t).
+            piped = rest[at - 2:at] != '||' and rest[at - 1:at] == '|'
+            if toks and (_runs_file(toks, base) or piped and command_name(after) in SHELLS):
                 return True
     return False
+
+
+def _runs_file(toks, base):
+    """Whether the command runs a file named base: as itself, as what a shell reads but `-n` checks
+    only, or as what `ssh` hands a remote shell. A remote command is a shell unless every segment
+    of it names another program, so `sudo bash` and `cd repo && bash` are shells (8t)."""
+    name = os.path.basename(toks[0])
+    if name == 'ssh':
+        names = [command_name(s) for s in segments(ssh_command(toks[1:])) if s.strip()]
+        return not names or any(n in SHELLS or not n or n.startswith('-') for n in names)
+    flags = list(itertools.takewhile(lambda t: t.startswith('-'), toks[1:]))
+    return name == base or (name in FILE_RUNNERS and '-n' not in flags)
 
 
 def heredoc_runs(prefix, rest, text):
@@ -754,8 +774,9 @@ def write_targets(cmd, base):
     """What a command writes, as (token, path): redirections, `sed -i`, `tee`, `cp`/`mv`/`rsync`/`ln` destinations,
     `rm`, `mkdir`, `touch`, `chmod`, `truncate`, `prettier --write`, `npm install`, mutating `git` verbs (at their
     directory, never `worktree`, never `apply --check`), and a path-like `--store`, `--out`, `--output`, or `-o`.
-    The path is None when the token holds what the command does not say. Heredoc bodies are data; a write
-    inside a substitution or a shell's string is a write, at the directory in force where it stands (8q)."""
+    The path is None when the token holds what the command does not say. A heredoc body no shell runs is
+    data; a write inside a substitution, a shell's string (8q), or a heredoc a shell runs (8t) is a write,
+    at the directory in force where it stands."""
     env, targets = {}, []
 
     def resolve(tok, eff):
@@ -771,7 +792,9 @@ def write_targets(cmd, base):
             return
         text, bodies = parse_heredocs_at(cmd)
         inner = substitution_spans(text)
-        for _, body, quoted, _, at in bodies:
+        for prefix, body, quoted, rest, at in bodies:
+            if heredoc_runs(prefix, rest, text):
+                inner.append((body, at))
             if not quoted:
                 inner += [(s, at) for s in substitutions(body, quotes=False)]
         inner.sort(key=lambda b: b[1])

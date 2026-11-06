@@ -333,6 +333,8 @@ else
   [[ $rc -eq 2 ]] && ok || bad "bash: a write inside bash -c must block, 8q (rc=$rc)"
   bashrun "cd $W && x=\$(command sed -i 's/a/b/' a.txt)" /tmp "$S2"
   [[ $rc -eq 2 ]] && ok || bad "bash: a substitution's write after a cd into held must block, 8q (rc=$rc)"
+  bashrun $'bash <<\'EOF\'\ncommand sed -i s/a/b/ '"$W"$'/a.txt\nEOF' /tmp "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: a write in a heredoc a shell runs must block, 8t (rc=$rc)"
   bashrun "S=\$(git -C $W stash create) && git -C $W stash list && git -C $W stash show" /tmp "$S2"
   [[ $rc -eq 0 ]] && ok || bad "bash: git stash create, list, and show read the tree and must pass, 8q (rc=$rc)"
   bashrun "git -C $W stash" /tmp "$S2"
