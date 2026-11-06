@@ -612,6 +612,99 @@ test('a marker reads a turn that answers a reply, whatever row sits between them
   assert.deepEqual(marks, {'what is 1a?': false, 'what is 4f?': true, 'what is 5g?': true});
 });
 
+const gateGaps = commands => {
+  const script = new URL('gate-gaps.py', import.meta.url).pathname;
+  const r = spawnSync('/usr/bin/python3', ['-I', script], {
+    input: JSON.stringify(commands),
+    encoding: 'utf8',
+    env: {...process.env, PYTHONDONTWRITEBYTECODE: '1'}
+  });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout);
+};
+
+test('the gate-gap watcher names each waiting spelling with the item it reopens (8w)', () => {
+  const cases = [
+    ['gh api repos/o/r/issues -ftitle=x', '8l'],
+    ['git pu``sh origin main', '8m'],
+    ['g$()it push', '8m'],
+    ['(cd /tmp/x); git commit -m x', '8u'],
+    ['cd /tmp/x | true; git commit -m x', '8u'],
+    ['eval "cd /tmp/x"; git commit -m x', '8u'],
+    ['x=$(D=/tmp/m; true); cd "$D" && git commit -m x', '8u'],
+    ['bash -c "D=/tmp/m"; cd "$D" && git commit -m x', '8u'],
+    ['(D=/tmp/m && true); cd "$D" && git commit -m x', '8u'],
+    ["cat > s.sh <<'EOF'\ncd /tmp/x\nEOF\nsource s.sh; git commit -m x", '8u'],
+    ["python3 -c \"import subprocess; subprocess.run(['git', 'push'])\"", 'D52'],
+    ['/usr/bin/gh issue create -t x', 'D52'],
+    ['echo "git push origin main" | bash', 'D52'],
+    ['diff <(git commit -m x) /dev/null', 'D52']
+  ];
+  const hits = gateGaps(cases.map(([c]) => c));
+  cases.forEach(([c, item], i) => {
+    assert.deepEqual(
+      hits.filter(h => h.index === i).map(h => h.item),
+      [item],
+      c
+    );
+  });
+  assert.ok(hits.every(h => typeof h.title === 'string' && h.shape && h.matched));
+});
+
+test('the gate-gap watcher leaves ordinary commands alone (8w)', () => {
+  const quiet = [
+    'git status && git log -1',
+    'gh api repos/o/r/issues -f title=x',
+    'cd /tmp/x && git commit -m x',
+    '(cd /tmp/x && make) ; git status',
+    '( D=x; cd "$D"; make ); git status',
+    'echo "git push"',
+    'jq -nc --arg c "$c" {} | bash "$H"',
+    'x=$(git rev-parse HEAD); echo $x',
+    'L=$(grep -n x f | cut -d: -f1); sed -n "${L}p" f',
+    "echo 'pu``sh'",
+    'AWS_REGION=x node -e "import(\'@aws-sdk/client-ssm\')"'
+  ];
+  assert.deepEqual(gateGaps(quiet), []);
+});
+
+test('a scan reports a waiting gate spelling a session wrote, and how many commands it read (8w)', t => {
+  const home = mkdtempSync(path.join(tmpdir(), 'reflect-gaps-'));
+  t.after(() => rmSync(home, {recursive: true, force: true}));
+  const dir = path.join(home, '.claude/projects/-x');
+  mkdirSync(dir, {recursive: true});
+  const base = Date.now() - 3600e3;
+  const row = (type, content, i) => ({
+    type,
+    timestamp: new Date(base + i * 1000).toISOString(),
+    sessionId: 's',
+    cwd: home,
+    entrypoint: 'cli',
+    message: {role: type, content}
+  });
+  const bash = (id, command) => [{type: 'tool_use', id, name: 'Bash', input: {command}}];
+  const rows = [
+    row('user', 'commit it', 0),
+    row('assistant', bash('a', 'git status'), 1),
+    row('assistant', bash('b', '(cd /tmp/x); git commit -m x'), 2)
+  ];
+  const file = path.join(dir, 's.jsonl');
+  writeFileSync(file, rows.map(r => `${JSON.stringify(r)}\n`).join(''));
+  utimesSync(file, new Date(base), new Date(base));
+  const script = new URL('reflect.mjs', import.meta.url).pathname;
+  const r = spawnSync('node', [script, '--since=1d'], {
+    encoding: 'utf8',
+    env: {...process.env, HOME: home}
+  });
+  const scan = JSON.parse(r.stdout);
+  assert.deepEqual(scan.gate_gap_scan, {commands: 2, error: null});
+  assert.equal(scan.totals.gate_gaps, 1);
+  const [gap] = scan.signals.gate_gaps;
+  assert.equal(gap.item, '8u');
+  assert.equal(gap.session_id, 's');
+  assert.equal(gap.command, '(cd /tmp/x); git commit -m x');
+});
+
 test('an empty window names no earliest row and warns of nothing', t => {
   const {scan, stderr} = scanOf(t, 30, '1d');
   assert.equal(scan.scan_window.earliest_row_iso, null);

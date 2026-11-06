@@ -28,6 +28,7 @@ import {
   readSync,
   closeSync
 } from 'node:fs';
+import {spawnSync} from 'node:child_process';
 import {dirname, join} from 'node:path';
 import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
@@ -328,8 +329,12 @@ const signals = {
   surprises: [],
   multi_release: [],
   release_alerts: [],
-  side_notes: []
+  side_notes: [],
+  gate_gaps: []
 };
+
+// Every analyzed session's Bash commands, for the gate-gap watcher after the loop (8w).
+const bashCommands = [];
 
 // Per-session git correlation (Pass 4), reported alongside the signals so a
 // reader can see which sessions produced commits and which were talk only.
@@ -470,6 +475,13 @@ for (const t of transcripts) {
     continue;
   }
   sessionsAnalyzed++;
+  for (const e of events) {
+    e.toolNames.forEach((name, k) => {
+      const command = e.toolInputs[k]?.command;
+      if (name === 'Bash' && typeof command === 'string')
+        bashCommands.push({project: t.project, session_id: t.session_id, ts: e.ts, command});
+    });
+  }
 
   // Pass 1: corrections + confirmations + surprises — scan user-authored
   // text only. Synthetic blocks (system reminders, command messages) have
@@ -806,6 +818,41 @@ for (const [key, count] of failureBuckets) {
   });
 }
 
+// The gate gaps: a command in a spelling the gates leave unread until a session writes one (8w). The
+// detectors read commands with the gates' own parser, which is Python.
+const gateGapScan = {commands: bashCommands.length, error: null};
+if (bashCommands.length > 0) {
+  const r = spawnSync('/usr/bin/python3', ['-I', join(import.meta.dirname, 'gate-gaps.py')], {
+    input: JSON.stringify(bashCommands.map(c => c.command)),
+    encoding: 'utf8',
+    env: {...process.env, PYTHONDONTWRITEBYTECODE: '1'},
+    maxBuffer: 256 * 1024 * 1024
+  });
+  try {
+    if (r.status !== 0)
+      throw new Error(r.error?.message || r.stderr.trim().split('\n').pop() || `exit ${r.status}`);
+    for (const h of JSON.parse(r.stdout)) {
+      const c = bashCommands[h.index];
+      signals.gate_gaps.push({
+        kind: 'gate_gap',
+        item: h.item,
+        title: h.title,
+        shape: h.shape,
+        project: c.project,
+        session_id: c.session_id,
+        ts: c.ts,
+        ts_iso: iso(c.ts),
+        matched: h.matched,
+        command:
+          c.command.length > MAX_EXCERPT ? c.command.slice(0, MAX_EXCERPT - 1) + '…' : c.command
+      });
+    }
+  } catch (e) {
+    gateGapScan.error = e.message;
+    process.stderr.write(`WARNING: the gate-gap watcher did not run: ${e.message}\n`);
+  }
+}
+
 // --- Output -------------------------------------------------------------
 
 const totals = Object.fromEntries(Object.entries(signals).map(([k, arr]) => [k, arr.length]));
@@ -835,6 +882,7 @@ const output = {
   state_watermark_iso: new Date(Math.min(scanMs, ...liveFloorsMs)).toISOString(),
   session_git: sessionGit,
   user_turns: userTurns,
+  gate_gap_scan: gateGapScan,
   signals
 };
 

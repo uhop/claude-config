@@ -126,3 +126,14 @@ outside the window too: on 2026-09-22 the scan showed 3 and 4 occurrences of two
 in the report, count its sessions across the host's transcripts and report both numbers: match
 `tool_result` rows with `is_error`, read their `tool_use` input, and leave out the running session's
 transcript, since a search writes its own pattern there and the count runs one session high.
+
+**`gate_gaps` watches the gate spellings that wait until a session writes one (8w).** Eugene ruled
+that some spellings the gates leave unread wait for a real use before anyone fixes them:
+claude-config 8l, 8m, and 8u, and the four spellings D52 left unread. A gate passes them without a
+word, so this list is the only place a use shows up. `gate-gaps.py` reads each analyzed session's
+Bash commands with the gates' own parser (`hooks/lib/shell_segments.py`), and each hit names its
+`item`, the queue title in `title`, the `shape` it matched, and the `command`. Read each command
+before acting on it. A gate test, a fixture that makes commits in a temporary repository, or code
+that only names a command is listed in the report and dismissed. A real use ends the item's wait by
+his ruling: say so as an alert, and place the item in claude-config's plan. `gate_gap_scan` says how
+many commands the watcher read; a non-null `error` means it did not run, which the report says.
