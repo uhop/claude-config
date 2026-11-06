@@ -198,6 +198,15 @@ check DENY  "gh issue create --title 'a -h'"
 check DENY  'gh issue create --title a\ -h'
 check ALLOW "echo \$'gh issue create --title x'"
 check ALLOW "git log --oneline 'pu''sh'"
+# a substitution's body holds its own parentheses and substitutions (8p, 2026-11-05)
+check DENY  'r=$(git push origin main 2>&1 | grep -c "(forced update)")'
+check DENY  'echo $(gh issue create --title "fix(x)")'
+check DENY  'v=$(npm publish --tag "$(date +%s)")'
+check DENY  'echo "$(aws s3 rm s3://b/k --exclude "(x)")"'
+check ALLOW 'echo $(gh pr view 1 --json title -q ".title | ascii_downcase")'
+check ALLOW "echo '\$(git push origin main)'"
+check DENY  $'cat > s.sh <<\'EOF\'\necho $(echo $(echo $(echo $(gh issue create --title x))))\nEOF\nbash s.sh'
+check DENY  $'cat > s.sh <<\'EOF\'\necho $(echo $(echo $(echo $(git push origin main))))\nEOF\nbash s.sh'
 check DENY  'xargs gh issue create --title x'
 check DENY  'find . -name x -exec gh issue close 1 \;'
 check DENY  'parallel gh issue close ::: 1 2'

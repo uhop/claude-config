@@ -117,7 +117,7 @@ commit_sites() {
 import os, sys
 sys.path.insert(0, sys.argv[1])
 from shell_segments import (parse_heredocs, heredoc_runs, segments, run_tokens, ssh_command, git_split, substitutions,
-                            SHELLS, HOME, read_assignment, resolve_path, checkout_of, Subshells, in_scratch_place)
+                            SHELLS, DEPTH, HOME, read_assignment, resolve_path, checkout_of, Subshells, in_scratch_place)
 
 VALUE_OPTS = {'-b', '-B', '--reason', '--branch', '--initial-branch', '-o', '--origin', '-c', '--config', '--depth', '-j', '--jobs',
               '-u', '--upload-pack', '--reference', '--template', '--separate-git-dir', '--object-format',
@@ -163,7 +163,7 @@ def needs_no_marker(site):
     return any(covers(m, site) for m in made) or (root is not None and in_scratch_place(root))
 
 def sites(cmd, eff, depth=0):
-    if depth > 3:
+    if depth > DEPTH:
         return [('commit', None)]
     out = []
     text, bodies = parse_heredocs(cmd)

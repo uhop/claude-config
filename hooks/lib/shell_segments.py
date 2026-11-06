@@ -42,8 +42,10 @@ SSH_VALUE_OPTS = {'-i', '-p', '-o', '-l', '-J', '-F', '-L', '-R', '-D', '-b', '-
 EXEC_FLAGS = {'-exec', '-execdir', '-ok', '-okdir'}
 _fresh = itertools.count()
 PREFIX = {'command', 'nice', 'time', 'exec', 'sudo', 'doas', 'builtin', 'nohup'}
-SUBST_RE = re.compile(r'\$\(([^()]*)\)|`([^`]*)`')
+TICKS_RE = re.compile(r'`([^`]*)`')
 SHELLS = {'bash', 'sh', 'zsh', 'dash', 'ksh', 'eval'}
+# How deep the gates follow code inside code: twice the deepest of 74,995 recorded commands (4, 8p).
+DEPTH = 8
 FILE_RUNNERS = SHELLS | {'source', '.', 'ssh'}
 # Commands that run what they are handed, so a word in their text can be a call.
 RUNNERS = {'xargs', 'find', 'parallel', 'watch', 'ssh', 'env', 'time', 'timeout', 'nice', 'nohup',
@@ -550,12 +552,51 @@ def _blank_single_quoted(text):
     return ''.join(out)
 
 
+def _closing_paren(scan, k):
+    """Where the `(` at k closes, quoted text counting no parenthesis; len(scan) when it never does."""
+    depth, dq, i, n = 0, False, k, len(scan)
+    while i < n:
+        c = scan[i]
+        if c == '\\':
+            i += 2
+            continue
+        if dq:
+            dq = c != '"'
+        elif c == '"':
+            dq = True
+        elif c == "'":
+            j = scan.find("'", i + 1)
+            i = n if j < 0 else j + 1
+            continue
+        elif c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+            if not depth:
+                return i
+        i += 1
+    return n
+
+
 def substitutions(text, quotes=True):
-    """The bodies of `$(...)` and backtick substitutions: executed, not data. With `quotes`, one
+    """The bodies of the outermost `$(...)` and backtick substitutions: executed, not data. A body
+    holds its own parentheses and substitutions, which its reader finds (8p). With `quotes`, one
     inside single quotes is data (8f); an unquoted heredoc body passes False, since the shell
     expands it whatever quotes it holds."""
     scan = _blank_single_quoted(text) if quotes else text
-    return [text[m.start(g):m.end(g)] for m in SUBST_RE.finditer(scan) for g in (1, 2) if m.group(g) is not None]
+    bodies, rest, i = [], list(scan), 0
+    while i < len(scan):
+        if scan[i] == '\\':
+            i += 2
+            continue
+        if scan.startswith('$(', i):
+            end = _closing_paren(scan, i + 1)
+            bodies.append(text[i + 2:end])
+            rest[i:end + 1] = ' ' * len(rest[i:end + 1])
+            i = end + 1
+            continue
+        i += 1
+    return bodies + [text[m.start(1):m.end(1)] for m in TICKS_RE.finditer(''.join(rest))]
 
 
 def expand(tok, eff, env):

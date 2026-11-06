@@ -101,6 +101,23 @@ check DENY  "git re''base main"
 check ALLOW "git com''mit -m x" "$MARKED"
 check ALLOW "git log --grep 'com''mit'"
 check ALLOW "printf \$'a\\tb\\n'"
+# a substitution's body holds its own parentheses and substitutions (8p, 2026-11-05)
+check DENY  "sha=\$($V -m \"fix(x): y\" && git rev-parse HEAD)"
+check DENY  "echo \"\$($V -m \"a (b)\")\""
+check DENY  "echo \$( ($V -m y) )"
+check DENY  "echo \$($V -m \"\$(date)\")"
+check DENY  "echo \$($V -m x \$(date))"
+check DENY  "echo \"\$(x=\$(date) ; $V -m y)\""
+check DENY  "echo \"\$(echo \"a)\" ; $V -m x)\""
+check DENY  "echo \"\$(echo ')' ; $V -m x)\""
+check DENY  "echo \"\$(echo \\) ; $V -m x)\""
+check DENY  "echo \$(printf %s \"\\\`\") ; echo \`$V -m x\`"
+check ALLOW "echo '\$($V -m \"fix(x)\")'"
+check ALLOW "echo \\\$($V -m x)"
+check ALLOW "echo \$(git log -1 --format=\"%s (%h)\")"
+check ALLOW "git log -1 && echo \$((1 + 2)) commit"
+check ALLOW $'cat > s.sh <<\'EOF\'\necho $(echo $(echo $(git log --grep commit)))\nEOF\nbash s.sh'
+check DENY  $'cat > s.sh <<\'EOF\'\necho $(echo $(echo $(echo $('"$V"$' -m x))))\nEOF\nbash s.sh'
 check DENY  $'cat > $\'x y\' <<EOF\n'"$V"$' -m x\nEOF\n"./x y"'
 check DENY  "git -C \$'\\x2ftmp' commit -m x" "$MARKED"
 check DENY  "git -C \$'\\057tmp' commit -m x" "$MARKED"

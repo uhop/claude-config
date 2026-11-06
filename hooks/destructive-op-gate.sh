@@ -301,10 +301,10 @@ parser_records() {
   CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import parse_heredocs, heredoc_runs, runs_its_text, runs_what_it_writes, mask_quoted, mask_values, segments, command_tokens, run_tokens, substitutions, without_redirects, bare, SHELLS
+from shell_segments import parse_heredocs, heredoc_runs, runs_its_text, runs_what_it_writes, mask_quoted, mask_values, segments, command_tokens, run_tokens, substitutions, without_redirects, bare, SHELLS, DEPTH
 
 def leaves(cmd, nested, depth=0):
-    if depth > 3:
+    if depth > DEPTH:
         return []
     out = []
     text, bodies = parse_heredocs(cmd)
@@ -367,7 +367,7 @@ reserved_verbs() {
   CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import parse_heredocs, heredoc_runs, segments, run_tokens, ssh_command, git_split, substitutions, SHELLS
+from shell_segments import parse_heredocs, heredoc_runs, segments, run_tokens, ssh_command, git_split, substitutions, SHELLS, DEPTH
 
 NPM_VALUE_OPTS = {'-C', '-w'}
 
@@ -390,7 +390,7 @@ def npm_verb(args):
     return ''
 
 def reserved(cmd, depth=0):
-    if depth > 3:
+    if depth > DEPTH:
         return []
     out = []
     text, bodies = parse_heredocs(cmd)
