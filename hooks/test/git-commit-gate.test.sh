@@ -132,6 +132,20 @@ check ALLOW $'echo '"$V"$' \\\n'
 check ALLOW $'echo '"$V"$' \\\\\n'
 check ALLOW $'echo '"$V"$' \\\\\\\n'
 check ALLOW "t=\$'git com\\'\\'mit -m x'"
+# code inside a segment runs at the directory in force there, after the cds before it (8r, 2026-11-05)
+check DENY  "cd $PLAIN && x=\$($V -m x)" "$MARKED"
+check DENY  "cd $PLAIN; echo \`$V -m x\`" "$MARKED"
+check DENY  $'cd '"$PLAIN"$' && bash <<\'EOF\'\n'"$V"$' -m x\nEOF' "$MARKED"
+check DENY  $'cd '"$PLAIN"$'\nbash <<\'EOF\'\n'"$V"$' -m x\nEOF' "$MARKED"
+check DENY  $'cd '"$PLAIN"$' && cat > s.sh <<\'EOF\'\n'"$V"$' -m x\nEOF\nbash s.sh' "$MARKED"
+check DENY  $'cd '"$PLAIN"$' && cat <<EOF\n$('"$V"$' -m x)\nEOF' "$MARKED"
+check DENY  "echo \$(cd $PLAIN && $V -m x)" "$MARKED"
+check ALLOW "cd $MARKED && x=\$($V -m x)"
+check ALLOW $'cd '"$MARKED"$' && bash <<\'EOF\'\n'"$V"$' -m x\nEOF'
+check ALLOW "x=\$($V -m x); cd $PLAIN" "$MARKED"
+check ALLOW "x=\$($V -m x); cd $PLAIN; true" "$MARKED"
+check DENY  $'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ncd '"$PLAIN"$'\nsh <<\'EOF\'\n'"$V"$' -m x\nEOF' "$MARKED"
+check ALLOW "D=$MARKED; cd \"\$D\" && x=\$($V -m x)"
 check DENY  $'cat > s.sh <<\'EOF\'\necho $(echo $(echo $(echo $('"$V"$' -m x))))\nEOF\nbash s.sh'
 check DENY  $'cat > $\'x y\' <<EOF\n'"$V"$' -m x\nEOF\n"./x y"'
 check DENY  "git -C \$'\\x2ftmp' commit -m x" "$MARKED"

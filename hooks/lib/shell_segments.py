@@ -97,17 +97,15 @@ def _heredoc_at(line):
     return None
 
 
-def parse_heredocs(cmd):
-    """(text, bodies): the command without its heredoc bodies, and one
-    (line_before_operator, body, quoted_terminator, line_after_operator) per
-    heredoc. An unquoted terminator means the body still expands `$(...)`."""
-    lines, bodies, cur = [], [], []
+def parse_heredocs_at(cmd):
+    """parse_heredocs, each body with a fifth item: the offset in the text where its operator stood (8r)."""
+    lines, bodies, cur, pos, at = [], [], [], 0, 0
     term = prefix = rest = None
     quoted = False
     for line in cmd.split('\n'):
         if term is not None:
             if line.strip() == term:
-                bodies.append((prefix, '\n'.join(cur), quoted, rest))
+                bodies.append((prefix, '\n'.join(cur), quoted, rest, at))
                 term, cur = None, []
             else:
                 cur.append(line)
@@ -115,12 +113,20 @@ def parse_heredocs(cmd):
         m = _heredoc_at(line)
         if m:
             term, quoted, prefix, rest = m.group(2), bool(m.group(1)), line[:m.start()], line[m.end():]
-            lines.append(prefix + rest)
-            continue
+            at, line = pos + len(prefix), prefix + rest
         lines.append(line)
+        pos += len(line) + 1
     if term is not None:
-        bodies.append((prefix, '\n'.join(cur), quoted, rest))
+        bodies.append((prefix, '\n'.join(cur), quoted, rest, at))
     return '\n'.join(lines), bodies
+
+
+def parse_heredocs(cmd):
+    """(text, bodies): the command without its heredoc bodies, and one
+    (line_before_operator, body, quoted_terminator, line_after_operator) per
+    heredoc. An unquoted terminator means the body still expands `$(...)`."""
+    text, bodies = parse_heredocs_at(cmd)
+    return text, [b[:4] for b in bodies]
 
 
 def strip_heredocs(cmd):
@@ -142,7 +148,12 @@ def _line_end(text, i):
 def segments(text):
     """Split on unquoted ; | || && and newlines. `>&`, `<&`, `&>`, `>|` belong to redirects.
     A comment is dropped."""
-    segs, cur, q, i = [], [], None, 0
+    return [seg for seg, _ in segment_spans(text)]
+
+
+def segment_spans(text):
+    """(segment, offset where it starts) per segment, as `segments` splits them (8r)."""
+    segs, cur, q, i, start = [], [], None, 0, 0
     while i < len(text):
         c = text[i]
         if q:
@@ -165,27 +176,29 @@ def segments(text):
             i += 2
             continue
         elif c in ';\n':
-            segs.append(''.join(cur))
-            cur = []
+            segs.append((''.join(cur), start))
+            cur, start = [], i + 1
         elif c == '|' and text[i - 1:i] != '>':
-            segs.append(''.join(cur))
+            segs.append((''.join(cur), start))
             cur = []
             if i + 1 < len(text) and text[i + 1] == '|':
                 i += 1
+            start = i + 1
         elif c == '&':
             prev = text[i - 1] if i else ''
             nxt = text[i + 1] if i + 1 < len(text) else ''
             if prev in ('<', '>') or nxt == '>':
                 cur.append(c)
             else:
-                segs.append(''.join(cur))
+                segs.append((''.join(cur), start))
                 cur = []
                 if nxt == '&':
                     i += 1
+                start = i + 1
         else:
             cur.append(c)
         i += 1
-    segs.append(''.join(cur))
+    segs.append((''.join(cur), start))
     return segs
 
 
@@ -593,6 +606,11 @@ def substitutions(text, quotes=True):
     holds its own parentheses and substitutions, which its reader finds (8p). With `quotes`, one
     inside single quotes is data (8f); an unquoted heredoc body passes False, since the shell
     expands it whatever quotes it holds."""
+    return [body for body, _ in substitution_spans(text, quotes)]
+
+
+def substitution_spans(text, quotes=True):
+    """(body, offset of its `$` or backtick) per substitution, as `substitutions` finds them (8r)."""
     scan = _blank_single_quoted(text) if quotes else text
     bodies, i = [], 0
     while i < len(scan):
@@ -601,7 +619,7 @@ def substitutions(text, quotes=True):
             continue
         if scan.startswith('$(', i):
             end = _closing_paren(scan, i + 1)
-            bodies.append(text[i + 2:end])
+            bodies.append((text[i + 2:end], i))
             i = end + 1
             continue
         if scan[i] == '`':
@@ -609,7 +627,7 @@ def substitutions(text, quotes=True):
             end = i + 1
             while end < len(scan) and scan[end] != '`':
                 end += 2 if scan[end] == '\\' else 1
-            bodies.append(text[i + 1:end])
+            bodies.append((text[i + 1:end], i))
             i = end + 1
             continue
         i += 1

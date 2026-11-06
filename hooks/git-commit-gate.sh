@@ -117,8 +117,8 @@ commit_sites() {
   CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$lib" "$cwd" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[1])
-from shell_segments import (parse_heredocs, heredoc_runs, segments, run_tokens, ssh_command, git_split, substitutions,
-                            unread_words, SHELLS, DEPTH, HOME, read_assignment, resolve_path, checkout_of, Subshells, in_scratch_place)
+from shell_segments import (parse_heredocs_at, heredoc_runs, segment_spans, run_tokens, ssh_command, git_split,
+                            substitutions, substitution_spans, unread_words, SHELLS, DEPTH, HOME, read_assignment, resolve_path, checkout_of, Subshells, in_scratch_place)
 
 VALUE_OPTS = {'-b', '-B', '--reason', '--branch', '--initial-branch', '-o', '--origin', '-c', '--config', '--depth', '-j', '--jobs',
               '-u', '--upload-pack', '--reference', '--template', '--separate-git-dir', '--object-format',
@@ -167,18 +167,23 @@ def sites(cmd, eff, depth=0):
     if depth > DEPTH:
         return [('commit', None)]
     out = []
-    text, bodies = parse_heredocs(cmd)
-    for prefix, body, quoted, rest in bodies:
+    text, bodies = parse_heredocs_at(cmd)
+    # Code inside a segment runs at the directory in force there, after the cds before it (8r).
+    inner = substitution_spans(text)
+    for prefix, body, quoted, rest, at in bodies:
         if heredoc_runs(prefix, rest, text):
-            out += sites(body, eff, depth + 1)
+            inner.append((body, at))
         if not quoted:
-            for s in substitutions(body, quotes=False):
-                out += sites(s, eff, depth + 1)
-    for s in substitutions(text):
-        out += sites(s, eff, depth + 1)
+            inner += [(s, at) for s in substitutions(body, quotes=False)]
+    inner.sort(key=lambda b: b[1])
+    spans, k = segment_spans(text), 0
     scope = Subshells()
-    for seg in segments(text):
+    for n, (seg, _) in enumerate(spans):
         eff = scope.enter(seg, eff)
+        end = spans[n + 1][1] if n + 1 < len(spans) else len(text) + 1
+        while k < len(inner) and inner[k][1] < end:
+            out += sites(inner[k][0], eff, depth + 1)
+            k += 1
         if read_assignment(seg, eff, env):
             continue
         toks = run_tokens(seg)
