@@ -92,8 +92,11 @@ existing piece holding most of its text, a topic piece ahead of an appended
 one, with its path, `record_id`, history, and summary, so a renamed topic
 only retitles it; any other topic is a new piece, and a piece no topic keeps
 is deleted and named in `removed`. Send `expected_etag` from the composed
-view as read. This is how a piece past its bound comes back under, its
-sections into more topics. A topic piece is marked `grouped: true`
+view as read. `pieces`, the names of some of the folder's pieces, scopes the
+regroup to them (D624): the topics cover their sections alone and the rest of
+the folder stays as it is. Name a piece past its bound alone to cut it into
+two topics, or an appended piece and the topic piece it joins to gather it;
+never re-list the whole folder. A topic piece is marked `grouped: true`
 and carries its sections under their own headings. **In a grouped
 folder, append a new section to the topic piece it belongs to**
 (`vault_append` to that piece's path; `vault_list_pieces` lists the

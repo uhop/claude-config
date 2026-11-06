@@ -171,27 +171,37 @@ W=$(mktemp -d)
 # repeat dispatch → next until {status: "done"}
 ```
 
-0. **Split and regroup, before `begin`** (vault-storage questions 178, 270,
-   and 271, D622), so the sweep's enrichment covers the pieces this step
-   writes. Read lint's two advisory lists:
+0. **Split and regroup, before `begin`** (vault-storage questions 178 and
+   270 to 274, D622, D624), so the sweep's enrichment covers the pieces this
+   step writes. Read lint's two advisory lists:
    `vault-curl /system/lint -s | jq '{size_bound: .checks.size_bound.samples, ungrouped_pieces: .checks.ungrouped_pieces.samples}'`.
-   The work is each `size_bound` note whose `remedy` starts `vault_split`: a
-   whole note, or, when it reads `vault_split with topics on <note>`, a piece
-   whose note is regrouped; and each `ungrouped_pieces` note, a note split by
-   topic whose appended sections sit outside its topics (lint leaves out a
-   record's folder). A `decisions.md` splits with no topics, one note per
-   decision. Dispatch one `vault-sweep` agent per other note, in parallel,
-   with this brief:
-   - Read the note's composed view (`vault_read_file` with `include_etag` on
-     the note's path) and list its `##` sections with their sizes.
-   - Name topics that group whole sections a session reads together, each
-     under 20 KB, every section once, by its number from 0 where headings
-     repeat. Keep the name of each existing topic whose sections stay
-     together: a topic keeps the piece holding most of its text whatever its
-     name, so a new name changes only the title.
-   - Send `vault_split` with `topics` and `expected_etag` from that read. An
-     adapter without the tool (0.19.0 and before) takes the route instead:
-     `vault-curl /vault/split -X POST -H 'Content-Type: application/json' -H 'If-Match: <etag>' --data-binary '{"path": "<note>", "topics": [...]}'`.
+   The work, one `vault-sweep` agent per note, in parallel:
+   - **A whole note past its bound** (`remedy` exactly `vault_split`): read
+     its `##` headings with their sizes, name topics, and split it with
+     `topics`. A `decisions.md` splits with no topics, one note per decision.
+   - **A piece past its bound** (`remedy` `vault_split with topics and pieces
+     ["<name>"] on <note>`): read that piece alone, name two or more topics
+     covering its sections, and regroup the note with `topics` and that
+     `pieces` list.
+   - **Appended pieces** (`ungrouped_pieces`, its `names` the appended
+     pieces; lint leaves out a record's folder): read each appended piece and
+     the topic pieces' titles (`vault_list_pieces` with `file_prefix` the
+     folder and `exclude: "body"`), pick the topic each joins, or a new topic
+     where none fits, read those topic pieces' `##` headings, and regroup with
+     `topics` naming each topic's own sections plus the ones joining it, and
+     `pieces` naming the appended pieces and those topic pieces. Never list
+     the folder's other pieces: they stay as they are.
+
+   The brief for every agent:
+   - Topics group whole sections a session reads together, each under 20 KB,
+     every section of the pieces named once, by its number from 0 where
+     headings repeat. Keep each existing topic's name: a topic keeps the piece
+     holding most of its text whatever its name, so a new name changes only
+     the title.
+   - Read the note's composed view with `vault_read_file` and `include_etag`
+     for the etag, and send `vault_split` with `expected_etag`. An adapter
+     without the tool (0.19.0 and before) takes the route instead:
+     `vault-curl /vault/split -X POST -H 'Content-Type: application/json' -H 'If-Match: <etag>' --data-binary '{"path": "<note>", "topics": [...], "pieces": [...]}'`.
      On a 412 the note changed: read it again and retry once. Never
      `vault_join` a note to regroup it: a join deletes every piece, with its
      record, history, and summary (vault-storage question 272).
