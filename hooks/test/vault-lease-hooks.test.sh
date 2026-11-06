@@ -12,7 +12,8 @@
 # reachable server; it round-trips claim → gate-allow → second-session
 # 409/subordinate line → gate-block → release against a THROWAWAY git repo
 # whose remote is fake (repo:github.com/uhop/zz-lease-hook-test), so no real
-# lease is ever touched. Skipped, not failed, when the env is absent.
+# lease is ever touched. Skipped, not failed, when the env is absent; failed
+# when the env is set and the server does not answer (8o).
 #
 # Exit non-zero on any failure. No framework: the repo has none.
 
@@ -27,6 +28,7 @@ command -v jq >/dev/null || { echo "jq required" >&2; exit 2; }
 pass=0 fail=0
 ok()   { ((++pass)); }
 bad()  { ((++fail)); printf 'FAIL  %s\n' "$1"; }
+source "$(dirname "${BASH_SOURCE[0]}")/live-server.sh"
 # run <hook> <payload-json> [env-prefix...]; sets rc, out
 run() {
   local hook="$1" payload="$2"; shift 2
@@ -114,12 +116,7 @@ kill "$srv" 2>/dev/null
 rm -rf "$RF"
 
 # ── LIVE: round-trip on a throwaway repo with a fake remote ──────────────
-live_url=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}} live_key=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
-if [[ -z $live_url || -z $live_key ]] ||
-   ! curl -sf --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $live_key" \
-       "$live_url/leases" >/dev/null 2>&1; then
-  echo "live half skipped (no vault settings or server unreachable)"
-else
+if live_server /leases; then
   W=$(mktemp -d)
   git -C "$W" init -q && git -C "$W" remote add origin git@github.com:uhop/zz-lease-hook-test.git
   git -C "$W" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init

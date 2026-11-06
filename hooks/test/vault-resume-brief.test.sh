@@ -4,7 +4,8 @@
 # vault-storage 10g-2; state.md § GitHub from 2026-09-05). The OFFLINE half asserts fail-open (no env, unreachable server →
 # exit 0, no output). The LIVE half runs the hook from this repository, which
 # has a stored GitHub baseline, and from a throwaway non-repo directory, which must
-# get no project line and no GitHub line. Skipped, not failed, without the env.
+# get no project line and no GitHub line. Skipped, not failed, without the env;
+# failed when the env is set and the server does not answer (8o).
 #
 # Exit non-zero on any failure. No framework: the repo has none.
 
@@ -12,11 +13,19 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="$HERE/vault-resume-brief.sh"
+LIVE="$(dirname "${BASH_SOURCE[0]}")/live-server.sh"
 command -v jq >/dev/null || { echo "jq required" >&2; exit 2; }
 
 pass=0 fail=0
 ok()  { ((++pass)); }
 bad() { ((++fail)); printf 'FAIL  %s\n' "$1"; }
+source "$LIVE"
+
+# The live probe: no settings skip the live half and pass; a silent server fails the suite (8o).
+out=$(env PROGRAM_CLERK_URL= PROGRAM_CLERK_KEY= VAULT_API_URL= VAULT_API_TOKEN= bash -c 'bad() { echo "BAD $1"; }; source "$1"; live_server /x; echo "rc=$?"' _ "$LIVE")
+[[ "$out" == *"live half skipped"* && "$out" == *"rc=1" && "$out" != *BAD* ]] && ok || bad "no settings: the live half is skipped, not failed (out=$out)"
+out=$(env PROGRAM_CLERK_URL=http://127.0.0.1:9 PROGRAM_CLERK_KEY=pck bash -c 'bad() { echo "BAD $1"; }; source "$1"; live_server /x; echo "rc=$?"' _ "$LIVE")
+[[ "$out" == *"BAD live half: http://127.0.0.1:9/x did not answer"* && "$out" == *"rc=1" ]] && ok || bad "settings and a silent server: the live half fails (out=$out)"
 
 # The hook parses: the fail-open runs below exit before its jq program, and the checks after run that
 # program apart from the hook, so an apostrophe that ends its single quotes passes all of them (D541).
@@ -196,12 +205,7 @@ trace=$(cd "$work/other-name" && env PROGRAM_CLERK_URL=http://127.0.0.1:59999 PR
 rm -rf "$work"
 
 # ── LIVE: this repository has a stored GitHub baseline ───────────────────
-live_url=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}} live_key=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
-if [[ -z $live_url || -z $live_key ]] ||
-   ! curl -sf --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $live_key" \
-       "$live_url/system/resume-brief" >/dev/null 2>&1; then
-  echo "live half skipped (no vault settings or server unreachable)"
-else
+if live_server /system/resume-brief; then
   out=$(cd "$HERE/.." && bash "$HOOK" 2>/dev/null); rc=$?
   [[ $rc -eq 0 && "$out" == *"[vault] github uhop/claude-config:"* ]] && ok || bad "from this repo: a GitHub line is expected (rc=$rc out=$out)"
   [[ "$out" == *" open ("* && "$out" == *"collected "* && "$out" == *" ago)"* ]] && ok || bad "the GitHub line must carry open items and the collection age (out=$out)"
