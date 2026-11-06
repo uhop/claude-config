@@ -715,12 +715,13 @@ changed one repository names it in the opening line with no table
 left).
 
 **A handoff rings a bell on this machine, and its owner rings back.** After filing any handoff, a
-`run-check` included, `SendMessage` every `ListAgents` peer named after the target repository with
-the id, and put your own `ListAgents` name in the body as `Ring back: <name>`; with no such peer,
-say in the stop report that it waits for a session there. The owner sends that name the outcome when
-it resolves. The record comes first, the ring second (Eugene, 2026-11-06; protocol: the vault skill
-`references/coordination.md` § Ring the bell, and ring back; [[projects/agent-workflow/feedback]] §
-A handoff rings a bell, and its owner rings back).
+`run-check` included, `SendMessage` every `ListAgents` peer named after the handoff's `project`,
+which is the target's checkout folder, never the remote's basename (vault-storage's remote is
+`apodictum/pc`), with the id, and put your own `ListAgents` name in the body as `Ring back: <name>`;
+with no such peer, say in the stop report that it waits for a session there. The owner sends that
+name the outcome when it resolves. The record comes first, the ring second (Eugene, 2026-11-06;
+protocol: the vault skill `references/coordination.md` § Ring the bell, and ring back;
+[[projects/agent-workflow/feedback]] § A handoff rings a bell, and its owner rings back).
 
 **The lease holder reads its handoff inbox at every breather:**
 `vault_handoff_list({project: "<name>", status: "open"})` on a ring, during a long run's wait,

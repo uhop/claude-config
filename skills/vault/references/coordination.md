@@ -185,8 +185,11 @@ worktree + a handoff to `repo:X` (below), and ping the holder with
 by repo, not by holder id**: `ListAgents` names a peer
 `<cwd-basename>-<xx> [<ref>]` and neither part is the session prefix in the
 holder id (verified 2026-08-19: holder `host1/36eb0a3e` was
-`claude-config-ca [51bbb5]`) — send to the peer(s) named after the repo's
-basename and put the resource + holder id in the text so a non-holder can
+`claude-config-ca [51bbb5]`) — send to the peer(s) named after the
+checkout's folder, which is the vault project's name, never after the
+remote's basename (vault-storage's remote is `github.com/apodictum/pc`, and
+its sessions are `vault-storage-<xx>`), and put the resource + holder id in
+the text so a non-holder can
 tell and ignore it. Record first, ring second. Taking the lease is the
 operator's act, never yours, and it happens in the UI only (ruled
 2026-09-19): he transfers, or force-releases in `/ui/agents.html`. When he
@@ -319,13 +322,14 @@ leases: a single-agent session that owns its cwd repo never files one.
   question included. The record is the work, and the ring tells a live
   session it is there, so ring after the create, the artifact, and the
   verifications: call `ListAgents`, then `SendMessage` every peer named after
-  the target repository's basename (`apodict-22` for
-  `repo:github.com/uhop/apodict`, by repo as above), one line with the
-  handoff id, its kind, the role, and your holder id. Put your own name, from
+  the target's checkout folder, which is the handoff's `project`, never the
+  remote's basename (`apodict-22` for `apodict`, `vault-storage-a9` for
+  `vault-storage`, whose remote is `github.com/apodictum/pc`), one line with
+  the handoff id, its kind, the role, and your holder id. Put your own name, from
   `ListAgents`'s "This session is …" line, in `body` as `Ring back: <name>`,
   since the owner cannot derive it: a peer's name comes from its cwd, which
   neither `from.repo` nor the holder id carries (vault-storage's sessions file
-  as `github.com/apodictum/pc`). With no peer named after the repository, say
+  as `github.com/apodictum/pc`). With no peer named after the project, say
   in your stop report that the handoff waits for a session there. The owner,
   after resolving, sends the `Ring back:` name one line with the id, the
   resolution, and the result's summary when `ListAgents` lists it; a
