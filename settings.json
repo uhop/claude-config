@@ -51,6 +51,11 @@
             "type": "command",
             "command": "$HOME/.claude/hooks/vault-lease-gate.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/code-rules-gate.sh",
+            "timeout": 5
           }
         ]
       }

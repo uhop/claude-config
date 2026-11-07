@@ -244,19 +244,12 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
   the file binary (`Binary files differ`, unreviewable diff; the Read tool renders it invisibly, so
   only `file -b` / `git diff --numstat` catch it). Told twice by 2026-08-01 (apodict
   `src/blocks.js`); recorded here because it wasn't findable in the vault when checked.
-- **No regex lookbehind, `(?<=` or `(?<!`.** State the condition another way: the `u` flag (a
-  surrogate pair is one code point there), a consuming match the replacement puts back, or a check
-  in code. Eugene, 2026-10-28: _"Personally I don't like lookbehinds. They may make the regex slower
-  and frequently suseptible to ReDoS attacks. Yes, users should control their data, but it can
-  happen accidentally in a good input and I prefer not to open a door for any exploits if I can help
-  it without major sacrifices."_ A lookbehind also fails older engines: Safari before 16.4 cannot
-  parse one, so the whole module fails to load.
-- **Split text into lines on `/\r?\n/`, or with a utility that reads both endings** (Python's
-  `str.splitlines()`, Node's `readline`). A file written or checked out on Windows ends its lines in
-  CRLF, and a split on `'\n'` leaves a `\r` on each line, so a test such as `line === '---'` fails.
-  Eugene, 2026-11-06: _"Always split on `/\r?\n/` or use system utilities that do that."_ A lone
-  `\r` was classic Mac OS's separator and is no longer written (invariants-sidecar's parser, found
-  through its Windows CI, `2569624`).
+- **A code rule a program can check is enforced, not written here.** `hooks/code-rules-gate.sh`
+  refuses an `Edit` or `Write` that adds one and shows the rule with its reason;
+  `hooks/lib/code_rules.py` holds them with Eugene's words: no split on `'\n'` (split on `/\r?\n/`),
+  no regex lookbehind, no bare `Symbol()`, no raw NUL. A write through Bash is not read, so follow
+  them there too. A new checkable rule joins that registry, never this file (claude-config 9f,
+  2026-11-06).
 - **Every symbol is `Symbol.for()`, never `Symbol()`, internal ones included**, keyed under the
   project's own prefix (`object-stream.` across the stream-* family). A well-known name is a
   protocol without a dependency: another library can produce or recognize the package's markers by
