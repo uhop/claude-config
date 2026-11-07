@@ -17,11 +17,17 @@ pass=0 fail=0
 ok()  { ((++pass)); }
 bad() { ((++fail)); printf 'FAIL  %s\n' "$1"; }
 
-run_json() { err=$(printf '%s' "$1" | bash "$HOOK" 2>&1 >/dev/null); rc=$?; }
+run_json() { out=$(printf '%s' "$1" | bash "$HOOK" 2>"$W/err"); rc=$?; err=$(<"$W/err"); }
 write() { run_json "$(jq -nc --arg p "$1" --arg c "$2" '{tool_name: "Write", tool_input: {file_path: $p, content: $c}}')"; }
 edit()  { run_json "$(jq -nc --arg p "$1" --arg o "$2" --arg n "$3" '{tool_name: "Edit", tool_input: {file_path: $p, old_string: $o, new_string: $n}}')"; }
-refused() { [[ $rc -eq 2 && "$err" == *"- $2:"* && "$err" == *'Why:'* ]] && ok || bad "$1 must be refused for $2 (rc=$rc err=$err)"; }
-allowed() { [[ $rc -eq 0 && -z "$err" ]] && ok || bad "$1 must pass (rc=$rc err=$err)"; }
+refused() { [[ $rc -eq 2 && "$err" == *"- $2:"* && "$err" == *'Why:'* && -z "$out" ]] && ok || bad "$1 must be refused for $2 (rc=$rc err=$err out=$out)"; }
+allowed() { [[ $rc -eq 0 && -z "$err" && -z "$out" ]] && ok || bad "$1 must pass (rc=$rc err=$err out=$out)"; }
+asks() {
+  local d r
+  d=$(jq -r '.hookSpecificOutput.permissionDecision // ""' <<<"$out" 2>/dev/null)
+  r=$(jq -r '.hookSpecificOutput.permissionDecisionReason // ""' <<<"$out" 2>/dev/null)
+  [[ $rc -eq 0 && -z "$err" && "$d" == ask && "$r" == *"- $2 ("* ]] && ok || bad "$1 must ask for $2 (rc=$rc err=$err out=$out)"
+}
 
 # ── split-lf ──
 write "$W/a.mjs" "const lines = text.split('\n');";           refused 'a JS split on a quoted LF' split-lf
@@ -32,10 +38,26 @@ write "$W/a.ts"  "const lines = text.split( '\n' );";         refused 'a TS spli
 write "$W/a.py"  "lines = text.split('\n')";                  refused 'a Python split' split-lf
 write "$W/a.mjs" 'const lines = text.split(/\r?\n/);';        allowed 'a split on CRLF or LF'
 write "$W/a.py"  'lines = text.splitlines()';                 allowed "Python's splitlines"
+write "$W/a.py"  "lines = re.split(r'\r?\n', text)";          allowed "Python's re.split on CRLF or LF"
 write "$W/a.sh"  'jq -Rsc '"'"'split("\n")'"'";                allowed 'a shell script'
 write "$W/a.md"  "Never \`text.split('\n')\`.";               allowed 'a Markdown file'
-write "$W/a.mjs" "text.split('\n'); // code-rules: allow split-lf"; allowed 'a line with the allow comment'
 write "$W/a.mjs" "text.split('\n'); // code-rules: allow lookbehind"; refused 'an allow comment for another rule' split-lf
+
+# ── an allow comment is his to approve ──
+write "$W/a.mjs" "text.split('\n'); // code-rules: allow split-lf"; asks 'a new line with the allow comment' split-lf
+[[ "$(jq -r '.hookSpecificOutput.permissionDecisionReason' <<<"$out")" == *"text.split('\n'); // code-rules: allow split-lf"* ]] && ok || bad "the prompt shows the line (out=$out)"
+edit "$W/h.mjs" "a(); // code-rules: allow bare-symbol" "a(); b(); // code-rules: allow split-lf"; allowed 'an allow comment on a line with no break'
+edit "$W/h.mjs" "x = s.split('\n'); // code-rules: allow split-lf
+y = 1;" "x = s.split('\n'); // code-rules: allow split-lf
+y = 2;";                                                                     allowed 'an Edit keeping an approved allow comment'
+printf "const k = Symbol('m'); // code-rules: allow bare-symbol\n" > "$W/i.mjs"
+write "$W/i.mjs" "const k = Symbol('m'); // code-rules: allow bare-symbol
+export {k};";                                                                allowed 'a Write keeping the file'"'"'s approved comment'
+write "$W/i.mjs" "const k = Symbol('m'); // code-rules: allow bare-symbol
+const j = Symbol('n'); // code-rules: allow bare-symbol";                    asks 'a Write adding a second allow comment' bare-symbol
+write "$W/j.mjs" "x = s.split('\n'); y = Symbol('q'); // code-rules: allow split-lf"; refused 'an allowed line that also breaks another rule' bare-symbol
+c="x = s.split('\n'); z = '$(printf '\342\200\250')'; // code-rules: allow split-lf"
+write "$W/k.mjs" "$c"; asks 'a U+2028 between a break and its allow comment keeps them on one line' split-lf
 
 # ── only what the edit adds ──
 edit "$W/b.mjs" 'const a = 1;' "const lines = text.split('\n');";             refused 'an Edit that adds a split' split-lf

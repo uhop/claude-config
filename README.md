@@ -62,7 +62,9 @@ ignored. Anything else in `~/.claude/` (per-host `settings.local.json`, runtime 
   check, and tells the agent the rule and its reason: a split on `'\n'`, a regex lookbehind, a bare
   `Symbol()`, a raw NUL. The rules live in `hooks/lib/code_rules.py`, not in the global `CLAUDE.md`,
   so a session reads one only when it breaks it. Only what the edit adds counts, so a file's older
-  breaks never block an edit. A write through Bash is not read.
+  breaks never block an edit. An exception is a line holding `code-rules: allow <id>`: one the edit
+  adds brings up the person's permission prompt, and one already in the file stays approved. A write
+  through Bash is not read.
 - `git-commit-gate.sh` — reinstates the old default-deny for `git commit` and the other verbs that
   make a commit (`am`, `merge`, `cherry-pick`, `revert`, `rebase`, a `pull` that may merge; their
   `--ff-only`, `--squash`, `--no-commit`, and `--abort` forms make none), but allows it in projects

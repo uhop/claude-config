@@ -1,11 +1,16 @@
 """The code rules a program can check (claude-config 9f): `code-rules-gate.sh` refuses an Edit or a
 Write that introduces one, with the rule and its reason. A new checkable rule joins RULES, never
-the global CLAUDE.md, so a session pays for its wording only when it breaks it."""
+the global CLAUDE.md, so a session pays for its wording only when it breaks it.
+
+An allow comment is an exception Eugene approves: one the edit adds makes the gate answer `ask`,
+which Claude Code turns into his permission prompt (in auto mode too, and a refusal under
+`claude -p`), and one already in the file stays approved (question 10, his apodict ruling's shape)."""
 
 import json
 import os
 import re
 import sys
+from collections import Counter
 
 JS = {'.js', '.mjs', '.cjs', '.jsx', '.ts', '.mts', '.cts', '.tsx'}
 PY = {'.py'}
@@ -16,7 +21,9 @@ RULES = [
         'applies': lambda ext: ext in JS | PY,
         'pattern': re.compile(r"""\.split\(\s*(?:'\\n'|"\\n"|`\\n`|/\\n/)\s*\)"""),
         'rule': "split text into lines on /\\r?\\n/, or with a utility that reads both endings "
-                "(Python's str.splitlines(), Node's readline)",
+                "(Python's re.split(r'\\r?\\n', text) or str.splitlines(), Node's readline). "
+                "str.splitlines() also splits at a lone \\r, a form feed, and U+2028 and U+2029, "
+                "so it cuts a JSONL record whose string holds one",
         'why': "a file written or checked out on Windows ends its lines in CRLF, and a split on "
                "'\\n' leaves a \\r on each line, so a test such as line === '---' fails. Eugene, "
                "2026-11-06: \"Always split on /\\r?\\n/ or use system utilities that do that.\" "
@@ -60,19 +67,35 @@ RULES = [
 ]
 
 
-def count(rule, text):
+EOL = re.compile(r'\r?\n')
+
+
+def tally(rule, text):
     marker = f"code-rules: allow {rule['id']}"
-    return sum(
-        len(rule['pattern'].findall(line))
-        for line in text.splitlines()
-        if marker not in line
-    )
+    plain, allowed = 0, []
+    for line in EOL.split(text):
+        n = len(rule['pattern'].findall(line))
+        if not n:
+            continue
+        if marker in line:
+            allowed.append(line.strip())
+        else:
+            plain += n
+    return plain, allowed
 
 
-def introduced(path, old, new):
+def verdicts(path, old, new):
     ext = os.path.splitext(path)[1].lower()
-    rules = [r for r in RULES if r['applies'](ext)]
-    return [r for r in rules if count(r, new) > count(r, old)]
+    refused, asked = [], []
+    for rule in (r for r in RULES if r['applies'](ext)):
+        old_plain, old_allowed = tally(rule, old)
+        new_plain, new_allowed = tally(rule, new)
+        if new_plain > old_plain:
+            refused.append(rule)
+        added = list((Counter(new_allowed) - Counter(old_allowed)).elements())
+        if added:
+            asked.append((rule, added))
+    return refused, asked
 
 
 def texts(tool, ti):
@@ -95,15 +118,24 @@ def main():
     if pair is None:
         return 0
     path = ti.get('file_path') or ''
-    found = introduced(path, *pair)
-    if not found:
-        return 0
-    lines = [f'code-rules: this edit to {path} adds what a house rule forbids:']
-    lines += [f"- {r['id']}: {r['rule']}. Why: {r['why']}." for r in found]
-    lines.append('Rewrite it. A line that must keep it carries the comment '
-                 '`code-rules: allow <id>`, which the gate skips.')
-    print('\n'.join(lines), file=sys.stderr)
-    return 2
+    refused, asked = verdicts(path, *pair)
+    if refused:
+        lines = [f'code-rules: this edit to {path} adds what a house rule forbids:']
+        lines += [f"- {r['id']}: {r['rule']}. Why: {r['why']}." for r in refused]
+        lines.append('Rewrite it. A line that is a real exception takes the comment '
+                     '`code-rules: allow <id>`, and the gate then asks Eugene to approve the edit.')
+        print('\n'.join(lines), file=sys.stderr)
+        return 2
+    if asked:
+        lines = [f'code-rules: this edit to {path} adds an exception to a house rule:']
+        lines += [f"- {r['id']} ({r['rule']}): {line}" for r, added in asked for line in added]
+        reason = '\n'.join(lines + ['Approve to keep it; deny to have it rewritten.'])
+        print(json.dumps({'hookSpecificOutput': {
+            'hookEventName': 'PreToolUse',
+            'permissionDecision': 'ask',
+            'permissionDecisionReason': reason,
+        }}))
+    return 0
 
 
 if __name__ == '__main__':

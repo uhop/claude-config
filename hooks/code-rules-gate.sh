@@ -5,11 +5,13 @@
 #
 # Only what the edit adds counts: an Edit's new text against its old text, a Write against the file
 # on disk, so a file's older breaks never block an edit. A line holding `code-rules: allow <id>` is
-# skipped for that rule. A write through Bash is not read.
+# an exception Eugene approves: one the edit adds answers `ask`, his permission prompt, and one
+# already in the file stays approved. A write through Bash is not read.
 #
 # FAILS OPEN, silently: no python, unreadable input, or another tool exits 0.
 #
-# Hook contract: stdin JSON {tool_name, tool_input}; exit 2 blocks, stderr goes to the agent.
+# Hook contract: stdin JSON {tool_name, tool_input}; exit 2 blocks, stderr goes to the agent; an
+# `ask` is stdout JSON {hookSpecificOutput: {permissionDecision: "ask", permissionDecisionReason}}.
 
 set -u
 
