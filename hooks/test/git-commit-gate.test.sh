@@ -178,6 +178,10 @@ check DENY  "x=\$(echo hi) $V -m x"
 check DENY  "x=\`echo hi\` $V -m x"
 check DENY  "GIT_AUTHOR_DATE=\$(date -R) $V -m x"
 check ALLOW "x=\$(echo hi) $V -m x" "$MARKED"
+# a closer that pairs inside its segment stays, so cd $(mktemp -d) goes to a fresh scratch place (9a, 2026-11-06)
+check ALLOW "cd \$(mktemp -d) && git init -q && $V -m x"
+check DENY  "cd \$(mktemp -d) && git init -q && cd $PLAIN && $V -m x" "$MARKED"
+check DENY  "cd \$(mktemp -d) && $V -m x"
 # ── the opt-in marker ──
 check ALLOW "$V -m x" "$MARKED"
 check ALLOW "cd sub && $V -m x" "$MARKED"

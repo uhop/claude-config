@@ -256,8 +256,20 @@ def without_redirects(seg):
 
 
 def bare(seg):
-    """The segment without the `(`/`{` opening it or the `)`/`}` closing it."""
-    return seg.strip().lstrip('({').rstrip(')}').strip()
+    """The segment without the `(`/`{` opening it or the `)`/`}` closing it, which a segment split
+    can leave apart; a closer that pairs with an opener inside the segment, a substitution's, stays (9a)."""
+    text, opened, paired = seg.strip().lstrip('({'), [], set()
+    for i, _, before, _ in _units(text, backticks=True):
+        if before is None and text[i] in '(){}':
+            if text[i] in '({':
+                opened.append(text[i])
+            elif opened and opened[-1] == '({'[')}'.index(text[i])]:
+                opened.pop()
+                paired.add(i)
+    end = len(text)
+    while end and text[end - 1] in ')}' and end - 1 not in paired:
+        end -= 1
+    return text[:end].strip()
 
 
 ANSI_C_ESC = re.compile(r'\\(?:([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|u([0-9A-Fa-f]{1,4})|U([0-9A-Fa-f]{1,8})|c(.)|(.))', re.S)
@@ -607,8 +619,9 @@ def expand(tok, eff, env):
 
 
 def resolve_path(tok, eff, env):
-    """tok as an absolute path. None when a variable is unknown, or tok is relative to an unknown eff."""
-    tok = expand(tok, eff, env)
+    """tok as an absolute path, a `$(mktemp …)` in it the fresh place it makes (9a). None when a variable is
+    unknown, or tok is relative to an unknown eff."""
+    tok = expand(with_mktemp(tok, eff, env), eff, env)
     if tok is None:
         return None
     if tok == '~' or tok.startswith('~/'):
@@ -644,12 +657,15 @@ def mktemp_path(args, eff, env):
     return None if base is None else os.path.join(base, 'tmp.fresh-%d' % next(_fresh))
 
 
+def with_mktemp(text, eff, env):
+    """text with each `$(mktemp …)` replaced by the fresh place it makes."""
+    return MKTEMP_RE.sub(lambda m: mktemp_path(m.group(1), eff, env) or m.group(0), text)
+
+
 def read_assignment(seg, eff, env):
     """Record a segment's `NAME=value`s in env; True when the segment is nothing else.
     A value it cannot read forgets the name, so a stale value never decides."""
-    def fresh(m):
-        return mktemp_path(m.group(1), eff, env) or m.group(0)
-    text = MKTEMP_RE.sub(fresh, seg).strip().lstrip('({').rstrip(')}').strip()
+    text = bare(with_mktemp(seg, eff, env))
     try:
         toks = _split(text)
     except ValueError:
