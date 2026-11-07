@@ -251,6 +251,12 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
   happen accidentally in a good input and I prefer not to open a door for any exploits if I can help
   it without major sacrifices."_ A lookbehind also fails older engines: Safari before 16.4 cannot
   parse one, so the whole module fails to load.
+- **Split text into lines on `/\r?\n/`, or with a utility that reads both endings** (Python's
+  `str.splitlines()`, Node's `readline`). A file written or checked out on Windows ends its lines in
+  CRLF, and a split on `'\n'` leaves a `\r` on each line, so a test such as `line === '---'` fails.
+  Eugene, 2026-11-06: _"Always split on `/\r?\n/` or use system utilities that do that."_ A lone
+  `\r` was classic Mac OS's separator and is no longer written (invariants-sidecar's parser, found
+  through its Windows CI, `2569624`).
 - **Every symbol is `Symbol.for()`, never `Symbol()`, internal ones included**, keyed under the
   project's own prefix (`object-stream.` across the stream-* family). A well-known name is a
   protocol without a dependency: another library can produce or recognize the package's markers by
