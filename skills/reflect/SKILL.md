@@ -132,6 +132,8 @@ Read all three to dedupe; write only to vault + claude-config.
    | `gate_gaps` — a session wrote a gate spelling that waits on one | an alert naming the item: a real use ends its wait, so place the item in its project's plan; a gate test or a fixture is listed and dismissed (`references/scan-fields.md`) |
    | `multi_release` — two releases within 24 hours | vault `projects/<name>/feedback.md` when the fix is project-shaped (local-link workflow for its satellites); `CLAUDE.md` / [[topics/semver-and-release-cadence]] when it is a cadence rule |
 
+   A write to a `feedback.md` follows [[topics/project-feedback-md-convention]] § When to create or extend: a new rule is its own section, and a change to a rule goes in its heading or first sentence, the parts the session-start digest shows, checked against the digest's `omitted` count.
+
 6. **Write the report.** Path: `projects/agent-workflow/reports/YYYY-MM-DD.md`. If that exact path already exists (another machine's run, or a re-run, on the same day), append `-HHMM` → `YYYY-MM-DD-HHMM.md` rather than clobbering the earlier run: transcripts are local-only, so each host's run is distinct content, not a redundant overwrite. The machine, the short hostname (`hostname -s`), goes in the title and in the frontmatter as `host:`, never in the path, since report names reach public code as citations (Eugene, 2026-10-14). Reports named before that day keep their `-<host>` names. Write it with `mcp__vault__vault_write_file{path, frontmatter, body}` — it takes frontmatter as a JSON object and serializes the YAML server-side, which is what keeps the date fields from shadowing (fallback: the `vault-curl` JSON-PUT path, same reason). Body shape:
 
    ```markdown
