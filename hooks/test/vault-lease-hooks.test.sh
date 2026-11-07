@@ -340,6 +340,8 @@ if live_server /leases; then
   [[ $rc -eq 2 ]] && ok || bad "bash: a substitution's write past a \$'...' string with an escaped quote must block, 8x (rc=$rc)"
   bashrun "x=\`echo \\\`command sed -i 's/a/b/' $W/a.txt\\\`\`" /tmp "$S2"
   [[ $rc -eq 2 ]] && ok || bad "bash: a write in a nested backtick must block, 8y (rc=$rc)"
+  bashrun "X=\$(echo hi) command sed -i 's/a/b/' a.txt" "$W" "$S2"
+  [[ $rc -eq 2 ]] && ok || bad "bash: a write behind an assignment prefix holding a spaced substitution must block, 8z (rc=$rc)"
   bashrun "S=\$(git -C $W stash create) && git -C $W stash list && git -C $W stash show" /tmp "$S2"
   [[ $rc -eq 0 ]] && ok || bad "bash: git stash create, list, and show read the tree and must pass, 8q (rc=$rc)"
   bashrun "git -C $W stash" /tmp "$S2"

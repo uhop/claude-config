@@ -171,6 +171,8 @@ check DENY  $'cat <<EOF\n$(echo $\'\\\')\'; gh issue create -t x)\nEOF'
 check DENY  'echo `echo \`gh issue create -t x\``'
 check DENY  $'cat <<EOF\n`echo \\`gh issue create -t x\\``\nEOF'
 check DENY  'echo `echo \$(gh issue create -t x)`'
+check DENY  'x=$(echo hi) gh issue create -t x'
+check DENY  'x=`echo hi` git push origin main'
 check DENY  "git push origin \$'ma\\'in'"
 check DENY  "git \$'push' origin main"
 check DENY  "git \$\"tag\" x"

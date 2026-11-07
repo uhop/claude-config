@@ -5,7 +5,7 @@ destructive-op-gate.sh; D14: a shape added here is a shape all see). Heredoc bod
 receives them; segments split on unquoted `;`, `|`, `||`, `&&` and newlines, a `#` comment dropped;
 a substitution inside single quotes or a comment is data (8f); the quote readers walk one stepper, `_units`
 (8j, 8x, 8y), which knows `$'...'`, where a backslash escapes, and shlex gets the word it stands for (8g);
-tokens come from shlex with redirections left out, wherever they sit
+tokens come from shlex, a word holding its unquoted substitution whole (8z), with redirections left out, wherever they sit
 (`split_redirects`, a here-string kept for what runs its input), and the wrapper prefixes and the shell syntax heading
 a segment skipped (assignments, `command`, `env`, `timeout`, `do`, `then`, `!`,
 ...); `run_tokens` goes past `xargs`, `parallel`, `watch`, and `find -exec`;
@@ -281,23 +281,31 @@ def _split(text):
     """shlex.split, with each `$'...'` given as the single-quoted word it stands for and each `$"`
     as `"`: shlex reads `$'it\\'s'` as an unclosed quote, and `$'commit'` as `$commit` (8g). A
     backslash that ends the text is a character (8i), and a line continuation is nothing, as bash
-    reads them; shlex makes the continuation a newline word (8t). It walks _units (8x)."""
-    out, ansi = [], None
-    for i, j, before, after in _units(text):
-        unit = text[i:j]
-        if ansi is not None:
-            if after == "$'":
-                ansi.append(unit)
-                continue
-            out.append(shlex.quote(_ansi_c(''.join(ansi))))
-            ansi = None
-        elif after == "$'":
-            out[-1:] = []
-            ansi = []
-        elif unit != '\\\n':
-            if before is None and after == '"' and _bare_dollar(text, i):
+    reads them; shlex makes the continuation a newline word (8t). It walks _units (8x). An unquoted
+    substitution is part of its word, its spaces included, as bash parses it (8z); the stepper
+    restarts past it, since a backtick body's quotes need not balance."""
+    out, ansi, start = [], None, 0
+    while start is not None:
+        units, start = _units(text, start), None
+        for i, j, before, after in units:
+            unit = text[i:j]
+            if ansi is not None:
+                if after == "$'":
+                    ansi.append(unit)
+                    continue
+                out.append(shlex.quote(_ansi_c(''.join(ansi))))
+                ansi = None
+            elif after == "$'":
                 out[-1:] = []
-            out.append('\\\\' if j > len(text) else unit)
+                ansi = []
+            elif before is None and (text.startswith('$(', i) or unit == '`'):
+                start = (_closing_paren(text, i + 1) if unit == '$' else _backtick_close(text, i)) + 1
+                out.append(shlex.quote(text[i:start]))
+                break
+            elif unit != '\\\n':
+                if before is None and after == '"' and _bare_dollar(text, i):
+                    out[-1:] = []
+                out.append('\\\\' if j > len(text) else unit)
     if ansi is not None:
         out.append(shlex.quote(_ansi_c(''.join(ansi))))
     return shlex.split(''.join(out))
@@ -565,6 +573,11 @@ def substitution_spans(text, quotes=True):
             for at, end in substitution_extents(text, quotes)]
 
 
+def _backtick_close(text, i):
+    """Where the backtick string opening at i closes; len(text) when it never does."""
+    return next((k for k, _, _, after in _units(text, i, backticks=True) if after is None), len(text))
+
+
 def substitution_extents(text, quotes=True):
     """(offset of its `$` or backtick, offset of its closing character, or len(text) when it never
     closes) per outermost substitution."""
@@ -577,7 +590,7 @@ def substitution_extents(text, quotes=True):
         if scan.startswith('$(', i):
             end = _closing_paren(scan, i + 1)
         elif scan[i] == '`':
-            end = next((k for k, _, _, after in _units(scan, i, backticks=True) if after is None), len(scan))
+            end = _backtick_close(scan, i)
         else:
             i += 1
             continue

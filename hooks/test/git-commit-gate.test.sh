@@ -173,6 +173,11 @@ check DENY  'echo `echo \`git commit -m x\``'
 check ALLOW 'echo `echo \`git commit -m x\``' "$MARKED"
 check DENY  "echo \`cd $PLAIN && echo \\\`$V -m x\\\`\`" "$MARKED"
 check DENY  'echo `echo \$(git commit -m x)`'
+# a word holds its unquoted substitution, spaces and all, so an assignment prefix stays one word (8z, 2026-11-06)
+check DENY  "x=\$(echo hi) $V -m x"
+check DENY  "x=\`echo hi\` $V -m x"
+check DENY  "GIT_AUTHOR_DATE=\$(date -R) $V -m x"
+check ALLOW "x=\$(echo hi) $V -m x" "$MARKED"
 # ── the opt-in marker ──
 check ALLOW "$V -m x" "$MARKED"
 check ALLOW "cd sub && $V -m x" "$MARKED"
