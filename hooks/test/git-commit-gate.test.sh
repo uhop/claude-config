@@ -168,6 +168,11 @@ check ALLOW $'echo \\\' <<EOF\n'"$V"$' -m x\nEOF'
 check DENY  "x=\"\$(echo \$'\\')'; cd $PLAIN && $V -m x)\"" "$MARKED"
 check ALLOW "x=\"\$(echo \$'\\')'; cd $MARKED && $V -m x)\""
 check DENY  $'cat <<EOF\n$(echo $\'\\\')\'; cd '"$PLAIN"$' && '"$V"$' -m x)\nEOF' "$MARKED"
+# a backtick body is the code bash runs, its escaped backtick, `$`, and backslash unescaped (8y, 2026-11-06)
+check DENY  'echo `echo \`git commit -m x\``'
+check ALLOW 'echo `echo \`git commit -m x\``' "$MARKED"
+check DENY  "echo \`cd $PLAIN && echo \\\`$V -m x\\\`\`" "$MARKED"
+check DENY  'echo `echo \$(git commit -m x)`'
 # ── the opt-in marker ──
 check ALLOW "$V -m x" "$MARKED"
 check ALLOW "cd sub && $V -m x" "$MARKED"

@@ -10,7 +10,8 @@ import sys
 LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))), 'hooks', 'lib')
 sys.path.insert(0, LIB)
 from shell_segments import (parse_heredocs_at, heredoc_runs_at, segment_spans, segments, run_tokens,  # noqa: E402
-                            substitution_spans, mask_quoted, _blank_single_quoted, _closing_paren, SHELLS)
+                            substitution_spans, substitution_extents, mask_quoted, _blank_single_quoted,
+                            _closing_paren, SHELLS)
 
 ITEMS = {
     '8l': 'The gh api analyzer misses a body field glued to its flag, as -ftitle=x',
@@ -80,9 +81,9 @@ def scoped_subshell(seg):
 def spans_of(text):
     """segment_spans with each substitution's body blanked first, so its own separators stay inside it."""
     chars = list(text)
-    for body, at in substitution_spans(text):
+    for at, end in substitution_extents(text):
         start = at + 2 if text[at] == '$' else at + 1
-        chars[start:start + len(body)] = '_' * len(body)
+        chars[start:end] = '_' * (end - start)
     return [(text[at:at + len(seg)], at) for seg, at in segment_spans(''.join(chars))]
 
 
@@ -141,9 +142,9 @@ def detect(cmd):
             nxt_toks, nxt = command(spans[n + 1][0])
             if nxt in SHELLS - {'eval'} and not [t for t in nxt_toks[1:] if not t.startswith('-')]:
                 hit('D52', 'a string piped into a shell', seg)
-    for body, at in substitution_spans(text):
+    for (body, _), (_, end) in zip(substitution_spans(text), substitution_extents(text)):
         names = assigned(body)
-        if names and directs(text[at + len(body) + 1:], names):
+        if names and directs(text[end + 1:], names):
             hit('8u', 'an assignment in a substitution, used as a directory later', body)
     for m in re.finditer(r'[<>]\(', text):
         body = text[m.end():_closing_paren(text, m.start() + 1)]

@@ -4,8 +4,7 @@ One parser for three gates (vault-lease-gate.sh, git-commit-gate.sh,
 destructive-op-gate.sh; D14: a shape added here is a shape all see). Heredoc bodies are data unless a shell
 receives them; segments split on unquoted `;`, `|`, `||`, `&&` and newlines, a `#` comment dropped;
 a substitution inside single quotes or a comment is data (8f); the quote readers walk one stepper, `_units`
-(8j, 8x; `substitution_spans`' backtick loop aside), which knows `$'...'`, where a backslash escapes, and shlex
-gets the word it stands for (8g);
+(8j, 8x, 8y), which knows `$'...'`, where a backslash escapes, and shlex gets the word it stands for (8g);
 tokens come from shlex with redirections left out, wherever they sit
 (`split_redirects`, a here-string kept for what runs its input), and the wrapper prefixes and the shell syntax heading
 a segment skipped (assignments, `command`, `env`, `timeout`, `do`, `then`, `!`,
@@ -52,7 +51,7 @@ RUNNERS = {'xargs', 'find', 'parallel', 'watch', 'ssh', 'env', 'time', 'timeout'
            'sudo', 'doas', 'command', 'exec', 'builtin'}
 
 
-ESCAPING = ('"', "$'")
+ESCAPING = ('"', "$'", '`')
 
 
 def _bare_dollar(text, i):
@@ -77,8 +76,9 @@ def _opens(text, i):
 
 def _units(text, start=0, backticks=False, comments=False):
     """The one quote reader (8j): each unit of text from start as (start, end, quote before, quote
-    after), a character, or a backslash and the character it escapes outside quotes and in `"` or
-    `$'`; an escape that ends the text ends past it. A quote is what _opens names; with backticks a
+    after), a character, or a backslash and the character it escapes outside quotes and in `"`, `$'`,
+    or a backtick string, where bash's escapes of a backtick and a backslash decide its end (8y); an
+    escape that ends the text ends past it. A quote is what _opens names; with backticks a
     backtick is one, and with comments a comment is one, from its `#` to its line's end."""
     q, i, n = None, start, len(text)
     while i < n:
@@ -553,29 +553,37 @@ def substitutions(text, quotes=True):
     return [body for body, _ in substitution_spans(text, quotes)]
 
 
+BACKTICK_ESCAPE = re.compile(r'\\([$`\\])')
+
+
 def substitution_spans(text, quotes=True):
-    """(body, offset of its `$` or backtick) per substitution, as `substitutions` finds them (8r)."""
+    """(body, offset of its `$` or backtick) per substitution, as `substitutions` finds them (8r). A
+    backtick body is the code bash runs, its escaped `$`, backtick, and backslash unescaped, so a
+    nested backtick is read (8y); within double quotes bash unescapes `\\"` too, which this leaves,
+    reading more as code, never less."""
+    return [(text[at + 2:end] if text[at] == '$' else BACKTICK_ESCAPE.sub(r'\1', text[at + 1:end]), at)
+            for at, end in substitution_extents(text, quotes)]
+
+
+def substitution_extents(text, quotes=True):
+    """(offset of its `$` or backtick, offset of its closing character, or len(text) when it never
+    closes) per outermost substitution."""
     scan = _blank_single_quoted(text) if quotes else text
-    bodies, i = [], 0
+    extents, i = [], 0
     while i < len(scan):
         if scan[i] == '\\':
             i += 2
             continue
         if scan.startswith('$(', i):
             end = _closing_paren(scan, i + 1)
-            bodies.append((text[i + 2:end], i))
-            i = end + 1
+        elif scan[i] == '`':
+            end = next((k for k, _, _, after in _units(scan, i, backticks=True) if after is None), len(scan))
+        else:
+            i += 1
             continue
-        if scan[i] == '`':
-            # An escaped backtick is a character, never a delimiter (8i).
-            end = i + 1
-            while end < len(scan) and scan[end] != '`':
-                end += 2 if scan[end] == '\\' else 1
-            bodies.append((text[i + 1:end], i))
-            i = end + 1
-            continue
-        i += 1
-    return bodies
+        extents.append((i, end))
+        i = end + 1
+    return extents
 
 
 def expand(tok, eff, env):
