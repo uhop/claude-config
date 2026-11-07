@@ -705,6 +705,64 @@ test('a scan reports a waiting gate spelling a session wrote, and how many comma
   assert.equal(gap.command, '(cd /tmp/x); git commit -m x');
 });
 
+test('the gate-gap watcher reads the sub-agent and headless sessions the rest of a scan leaves out (8w)', t => {
+  const home = mkdtempSync(path.join(tmpdir(), 'reflect-gaps-'));
+  t.after(() => rmSync(home, {recursive: true, force: true}));
+  const dir = path.join(home, '.claude/projects/-x');
+  mkdirSync(path.join(dir, 's/subagents'), {recursive: true});
+  const base = Date.now() - 3600e3;
+  const row = (sessionId, entrypoint, type, content, i, extra = {}) => ({
+    type,
+    timestamp: new Date(base + i * 1000).toISOString(),
+    sessionId,
+    cwd: home,
+    entrypoint,
+    message: {role: type, content},
+    ...extra
+  });
+  const bash = (id, command) => [{type: 'tool_use', id, name: 'Bash', input: {command}}];
+  const agent = {isSidechain: true, agentId: 'a1'};
+  const files = {
+    's.jsonl': [
+      row('s', 'cli', 'user', 'look around', 0),
+      row('s', 'cli', 'assistant', bash('a', 'git status'), 1),
+      {
+        type: 'api-request-blob',
+        sessionId: 's',
+        hash: 'h',
+        message: {role: 'assistant', content: bash('a', 'git status')}
+      }
+    ],
+    's/subagents/agent-a1.jsonl': [
+      row('s', 'cli', 'user', 'commit the fix', 2, agent),
+      row('s', 'cli', 'assistant', bash('b', '(cd /tmp/x); git commit -m x'), 3, agent)
+    ],
+    'h.jsonl': [
+      row('h', 'sdk-cli', 'user', 'file the issue', 4),
+      row('h', 'sdk-cli', 'assistant', bash('c', 'gh api repos/o/r/issues -ftitle=x'), 5)
+    ]
+  };
+  for (const [name, rows] of Object.entries(files)) {
+    const file = path.join(dir, name);
+    writeFileSync(file, rows.map(r => `${JSON.stringify(r)}\n`).join(''));
+    utimesSync(file, new Date(base), new Date(base));
+  }
+  const script = new URL('reflect.mjs', import.meta.url).pathname;
+  const r = spawnSync('node', [script, '--since=1d'], {
+    encoding: 'utf8',
+    env: {...process.env, HOME: home}
+  });
+  const scan = JSON.parse(r.stdout);
+  assert.equal(scan.sessions_scanned, 1);
+  assert.equal(scan.automated.count, 1);
+  assert.equal(scan.transcripts_seen, 2);
+  assert.deepEqual(scan.gate_gap_scan, {commands: 3, error: null});
+  assert.deepEqual(scan.signals.gate_gaps.map(g => [g.item, g.session_id]).sort(), [
+    ['8l', 'h'],
+    ['8u', 's/agent-a1']
+  ]);
+});
+
 test('an empty window names no earliest row and warns of nothing', t => {
   const {scan, stderr} = scanOf(t, 30, '1d');
   assert.equal(scan.scan_window.earliest_row_iso, null);

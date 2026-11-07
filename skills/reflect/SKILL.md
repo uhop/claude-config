@@ -17,8 +17,8 @@ Companion skill: `/clarify` drains the ambiguous-findings parking lot. Design an
 /reflect --since=24h | 7d | 14d | YYYY-MM-DD
 /reflect --project=NAME               # restrict scan to one project dir
 /reflect --apply                      # walk high-confidence proposals after the report: claude-config edits applied and shown, the rest asked
-/reflect --include-sidechain          # include sub-agent (Task) transcripts — <session>/subagents/agent-*.jsonl — in the scan
-/reflect --include-automated          # analyze headless `claude -p` transcripts (entrypoint sdk-cli) too
+/reflect --include-sidechain          # include sub-agent (Task) transcripts — <session>/subagents/agent-*.jsonl — in the scan (gate_gaps reads them either way)
+/reflect --include-automated          # analyze headless `claude -p` transcripts (entrypoint sdk-cli) too (gate_gaps reads them either way)
 ```
 
 The script itself is dry-run only — it scans, classifies, emits JSON. `--apply` is implemented in this SKILL.md by the agent walking the report after writing it.

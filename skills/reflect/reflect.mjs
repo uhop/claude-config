@@ -13,8 +13,8 @@
 //   reflect.mjs --since=24h|7d|14d|YYYY-MM-DD
 //   reflect.mjs --project=NAME               # filter by project dir basename
 //   reflect.mjs --out="$WORK/scan.json"     # write JSON to file (also stdout); $WORK from mktemp -d
-//   reflect.mjs --include-sidechain          # include sub-agent transcripts (<session>/subagents/agent-*.jsonl)
-//   reflect.mjs --include-automated          # analyze headless `claude -p` transcripts (sdk-cli) too
+//   reflect.mjs --include-sidechain          # include sub-agent transcripts (<session>/subagents/agent-*.jsonl); gate_gaps reads them either way
+//   reflect.mjs --include-automated          # analyze headless `claude -p` transcripts (sdk-cli) too; gate_gaps reads them either way
 //   reflect.mjs --max-excerpt-chars N        # cap each excerpt (default 800)
 
 import {
@@ -153,8 +153,8 @@ const collectTranscripts = () => {
     // still carry isSidechain: true, agentId, and the parent sessionId). No
     // top-level transcript carried a sidechain row in the 30 days to
     // 2026-09-05 (400 agent files did), so without this walk
-    // --include-sidechain included nothing.
-    if (!INCLUDE_SIDECHAIN) continue;
+    // --include-sidechain included nothing. Without the flag the walk still
+    // runs, for the gate-gap watcher alone (8w).
     for (const entry of entries) {
       const dir = join(projectPath, entry, 'subagents');
       let agents;
@@ -172,7 +172,8 @@ const collectTranscripts = () => {
           path: fp,
           project: projectDir,
           session_id: `${entry}/${agent.replace(/\.jsonl$/, '')}`,
-          mtime: stat.mtimeMs
+          mtime: stat.mtimeMs,
+          watchOnly: !INCLUDE_SIDECHAIN
         });
       }
     }
@@ -333,8 +334,18 @@ const signals = {
   gate_gaps: []
 };
 
-// Every analyzed session's Bash commands, for the gate-gap watcher after the loop (8w).
+// Every Bash command in the window, for the gate-gap watcher after the loop (8w). It reads
+// the sub-agent and headless sessions the flags leave out of the other passes, since the
+// gates read their commands too.
 const bashCommands = [];
+const bashCommandsOf = row =>
+  row.type === 'assistant' && Array.isArray(row.message?.content)
+    ? row.message.content
+        .filter(
+          b => b?.type === 'tool_use' && b.name === 'Bash' && typeof b.input?.command === 'string'
+        )
+        .map(b => b.input.command)
+    : [];
 
 // Per-session git correlation (Pass 4), reported alongside the signals so a
 // reader can see which sessions produced commits and which were talk only.
@@ -402,6 +413,13 @@ for (const t of transcripts) {
       continue;
     }
     row = asHumanRow(row);
+    const ts = row.timestamp ? Date.parse(row.timestamp) : null;
+    const inWindow = !ts || ts >= windowStartMs;
+    if (inWindow) {
+      for (const command of bashCommandsOf(row))
+        bashCommands.push({project: t.project, session_id: t.session_id, ts, command});
+    }
+    if (t.watchOnly) continue;
     if (!INCLUDE_SIDECHAIN && row.isSidechain === true) continue;
     if (row.type !== 'user' && row.type !== 'assistant') continue;
     // A user row whose `origin.kind` is not `human` is harness traffic — a
@@ -415,8 +433,7 @@ for (const t of transcripts) {
     if (entrypoint === null && row.type === 'user' && typeof row.entrypoint === 'string') {
       entrypoint = row.entrypoint;
     }
-    const ts = row.timestamp ? Date.parse(row.timestamp) : null;
-    if (ts && ts < windowStartMs) continue;
+    if (!inWindow) continue;
     if (ts && (earliestRowMs === null || ts < earliestRowMs)) earliestRowMs = ts;
     // Parallel tool calls are NOT one row: the transcript streams each
     // tool_use as its own assistant row, seconds apart, so neither the row nor
@@ -475,13 +492,6 @@ for (const t of transcripts) {
     continue;
   }
   sessionsAnalyzed++;
-  for (const e of events) {
-    e.toolNames.forEach((name, k) => {
-      const command = e.toolInputs[k]?.command;
-      if (name === 'Bash' && typeof command === 'string')
-        bashCommands.push({project: t.project, session_id: t.session_id, ts: e.ts, command});
-    });
-  }
 
   // Pass 1: corrections + confirmations + surprises — scan user-authored
   // text only. Synthetic blocks (system reminders, command messages) have
@@ -876,7 +886,7 @@ const output = {
     included: INCLUDE_AUTOMATED,
     sessions: automatedSessions
   },
-  transcripts_seen: transcripts.length,
+  transcripts_seen: transcripts.filter(t => !t.watchOnly).length,
   prior_report: priorReport,
   live_sessions: liveSessions,
   state_watermark_iso: new Date(Math.min(scanMs, ...liveFloorsMs)).toISOString(),

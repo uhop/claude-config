@@ -130,10 +130,13 @@ transcript, since a search writes its own pattern there and the count runs one s
 **`gate_gaps` watches the gate spellings that wait until a session writes one (8w).** Eugene ruled
 that some spellings the gates leave unread wait for a real use before anyone fixes them:
 claude-config 8l, 8m, and 8u, and the four spellings D52 left unread. A gate passes them without a
-word, so this list is the only place a use shows up. `gate-gaps.py` reads each analyzed session's
-Bash commands with the gates' own parser (`hooks/lib/shell_segments.py`), and each hit names its
-`item`, the queue title in `title`, the `shape` it matched, and the `command`. Read each command
-before acting on it. A gate test, a fixture that makes commits in a temporary repository, or code
-that only names a command is listed in the report and dismissed. A real use ends the item's wait by
-his ruling: say so as an alert, and place the item in claude-config's plan. `gate_gap_scan` says how
-many commands the watcher read; a non-null `error` means it did not run, which the report says.
+word, so this list is the only place a use shows up. `gate-gaps.py` reads every Bash command in the
+window with the gates' own parser (`hooks/lib/shell_segments.py`), sub-agent and headless sessions'
+included without `--include-sidechain` or `--include-automated`, since the gates read those commands
+too. Each hit names its `item`, the queue title in `title`, the `shape` it matched, and the
+`command`; a sub-agent's `session_id` is `<session>/agent-<id>`. Read each command before acting on
+it. A gate test, a fixture that makes commits in a temporary repository, code that only names a
+command, and a run script that sets a name to the value it already held (8u's census counted seven)
+are listed in the report and dismissed. A real use ends the item's wait by his ruling: say so as an
+alert, and place the item in claude-config's plan. `gate_gap_scan` says how many commands the
+watcher read; a non-null `error` means it did not run, which the report says.
