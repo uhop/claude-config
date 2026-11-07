@@ -184,7 +184,7 @@ const upcomingLines = ({items, owed, plans, next}) => {
   if (fresh.length > 0) {
     lines.push(
       'New in the Backlog since the last session:',
-      ...bullets(fresh.map(entry => entry.why.replace(/^.*?: /, '')))
+      ...bullets(fresh.map(entry => entry.why))
     );
   }
   if (watching.length > 0) lines.push(`Watching: ${watching.length} items`);

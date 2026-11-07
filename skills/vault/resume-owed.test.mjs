@@ -60,18 +60,18 @@ test('every kind, in the order the skill names them, each target what its call t
       target: 'h2',
       why: 'a run-check to repo:github.com/o/p, returned 2026-10-26T00:00:00.000Z'
     },
-    {kind: 'upstream', target: 'mirror', why: 'it mirrors github o/p#1: Mirror.'},
-    {kind: 'triage', target: 'new', why: 'it waits in the Inbox: New.'},
-    {kind: 'place', target: 'late', why: 'it entered the Backlog on 2026-11-01: Late.'},
+    {kind: 'upstream', target: 'mirror', why: 'github o/p#1: Mirror.'},
+    {kind: 'triage', target: 'new', why: 'New.'},
+    {kind: 'place', target: 'late', why: 'Late.'},
     {
       kind: 'fix-trackers',
       target: 'projects/p/queue/_about.md',
-      why: 'its trackers: an unknown kind: gitlab'
+      why: 'an unknown kind: gitlab'
     },
     {
       kind: 'file-stalls',
       target: STALL_ITEM,
-      why: '3 loop stalls in the past week, the latest at 2026-10-26T01:00:00.000Z'
+      why: '3 in the past week, the latest at 2026-10-26T01:00:00.000Z'
     }
   ]);
 });
@@ -82,7 +82,7 @@ test('stalls the server files owe nothing; with no project, the stalls alone', (
     {
       kind: 'file-stalls',
       target: STALL_ITEM,
-      why: '2 loop stalls in the past week, the latest at a'
+      why: '2 in the past week, the latest at a'
     }
   ]);
 });

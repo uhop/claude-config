@@ -8,10 +8,11 @@ export const STALL_ITEM = 'projects/vault-storage/queue/loop-stalls.md';
 
 const FIRST_LINE_MAX = 120;
 
+// A reason follows its kind's label in `resume.mjs`, so it never restates it.
 const itemWhy = {
-  upstream: i => `it mirrors ${i.source}: ${i.title}`,
-  triage: i => `it waits in the Inbox: ${i.title}`,
-  place: i => `it entered the Backlog on ${i.filed}: ${i.title}`
+  upstream: i => `${i.source}: ${i.title}`,
+  triage: i => i.title,
+  place: i => i.title
 };
 
 const slugOfPath = path => path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/, '');
@@ -29,11 +30,7 @@ const owedByProject = (p, items, owe) => {
   }
   for (const i of items) owe(i.kind, slugOfPath(i.path), itemWhy[i.kind](i));
   if (p.trackers.problems.length > 0) {
-    owe(
-      'fix-trackers',
-      `projects/${p.name}/queue/_about.md`,
-      `its trackers: ${p.trackers.problems.join('; ')}`
-    );
+    owe('fix-trackers', `projects/${p.name}/queue/_about.md`, p.trackers.problems.join('; '));
   }
 };
 
@@ -51,7 +48,7 @@ export const owedOf = (bundle, items = []) => {
     owe(
       'file-stalls',
       STALL_ITEM,
-      `${stalls.count} loop stalls in the past week, the latest at ${stalls.latestAt}`
+      `${stalls.count} in the past week, the latest at ${stalls.latestAt}`
     );
   }
   return owed;

@@ -18,6 +18,7 @@ import {
   threadLines,
   threadsToFile
 } from './resume.mjs';
+import {owedOf} from './resume-owed.mjs';
 
 const project = (extra = {}) => ({
   found: true,
@@ -221,7 +222,7 @@ test('every section the digest owes, in order, from the log, the queue, and GitH
       ],
       owed: [
         {kind: 'handoff', target: 'h', why: 'a run-check from x'},
-        {kind: 'place', target: 's', why: 'it entered the Backlog on 2026-11-03: Fresh item.'},
+        {kind: 'place', target: 's', why: 'Fresh item.'},
         {kind: 'read', target: 'projects/p/decisions.md', why: 'its summary predates its body'}
       ],
       plans: ['projects/p/plans/order'],
@@ -269,6 +270,34 @@ test('every section the digest owes, in order, from the log, the queue, and GitH
   assert.ok(!text.includes('Summary only'), 'a restated summary is no change');
   assert.ok(!text.includes('Node.'), 'what the notes hold is read when the work needs it');
   assert.ok(!text.includes('D1 to D9.'));
+});
+
+test('an owed line says its label once, and a new Backlog item reads as its title', () => {
+  const owed = owedOf(
+    {
+      project: {
+        name: 'p',
+        handoffs: {open: [], returned: []},
+        trackers: {problems: ['an unknown kind: gitlab']}
+      },
+      stalls: {count: 3, latestAt: 'a'}
+    },
+    [
+      {kind: 'upstream', title: 'Mirror.', source: 'github o/p#1', path: 'projects/p/queue/m.md'},
+      {kind: 'triage', title: 'New.', path: 'projects/p/queue/new.md'},
+      {kind: 'place', title: 'Late.', filed: '2026-11-01', path: 'projects/p/queue/late.md'}
+    ]
+  );
+  const text = digestOf(inputs({owed}));
+  for (const expected of [
+    '\n- Mirrors a ticket: github o/p#1: Mirror.\n',
+    '\n- In the Inbox: New.\n',
+    '\n- Trackers malformed: an unknown kind: gitlab\n',
+    '\n- Loop stalls not filed: 3 in the past week, the latest at a',
+    'New in the Backlog since the last session:\n- Late.\n'
+  ]) {
+    assert.ok(text.includes(expected), `missing: ${expected}`);
+  }
 });
 
 test('a Backlog with no plan shows its first items', () => {
