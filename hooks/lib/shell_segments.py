@@ -4,7 +4,8 @@ One parser for three gates (vault-lease-gate.sh, git-commit-gate.sh,
 destructive-op-gate.sh; D14: a shape added here is a shape all see). Heredoc bodies are data unless a shell
 receives them; segments split on unquoted `;`, `|`, `||`, `&&` and newlines, a `#` comment dropped;
 a substitution inside single quotes or a comment is data (8f); the quote readers walk one stepper, `_units`
-(8j), which knows `$'...'`, where a backslash escapes, and shlex gets the word it stands for (8g);
+(8j, 8x; `substitution_spans`' backtick loop aside), which knows `$'...'`, where a backslash escapes, and shlex
+gets the word it stands for (8g);
 tokens come from shlex with redirections left out, wherever they sit
 (`split_redirects`, a here-string kept for what runs its input), and the wrapper prefixes and the shell syntax heading
 a segment skipped (assignments, `command`, `env`, `timeout`, `do`, `then`, `!`,
@@ -54,19 +55,24 @@ RUNNERS = {'xargs', 'find', 'parallel', 'watch', 'ssh', 'env', 'time', 'timeout'
 ESCAPING = ('"', "$'")
 
 
-def _opens(text, i):
-    """The quote text[i] opens: `$'` after a `$` that neither a backslash nor `$$` takes, a string
-    in which a backslash escapes (8g); otherwise the character itself. Its closing quote is q[-1]."""
-    if text[i] != "'" or text[i - 1:i] != '$':
-        return text[i]
+def _bare_dollar(text, i):
+    """Whether text[i - 1] is a `$` that neither a backslash nor `$$` takes, so that a quote at i
+    opens a `$'` or `$"` string."""
+    if text[i - 1:i] != '$':
+        return False
     k = i
     while k and text[k - 1] == '$':
         k -= 1
     j = k
     while j and text[j - 1] == '\\':
         j -= 1
-    dollars = i - k - (k - j) % 2
-    return "$'" if dollars % 2 else "'"
+    return (i - k - (k - j) % 2) % 2 == 1
+
+
+def _opens(text, i):
+    """The quote text[i] opens: `$'` after a bare `$`, a string in which a backslash escapes (8g);
+    otherwise the character itself. Its closing quote is q[-1]."""
+    return "$'" if text[i] == "'" and _bare_dollar(text, i) else text[i]
 
 
 def _units(text, start=0, backticks=False, comments=False):
@@ -275,32 +281,25 @@ def _split(text):
     """shlex.split, with each `$'...'` given as the single-quoted word it stands for and each `$"`
     as `"`: shlex reads `$'it\\'s'` as an unclosed quote, and `$'commit'` as `$commit` (8g). A
     backslash that ends the text is a character (8i), and a line continuation is nothing, as bash
-    reads them; shlex makes the continuation a newline word (8t)."""
-    out, q, i, n = [], None, 0, len(text)
-    while i < n:
-        c, nxt = text[i], text[i + 1:i + 2]
-        if q == "'":
-            q = None if c == "'" else q
-        elif c == '\\' or c + nxt == '$$':
-            out.append('' if c + nxt == '\\\n' else text[i:i + 2] if nxt else '\\\\')
-            i += 2
-            continue
-        elif q == '"':
-            q = None if c == '"' else q
-        elif c + nxt == "$'":
-            j = i + 2
-            while j < n and text[j] != "'":
-                j += 2 if text[j] == '\\' else 1
-            out.append(shlex.quote(_ansi_c(text[i + 2:j])))
-            i = j + 1
-            continue
-        elif c + nxt == '$"':
-            i += 1
-            continue
-        elif c in '\'"':
-            q = c
-        out.append(c)
-        i += 1
+    reads them; shlex makes the continuation a newline word (8t). It walks _units (8x)."""
+    out, ansi = [], None
+    for i, j, before, after in _units(text):
+        unit = text[i:j]
+        if ansi is not None:
+            if after == "$'":
+                ansi.append(unit)
+                continue
+            out.append(shlex.quote(_ansi_c(''.join(ansi))))
+            ansi = None
+        elif after == "$'":
+            out[-1:] = []
+            ansi = []
+        elif unit != '\\\n':
+            if before is None and after == '"' and _bare_dollar(text, i):
+                out[-1:] = []
+            out.append('\\\\' if j > len(text) else unit)
+    if ansi is not None:
+        out.append(shlex.quote(_ansi_c(''.join(ansi))))
     return shlex.split(''.join(out))
 
 
@@ -535,29 +534,15 @@ def _blank_single_quoted(text):
 
 
 def _closing_paren(scan, k):
-    """Where the `(` at k closes, quoted text counting no parenthesis; len(scan) when it never does."""
-    depth, dq, i, n = 0, False, k, len(scan)
-    while i < n:
-        c = scan[i]
-        if c == '\\':
-            i += 2
-            continue
-        if dq:
-            dq = c != '"'
-        elif c == '"':
-            dq = True
-        elif c == "'":
-            j = scan.find("'", i + 1)
-            i = n if j < 0 else j + 1
-            continue
-        elif c == '(':
-            depth += 1
-        elif c == ')':
-            depth -= 1
+    """Where the `(` at k closes, quoted text counting no parenthesis; len(scan) when it never does.
+    It walks _units (8x)."""
+    depth = 0
+    for i, _, before, _ in _units(scan, k):
+        if before is None and scan[i] in '()':
+            depth += 1 if scan[i] == '(' else -1
             if not depth:
                 return i
-        i += 1
-    return n
+    return len(scan)
 
 
 def substitutions(text, quotes=True):

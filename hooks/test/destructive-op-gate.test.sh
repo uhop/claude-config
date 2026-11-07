@@ -167,6 +167,7 @@ check ALLOW $'# gh issue create --title x, later\nls'
 # a `$'...'` string ends at its unescaped quote, and its word is the one it stands for (8g, 2026-11-05)
 check DENY  "echo \$'a\\'b' ; git push origin main"
 check DENY  $'echo $\'a\\\'b\'\nnpm publish'
+check DENY  $'cat <<EOF\n$(echo $\'\\\')\'; gh issue create -t x)\nEOF'
 check DENY  "git push origin \$'ma\\'in'"
 check DENY  "git \$'push' origin main"
 check DENY  "git \$\"tag\" x"

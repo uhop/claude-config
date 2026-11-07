@@ -164,6 +164,10 @@ check DENY  "git -C \$'\\057tmp' commit -m x" "$MARKED"
 check ALLOW "( cd $MARKED && echo \$'a\\' )b' ; $V -m x )"
 check ALLOW "echo \$'a\\'b ; $V -m x'"
 check ALLOW $'echo \\\' <<EOF\n'"$V"$' -m x\nEOF'
+# a substitution ends past a `$'...'` string's escaped quote, inside double quotes or a heredoc too (8x, 2026-11-06)
+check DENY  "x=\"\$(echo \$'\\')'; cd $PLAIN && $V -m x)\"" "$MARKED"
+check ALLOW "x=\"\$(echo \$'\\')'; cd $MARKED && $V -m x)\""
+check DENY  $'cat <<EOF\n$(echo $\'\\\')\'; cd '"$PLAIN"$' && '"$V"$' -m x)\nEOF' "$MARKED"
 # ── the opt-in marker ──
 check ALLOW "$V -m x" "$MARKED"
 check ALLOW "cd sub && $V -m x" "$MARKED"
