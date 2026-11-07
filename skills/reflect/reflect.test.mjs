@@ -398,7 +398,7 @@ test('exchange rendering: human rows, tool calls and results, hand-backs left ou
   const out = renderExchange(rows, Date.parse('2026-09-15T17:36:30Z'), {before: 0, after: 4});
   assert.equal(out.centre, 0);
   assert.equal(out.first.timestamp, '2026-09-15T17:36:30.123Z');
-  const lines = out.text.split('\n');
+  const lines = out.text.split(/\r?\n/);
   assert.equal(lines[0], '── 2026-09-15T17:36:30Z USER');
   assert.equal(lines[1], "How come we don't have a link from Part 2 to Part 1???");
   assert.ok(

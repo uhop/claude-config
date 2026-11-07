@@ -187,7 +187,7 @@ const build = () => {
       cwd = '';
     try {
       rows = readFileSync(path, 'utf8')
-        .split('\n')
+        .split(/\r?\n/)
         .filter(Boolean)
         .map(l => {
           try {

@@ -99,7 +99,8 @@ const check = (name, value) => (digest.checks[name] = value);
   const lastTag = tag.ok ? tag.out : null;
   const range = lastTag ? [`${lastTag}..HEAD`] : ['HEAD'];
   const log = run('git', ['log', '--format=%h\t%s', ...range, ...scope]);
-  const commits = log.ok && log.out ? log.out.split('\n').map(line => line.replace('\t', ' ')) : [];
+  const commits =
+    log.ok && log.out ? log.out.split(/\r?\n/).map(line => line.replace('\t', ' ')) : [];
   const dirty = run('git', ['status', '--porcelain', ...scope]).out !== '';
   check('git', {
     status: 'ok',
@@ -284,7 +285,7 @@ check('ai_docs', {
   else {
     const line =
       readFileSync(path.join(root, 'LICENSE'), 'utf8')
-        .split('\n')
+        .split(/\r?\n/)
         .find(l => /copyright/i.test(l)) ?? '';
     const years = [...line.matchAll(/\d{4}/g)].map(m => +m[0]);
     const covered = years.length > 0 && Math.max(...years) >= new Date().getFullYear();
@@ -435,7 +436,7 @@ const readOn = text => {
       .split(',')
       .map(word => word.trim())
       .filter(Boolean);
-  const lines = text.split('\n');
+  const lines = text.split(/\r?\n/);
   const at = lines.findIndex(line => /^["']?on["']?\s*:/.test(line));
   if (at < 0) return {};
   const inline = words(lines[at].slice(lines[at].indexOf(':') + 1));
@@ -589,7 +590,7 @@ const changedLines = args => {
   const lines = [];
   let from = null,
     to = null;
-  for (const line of run('git', args).out.split('\n')) {
+  for (const line of run('git', args).out.split(/\r?\n/)) {
     const header = line.match(/^(---|\+\+\+) (?:[ab]\/(.*)|\/dev\/null)$/);
     if (header) {
       if (header[1] === '---') from = header[2] ?? null;
@@ -631,7 +632,8 @@ const namesOn = (lines, added) =>
 const notesFor = version => {
   const named = new RegExp(`(?:^|[^\\d.])${version.replaceAll('.', '\\.')}(?![\\d.])`);
   const wiki = ['wiki', 'external_wiki'].find(exists);
-  const read = rel => (exists(rel) ? readFileSync(path.join(root, rel), 'utf8').split('\n') : []);
+  const read = rel =>
+    exists(rel) ? readFileSync(path.join(root, rel), 'utf8').split(/\r?\n/) : [];
   const kept = [];
   for (const rel of [...(wiki ? [`${wiki}/Release-notes.md`] : []), 'README.md']) {
     let level = 0;
@@ -661,7 +663,7 @@ const notesFor = version => {
     const unmentioned = [...plus].filter(name => !notes.has(name));
     const fixes = [];
     const log = run('git', ['log', '--format=%h%x09%s', `${tag}..HEAD`, '--', ...TYPE_PATHS]).out;
-    for (const entry of log ? log.split('\n') : []) {
+    for (const entry of log ? log.split(/\r?\n/) : []) {
       const [sha, subject] = entry.split('\t');
       if (!/\b(?:bug)?fix/i.test(subject)) continue;
       const lines = changedLines(['show', '--format=', ...DIFF_FLAGS, sha, '--', ...TYPE_PATHS]);
@@ -699,7 +701,7 @@ const notesFor = version => {
 const wikiCode = text => {
   const code = [];
   let fence = null;
-  text.split('\n').forEach((raw, index) => {
+  text.split(/\r?\n/).forEach((raw, index) => {
     const mark = raw.trim().match(/^(`{3,}|~{3,})/)?.[1];
     const line = index + 1;
     if (fence) {
@@ -722,7 +724,7 @@ const wikiCode = text => {
   if (!wiki) check('wiki_paths', {status: 'skip', reason: 'no wiki'});
   else if (!pages.length) check('wiki_paths', {status: 'skip', reason: 'no wiki pages'});
   else {
-    const files = run('git', ['ls-files']).out.split('\n');
+    const files = run('git', ['ls-files']).out.split(/\r?\n/);
     const tracked = new Set(files);
     const tops = new Set(files.filter(file => file.includes('/')).map(file => file.split('/')[0]));
     const SUFFIXES = ['.js', '.mjs', '.cjs', '.ts', '.d.ts', '.json'];

@@ -209,7 +209,7 @@ facts.git = {
       '--format=%(refname:short)',
       'refs/tags'
     ])
-      ?.split('\n')
+      ?.split(/\r?\n/)
       .filter(Boolean) ?? [],
   submodules
 };
@@ -250,7 +250,7 @@ facts.workflows = list('.github/workflows')
   const text = read('README.md') ?? '';
   facts.readme = {
     h1_has_shield:
-      /^#\s.*(\[!\[|\!\[)/m.test(text.split('\n').slice(0, 5).join('\n')) ||
+      /^#\s.*(\[!\[|\!\[)/m.test(text.split(/\r?\n/).slice(0, 5).join('\n')) ||
       /^\[!\[.*badge/m.test(text),
     npm_shield_referenced: /img\.shields\.io\/npm\/v\//.test(text),
     has_release_section: /^#{1,3}\s.*release/im.test(text),
@@ -293,13 +293,13 @@ else {
       ? {present: false}
       : {
           present: true,
-          first_line: text.split('\n')[0].trim(),
+          first_line: text.split(/\r?\n/)[0].trim(),
           copyright_line:
             text
-              .split('\n')
+              .split(/\r?\n/)
               .find(l => /copyright/i.test(l))
               ?.trim() ?? null,
-          line_count: text.split('\n').length
+          line_count: text.split(/\r?\n/).length
         };
 }
 

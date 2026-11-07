@@ -130,7 +130,7 @@ for (const {path: fp, project, sidechain} of transcriptFiles) {
   const matched = []; // {name, msg} per matched result, for the batched count
   let sessionTouched = false;
 
-  for (const line of content.split('\n')) {
+  for (const line of content.split(/\r?\n/)) {
     if (line.length === 0) continue;
     let row;
     try {

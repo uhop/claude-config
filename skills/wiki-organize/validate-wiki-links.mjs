@@ -62,7 +62,7 @@ for (const file of files) {
     dir = path.dirname(file);
   let fenced = false;
   readFileSync(file, 'utf8')
-    .split('\n')
+    .split(/\r?\n/)
     .forEach((line, i) => {
       if (/^\s*(```|~~~)/.test(line)) {
         fenced = !fenced;

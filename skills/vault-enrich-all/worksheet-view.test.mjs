@@ -67,7 +67,7 @@ test('renderItem: full, folder-delta, and outline reads', () => {
 
 test('renderIndex: a line an item, numbered as show --item takes them', () => {
   const index = renderIndex({items: [delta, {file_path: 'b.md', read: 'full', body: 'abc'}]});
-  assert.deepEqual(index.split('\n'), [
+  assert.deepEqual(index.split(/\r?\n/), [
     '1. projects/p/plans/plan.md · read: delta · reason: possibly_stale · 2 added chunks',
     '2. b.md · read: full · 3 characters of body'
   ]);

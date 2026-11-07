@@ -207,7 +207,7 @@ const bodyHead = async path => {
     const start =
       typeof text === 'string' && text.startsWith('---\n') ? text.indexOf('\n---\n', 4) + 5 : 0;
     const head = String(text).slice(start).trimStart();
-    const lines = head.split('\n').slice(0, 30).join('\n');
+    const lines = head.split(/\r?\n/).slice(0, 30).join('\n');
     return lines.length > 1500 ? lines.slice(0, 1500) + '…' : lines;
   } catch (err) {
     return `<unreadable: ${err.message}>`;

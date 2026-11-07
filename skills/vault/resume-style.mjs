@@ -31,4 +31,4 @@ const styledLine = line => {
 };
 
 /** The digest with its Markdown as ANSI codes: what its logs use, measured on 23 of them. */
-export const styledOf = digest => digest.split('\n').map(styledLine).join('\n');
+export const styledOf = digest => digest.split(/\r?\n/).map(styledLine).join('\n');

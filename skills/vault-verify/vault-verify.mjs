@@ -68,7 +68,7 @@ const commits = new Map();
 {
   const out = git(root, 'log', '--all', '--name-status', '--format=%x01%H %ad', '--date=short');
   let date = null;
-  for (const line of out.split('\n')) {
+  for (const line of out.split(/\r?\n/)) {
     if (line.startsWith('\x01')) {
       const [sha, d] = line.slice(1).split(' ');
       commits.set(sha, d);
@@ -91,7 +91,7 @@ const commits = new Map();
 }
 const tags = new Map(
   git(root, 'for-each-ref', 'refs/tags', '--format=%(refname:short) %(creatordate:short)')
-    .split('\n')
+    .split(/\r?\n/)
     .filter(Boolean)
     .map(l => l.split(' '))
 );
@@ -123,7 +123,7 @@ const lineCount = path => {
   let n = null;
   try {
     const s = readFileSync(join(root, path), 'utf8');
-    n = s.split('\n').length - (s.endsWith('\n') ? 1 : 0);
+    n = s.split(/\r?\n/).length - (s.endsWith('\n') ? 1 : 0);
   } catch {}
   lineCounts.set(path, n);
   return n;
@@ -147,7 +147,7 @@ try {
   }
 } catch (e) {
   console.error(
-    `vault-verify: failed to load projects/${PROJECT}/ via vault-curl — ${e.message.split('\n')[0]}`
+    `vault-verify: failed to load projects/${PROJECT}/ via vault-curl — ${e.message.split(/\r?\n/)[0]}`
   );
   process.exit(2);
 }
@@ -198,7 +198,7 @@ for (const r of notes) {
       } catch {
         continue;
       }
-      for (const line of out.split('\n')) {
+      for (const line of out.split(/\r?\n/)) {
         const m = /^([0-9a-f]+) commit /.exec(line);
         if (m)
           for (const f of unknown) if (m[1].startsWith(f.sha) && !found.has(f)) found.set(f, d);

@@ -205,7 +205,7 @@ const firstRowMs = fp => {
     fd = openSync(fp, 'r');
     const buf = Buffer.alloc(65536);
     const n = readSync(fd, buf, 0, buf.length, 0);
-    const lines = buf.subarray(0, n).toString('utf8').split('\n');
+    const lines = buf.subarray(0, n).toString('utf8').split(/\r?\n/);
     if (n === buf.length) lines.pop(); // last line may be truncated mid-JSON
     for (const line of lines) {
       if (!line) continue;
@@ -404,7 +404,7 @@ for (const t of transcripts) {
   const toolUseRegistry = new Map();
   let turnSeq = 0;
   let entrypoint = null;
-  for (const line of content.split('\n')) {
+  for (const line of content.split(/\r?\n/)) {
     if (line.length === 0) continue;
     let row;
     try {
@@ -840,7 +840,9 @@ if (bashCommands.length > 0) {
   });
   try {
     if (r.status !== 0)
-      throw new Error(r.error?.message || r.stderr.trim().split('\n').pop() || `exit ${r.status}`);
+      throw new Error(
+        r.error?.message || r.stderr.trim().split(/\r?\n/).pop() || `exit ${r.status}`
+      );
     for (const h of JSON.parse(r.stdout)) {
       const c = bashCommands[h.index];
       signals.gate_gaps.push({

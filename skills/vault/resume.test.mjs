@@ -52,7 +52,7 @@ const inputs = (extra = {}) => ({
   ...extra
 });
 
-const headings = text => text.split('\n').filter(line => line.startsWith('## '));
+const headings = text => text.split(/\r?\n/).filter(line => line.startsWith('## '));
 
 test('a section is the text under its heading, to the next one, whatever its case', () => {
   const body = '# T\n\n## Done\n\nA.\n\n## Open\n\n- One.\n- Two.\n\n## Key files\n\nB.\n';
@@ -649,7 +649,7 @@ test('recordTimings appends a line a resume, and a folder it cannot make costs n
   const dir = join(mkdtempSync(join(tmpdir(), 'vault-resume-')), 'made');
   recordTimings({project: 'p', total: 10}, dir);
   recordTimings({project: 'p', total: 20}, dir);
-  const lines = readFileSync(join(dir, 'timings.jsonl'), 'utf8').trim().split('\n');
+  const lines = readFileSync(join(dir, 'timings.jsonl'), 'utf8').trim().split(/\r?\n/);
   assert.deepEqual(
     lines.map(line => JSON.parse(line).total),
     [10, 20]

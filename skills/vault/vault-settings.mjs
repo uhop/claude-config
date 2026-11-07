@@ -24,7 +24,7 @@ export const KEY_RENEWAL =
 // As the shell that sources the file would set it: the last assignment wins.
 export const envFileKey = text => {
   const found = {};
-  for (const line of text.split('\n')) {
+  for (const line of text.split(/\r?\n/)) {
     const m = /^\s*(?:export\s+)?(PROGRAM_CLERK_KEY|VAULT_API_TOKEN)=(.*)$/.exec(line);
     if (m) found[m[1]] = m[2].trim().replace(/^(['"])(.*)\1$/, '$2');
   }

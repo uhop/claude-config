@@ -59,7 +59,7 @@ const run = (file, args, timeout = STEP_CAP_MS) =>
 
 /** The text under a `## heading` line, up to the next `## ` line; null when there is none. */
 export const sectionOf = (markdown, heading) => {
-  const lines = markdown.split('\n');
+  const lines = markdown.split(/\r?\n/);
   const start = lines.findIndex(line => line.trim().toLowerCase() === `## ${heading}`);
   if (start < 0) return null;
   const rest = lines.slice(start + 1);
@@ -70,7 +70,7 @@ export const sectionOf = (markdown, heading) => {
 
 /** The last substantial thing an agent said in a transcript's lines, cut to fit a digest. */
 export const lastMessageOf = jsonl => {
-  const lines = jsonl.split('\n');
+  const lines = jsonl.split(/\r?\n/);
   let newestShort = null;
   for (let i = lines.length - 1; i >= 0; --i) {
     let row;
@@ -360,7 +360,7 @@ const fileThreads = async (project, threads, section, dir, exec) => {
       section
     ]);
     if (done.code !== 0) {
-      const why = done.stderr.trim().split('\n')[0];
+      const why = done.stderr.trim().split(/\r?\n/)[0];
       return {filed, problem: `Filing ${thread.source} failed: ${why}. ${NOT_ADVANCED}`};
     }
     filed.push(thread.title);

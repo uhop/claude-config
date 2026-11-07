@@ -308,7 +308,7 @@ const ghGraphql = async (query, variables) => {
 const requireGhAuth = () => {
   const r = run('gh', ['auth', 'status']);
   if (r.ok) return;
-  const message = (r.err || r.out || 'gh auth status failed').split('\n')[0];
+  const message = (r.err || r.out || 'gh auth status failed').split(/\r?\n/)[0];
   console.log(
     JSON.stringify(
       {
@@ -498,7 +498,7 @@ const excerptOf = text => {
     .replace(/\r/g, '')
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .split('\n')
+    .split(/\r?\n/)
     .map(l => l.replace(/^[\s>#*-]+/, '').trim())
     .find(l => l && !/^(```|\||!\[)/.test(l));
   return line ? clip(line, EXCERPT_LEN) : null;
@@ -1167,7 +1167,7 @@ const readFleetGraph = () =>
             error:
               err.code === 'ENOENT'
                 ? 'fleet-deps is not installed or not on PATH'
-                : `fleet-deps --json: ${(stderr || err.message).trim().split('\n').pop()}`
+                : `fleet-deps --json: ${(stderr || err.message).trim().split(/\r?\n/).pop()}`
           });
         try {
           resolve({graph: JSON.parse(stdout)});
@@ -2402,7 +2402,7 @@ const readRuns = async () => {
     if (!RUN_FILE_RE.test(file)) continue;
     const r = await vaultFetch(`/data/${file}`);
     if (!r.ok) throw new Error(`GET /data/${file}: ${r.status} ${r.statusText}`);
-    for (const line of (await r.text()).split('\n')) {
+    for (const line of (await r.text()).split(/\r?\n/)) {
       if (!line.trim()) continue;
       try {
         const run = JSON.parse(line);

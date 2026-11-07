@@ -96,7 +96,7 @@ try {
     all.push(...api(`/sections?limit=100&offset=${off}`).items);
 } catch (e) {
   console.error(
-    `vault-lint: failed to load /sections via vault-curl — ${e.message.split('\n')[0]}`
+    `vault-lint: failed to load /sections via vault-curl — ${e.message.split(/\r?\n/)[0]}`
   );
   process.exit(2);
 }
@@ -271,7 +271,7 @@ if (want('body')) {
       B.push({path: r.file_path, detail: 'empty body (no content written)'});
       continue;
     }
-    for (const line of body.split('\n')) {
+    for (const line of body.split(/\r?\n/)) {
       if (line.length < COLLAPSE_MIN_LINE) continue;
       const marks = glueMarks(line);
       if (marks < COLLAPSE_MIN_MARKS) continue;

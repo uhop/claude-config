@@ -65,7 +65,7 @@ export const commitsInWindow = (repo, startMs, endMs, {slackSec = 900, noMerges 
   ];
   if (noMerges) args.push('--no-merges');
   return git(repo, ...args)
-    .split('\n')
+    .split(/\r?\n/)
     .filter(Boolean)
     .map(line => {
       const [sha, ts, ...rest] = line.split('|');
@@ -120,7 +120,7 @@ const NOT_RELEASED = /(^|\/)(node_modules|fixtures|__fixtures__|tests?)\//;
 
 export const packagesOf = repo =>
   git(repo, 'ls-files', '--', '*package.json')
-    .split('\n')
+    .split(/\r?\n/)
     .filter(path => /(^|\/)package\.json$/.test(path) && !NOT_RELEASED.test(path))
     .flatMap(path => {
       let pkg;
@@ -178,7 +178,7 @@ export const versionBumps = (repo, paths, sinceMs, untilMs) => {
   let commit = null,
     file = null,
     from = null;
-  for (const line of log.split('\n')) {
+  for (const line of log.split(/\r?\n/)) {
     if (line.startsWith('@@@')) {
       const [sha, ts, ...subject] = line.slice(3).split('|');
       commit = {sha: sha.slice(0, 8), ts: Number(ts) * 1000, subject: subject.join('|')};
@@ -240,7 +240,9 @@ export const releasesInWindow = (repo, sinceMs, untilMs, {npmTimes = npmPublishT
       bump: {sha: b.sha, ts: b.ts, from: b.from, subject: b.subject}
     });
   const tags = new Set(
-    git(repo, 'for-each-ref', 'refs/tags', '--format=%(refname:short)').split('\n').filter(Boolean)
+    git(repo, 'for-each-ref', 'refs/tags', '--format=%(refname:short)')
+      .split(/\r?\n/)
+      .filter(Boolean)
   );
   const releases = [...found.values()]
     .map(r => {
@@ -364,7 +366,7 @@ export const loadSessions = (projectDir, {root} = {}) => {
   for (const f of files) {
     let rows;
     try {
-      rows = readFileSync(join(dir, f), 'utf8').split('\n');
+      rows = readFileSync(join(dir, f), 'utf8').split(/\r?\n/);
     } catch {
       continue;
     }

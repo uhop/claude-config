@@ -70,7 +70,7 @@ if (matches.length !== 1) {
 
 const {dir, entry} = matches[0];
 const rows = readFileSync(join(ROOT, dir, entry), 'utf8')
-  .split('\n')
+  .split(/\r?\n/)
   .filter(Boolean)
   .map(line => {
     try {

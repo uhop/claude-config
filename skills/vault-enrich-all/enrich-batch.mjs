@@ -340,7 +340,7 @@ const changedPieces = async (folder, since) => {
 const outlineOf = body => ({
   body_bytes: Buffer.byteLength(body, 'utf8'),
   headings: body
-    .split('\n')
+    .split(/\r?\n/)
     .filter(line => /^#{1,2} /.test(line))
     .map(line => line.slice(0, 160))
 });
@@ -397,7 +397,7 @@ const prepare = async () => {
   const wanted = opts.records
     ? new Set(
         readFileSync(opts.records, 'utf8')
-          .split('\n')
+          .split(/\r?\n/)
           .map(l => l.trim())
           .filter(Boolean)
       )

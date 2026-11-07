@@ -65,7 +65,7 @@ const looksLikePath = span => {
 export const extractClaims = (body, {fenced = false} = {}) => {
   const text = fenced ? (body ?? '') : blankFences(body ?? '');
   const claims = [];
-  text.split('\n').forEach((line, i) => {
+  text.split(/\r?\n/).forEach((line, i) => {
     const ln = i + 1;
     const add = c => claims.push({line: ln, ...c});
     for (const m of line.matchAll(SPAN_RE)) {

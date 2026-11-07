@@ -15,7 +15,7 @@ test('every script with a shebang runs by its path, tracked or new', () => {
     {cwd: root, encoding: 'utf8'}
   )
     .trim()
-    .split('\n');
+    .split(/\r?\n/);
   // A tracked file deleted and not yet staged is still listed, and is no script.
   const scripts = files
     .filter(path => existsSync(new URL(path, root)))

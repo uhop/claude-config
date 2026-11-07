@@ -27,12 +27,12 @@ test('no hook puts a heredoc inside a substitution', () => {
     encoding: 'utf8'
   })
     .trim()
-    .split('\n')
+    .split(/\r?\n/)
     .filter(f => !f.includes('/test/'));
   assert.ok(files.length > 0);
   const found = files.flatMap(file =>
     readFileSync(new URL(file, root), 'utf8')
-      .split('\n')
+      .split(/\r?\n/)
       .flatMap((line, i) => (HEREDOC_IN_SUBSTITUTION.test(line) ? [`${file}:${i + 1}`] : []))
   );
   assert.deepEqual(found, []);

@@ -140,7 +140,7 @@ for (const sessionPath of sessionPaths) {
   // The row of the input that started the current turn: a person's or a wake-up's.
   let turnStart = -1;
 
-  for (const [lineNo, line] of content.split('\n').entries()) {
+  for (const [lineNo, line] of content.split(/\r?\n/).entries()) {
     if (!line) continue;
 
     // The notification is read off the raw line: it appears in rows of more

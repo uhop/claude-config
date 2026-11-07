@@ -236,7 +236,7 @@ export const normalizeErrorText = text =>
     .replace(/\/tmp\/claude-1000\/[^/\s]+\/[0-9a-f-]{36}/g, '<scratch>');
 export const errorSignature = text => {
   const lines = normalizeErrorText(text)
-    .split('\n')
+    .split(/\r?\n/)
     .map(l => l.trim())
     .filter(l => l && !NOISE_LINE.some(re => re.test(l)));
   const line =
@@ -312,7 +312,7 @@ export const firstLine = (text, cap = USER_TURN_LINE_MAX) => {
 const SIDE_NOTE_PREFIX = /^\s*Here is a note offered by a side agent:[ \t]*\n/;
 export const parseSideNote = text => {
   if (!SIDE_NOTE_PREFIX.test(text ?? '')) return null;
-  const lines = text.replace(SIDE_NOTE_PREFIX, '').split('\n');
+  const lines = text.replace(SIDE_NOTE_PREFIX, '').split(/\r?\n/);
   let i = 0;
   while (i < lines.length && !lines[i].trim()) ++i;
   const quoted = [];

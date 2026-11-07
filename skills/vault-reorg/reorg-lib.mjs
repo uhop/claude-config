@@ -19,7 +19,7 @@ export const splitFrontmatter = text => {
 /** Each line with whether it sits inside a fenced code block, the fence lines themselves included. */
 const fencedLines = body => {
   let open = null;
-  return body.split('\n').map(line => {
+  return body.split(/\r?\n/).map(line => {
     const m = FENCE.exec(line);
     if (open === null) {
       if (m) open = m[1];

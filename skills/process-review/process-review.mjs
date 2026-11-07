@@ -89,7 +89,7 @@ const parseLog = () => {
     file = null,
     from = null,
     inHeader = false;
-  for (const line of raw.split('\n')) {
+  for (const line of raw.split(/\r?\n/)) {
     if (line.startsWith('C|')) {
       const [, sha, ts, subj] = line.split('|', 4);
       cur = {sha, short: sha.slice(0, 8), ts: Number(ts), subj, files: new Map(), testLines: []};
@@ -265,7 +265,7 @@ const detectBursts = (commits, windowDays = 3, minTouches = 4, maxAvgChurn = 40)
   );
   const byFile = new Map();
   let cur = null;
-  for (const line of stat.split('\n')) {
+  for (const line of stat.split(/\r?\n/)) {
     if (line.startsWith('C|')) {
       const [, sha, ts, subj] = line.split('|', 4);
       cur = {sha: sha.slice(0, 8), ts: Number(ts), subj};

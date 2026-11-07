@@ -152,7 +152,7 @@ if (command === 'file') {
     const created = value('created') ?? `${stamp} (reflect, ${hostname()} ${hhmm})`;
     // candidates: numbered lines as given, or one reading per line, numbered here
     const candLines = candidates
-      .split('\n')
+      .split(/\r?\n/)
       .map(l => l.trim())
       .filter(Boolean)
       .map((l, i) => (/^\d+\.\s/.test(l) ? `  ${l}` : `  ${i + 1}. ${l}`));

@@ -11,7 +11,7 @@ const root = new URL('.', import.meta.url);
 const DESCRIPTION_MAX = 1024;
 
 const descriptionOf = text => {
-  const lines = (/^---\n([\s\S]*?)\n---\n/.exec(text)?.[1] ?? '').split('\n');
+  const lines = (/^---\n([\s\S]*?)\n---\n/.exec(text)?.[1] ?? '').split(/\r?\n/);
   const i = lines.findIndex(line => line.startsWith('description:'));
   if (i < 0) return '';
   const value = lines[i].slice('description:'.length).trim();
@@ -46,7 +46,7 @@ const problemOf = value => {
 const problemsIn = text => {
   const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(text)?.[1] ?? '';
   return frontmatter
-    .split('\n')
+    .split(/\r?\n/)
     .map(line => /^[A-Za-z][\w-]*: (.+)$/.exec(line))
     .filter(match => match !== null)
     .map(match => ({key: match[0].split(':')[0], problem: problemOf(match[1])}))
@@ -68,7 +68,7 @@ test('every skill and agent has frontmatter other tools can parse', () => {
     encoding: 'utf8'
   })
     .trim()
-    .split('\n');
+    .split(/\r?\n/);
   assert.ok(files.length > 0);
   const found = files.flatMap(file =>
     problemsIn(readFileSync(new URL(file, root), 'utf8')).map(p => `${file}: ${p.key}`)
@@ -89,7 +89,7 @@ test(`every skill's description is at most ${DESCRIPTION_MAX} characters`, () =>
     encoding: 'utf8'
   })
     .trim()
-    .split('\n');
+    .split(/\r?\n/);
   const over = files
     .map(file => [file, descriptionOf(readFileSync(new URL(file, root), 'utf8')).length])
     .filter(([, length]) => length > DESCRIPTION_MAX)

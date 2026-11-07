@@ -34,7 +34,7 @@ test('other control bytes go, and text stays', () => {
 
 test('headings, bullets, and labels take their styles, and lines keep their places', () => {
   const styled = styledOf('# p\n\n## Open\nFrom the last log:\n- An item\nPlan: a note\nDone.');
-  assert.deepEqual(styled.split('\n'), [
+  assert.deepEqual(styled.split(/\r?\n/), [
     '\x1b[1;38;5;75mp\x1b[0m',
     '',
     '\x1b[1;38;5;252mOpen\x1b[0m',
