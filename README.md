@@ -38,9 +38,10 @@ refreshed via a `claude-config-update` wrapper that does `git pull --ff-only` +
 ## What gets installed
 
 Top-level `CLAUDE.md`, `settings.json`, and the contents of `commands/`, `skills/`, `hooks/`, and
-`agents/` are symlinked into `~/.claude/`. Anything else in `~/.claude/` (per-host
-`settings.local.json`, runtime caches, `plugins/`, `projects/`, `sessions/`, etc.) is left
-untouched.
+`agents/` are symlinked into `~/.claude/`, except the files git ignores, such as Python's bytecode
+and a script's local state. The installer removes a link into the checkout whose file is gone or
+ignored. Anything else in `~/.claude/` (per-host `settings.local.json`, runtime caches, `plugins/`,
+`projects/`, `sessions/`, etc.) is left untouched.
 
 ### `agents/`
 

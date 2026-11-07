@@ -32,6 +32,8 @@ const fixture = t => {
   const home = join(root, 'home');
   mkdirSync(home);
   mkdirSync(repo);
+  assert.equal(spawnSync('git', ['init', '-q', repo]).status, 0);
+  write(join(repo, '.gitignore'), '__pycache__/\nstate-*.json\n');
   copyFileSync(INSTALLER, join(repo, 'install.mjs'));
   write(join(repo, 'CLAUDE.md'));
   write(join(repo, 'skills/keep/SKILL.md'));
@@ -116,4 +118,28 @@ test('what the checkout did not put there is left alone', t => {
   assert.ok(existsSync(beside), 'a real file beside a pruned link stays');
   assert.ok(existsSync(empty), 'a folder this run did not empty stays');
   assert.ok(!isLink(join(target, 'skills/old/SKILL.md')), 'the link beside it goes');
+});
+
+test('what git ignores is never linked, and a link an older installer made to it is pruned', t => {
+  const {repo, target, run} = fixture(t);
+  write(join(repo, 'hooks/lib/m.py'));
+  write(join(repo, 'hooks/lib/__pycache__/m.cpython-314.pyc'));
+  write(join(repo, 'skills/keep/state-run.json'));
+  const pyc = join(target, 'hooks/lib/__pycache__/m.cpython-314.pyc');
+  mkdirSync(dirname(pyc), {recursive: true});
+  symlinkSync(join(repo, 'hooks/lib/__pycache__/m.cpython-314.pyc'), pyc);
+
+  const planned = run();
+  assert.match(planned, /prune.*__pycache__\/m\.cpython-314\.pyc/);
+  assert.ok(isLink(pyc), 'a dry run removes nothing');
+
+  run('--apply');
+  assert.ok(!existsSync(join(target, 'hooks/lib/__pycache__')), 'the pruned link took its folder');
+  assert.ok(!existsSync(join(target, 'skills/keep/state-run.json')));
+  assert.ok(
+    isLink(join(target, 'hooks/lib/m.py')),
+    'an untracked file git does not ignore is linked'
+  );
+  assert.ok(isLink(join(target, 'skills/keep/SKILL.md')));
+  assert.doesNotMatch(run('--apply'), /prune|^ {2}link /m);
 });

@@ -3,7 +3,8 @@
 // Default: dry-run. Use --apply to execute. Safe to re-run.
 
 import {readdir, mkdir, symlink, lstat, unlink, readlink, rmdir} from 'node:fs/promises';
-import {dirname, join, sep} from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {dirname, join, relative, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {homedir} from 'node:os';
 
@@ -23,8 +24,8 @@ const HELP = process.argv.includes('--help') || process.argv.includes('-h');
 if (HELP) {
   console.log(`Usage: install.mjs [--apply]
 
-  Symlink claude-config files into ~/.claude/, and remove links into this
-  checkout whose target is gone.
+  Symlink claude-config files into ~/.claude/, leaving out what git ignores,
+  and remove links into this checkout whose target is gone or ignored.
   Default mode: dry-run. Pass --apply to execute.
   Idempotent — safe to re-run after a 'git pull'.`);
   process.exit(0);
@@ -55,6 +56,25 @@ const planFile = async (src, dst) => {
   return {action: 'skip-unknown', src, dst};
 };
 
+// What git ignores here is local output, such as Python's bytecode or a run's state, never config.
+const ignoredIn = source => {
+  const listed = execFileSync(
+    'git',
+    ['-C', source, 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory'],
+    {encoding: 'utf8'}
+  );
+  const paths = new Set(
+    listed
+      .split('\0')
+      .filter(Boolean)
+      .map(p => p.replace(/\/$/, ''))
+  );
+  return path => {
+    const parts = relative(source, path).split(sep);
+    return parts.some((_, i) => paths.has(parts.slice(0, i + 1).join('/')));
+  };
+};
+
 const installFile = async (src, dst) => {
   const plan = await planFile(src, dst);
   if (!APPLY || plan.action === 'unchanged' || plan.action === 'skip-unknown') return plan;
@@ -63,36 +83,38 @@ const installFile = async (src, dst) => {
   return plan;
 };
 
-const walk = async (srcDir, dstDir, results) => {
+const walk = async (srcDir, dstDir, ignored, results) => {
   await ensureDir(dstDir);
   const entries = await readdir(srcDir, {withFileTypes: true});
   for (const entry of entries) {
     const src = join(srcDir, entry.name);
+    if (ignored(src)) continue;
     const dst = join(dstDir, entry.name);
     if (entry.isDirectory()) {
-      await walk(src, dst, results);
+      await walk(src, dst, ignored, results);
     } else if (entry.isFile()) {
       results.push(await installFile(src, dst));
     }
   }
 };
 
-// A link into this checkout whose target is gone is the installer's own leftover: a removed or
-// renamed file. Claude Code skips such a link without a word, so nothing else would clear it.
-const prune = async (dir, results) => {
+// A link into this checkout whose target is gone or ignored is the installer's own leftover: a
+// removed or renamed file, or one an older installer linked before it read git's ignore rules.
+// Claude Code skips a dangling link without a word, so nothing else would clear it.
+const prune = async (dir, ignored, results) => {
   const entries = await readdir(dir, {withFileTypes: true});
   let removed = 0;
   for (const entry of entries) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
-      const emptied = await prune(path, results);
+      const emptied = await prune(path, ignored, results);
       if (emptied) {
         if (APPLY) await rmdir(path);
         ++removed;
       }
     } else if (entry.isSymbolicLink()) {
       const current = await readlink(path);
-      if (current.startsWith(SOURCE + sep) && !(await exists(current))) {
+      if (current.startsWith(SOURCE + sep) && (ignored(current) || !(await exists(current)))) {
         if (APPLY) await unlink(path);
         results.push({action: 'prune', dst: path, current});
         ++removed;
@@ -110,6 +132,7 @@ const main = async () => {
 
   await ensureDir(TARGET);
 
+  const ignored = ignoredIn(SOURCE);
   const results = [];
   for (const name of INSTALL) {
     const src = join(SOURCE, name);
@@ -120,14 +143,14 @@ const main = async () => {
     }
     const stat = await lstat(src);
     if (stat.isDirectory()) {
-      await walk(src, dst, results);
+      await walk(src, dst, ignored, results);
     } else {
       results.push(await installFile(src, dst));
     }
   }
   for (const name of TREES) {
     const dst = join(TARGET, name);
-    if (await exists(dst)) await prune(dst, results);
+    if (await exists(dst)) await prune(dst, ignored, results);
   }
 
   for (const r of results) {
