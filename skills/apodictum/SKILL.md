@@ -158,6 +158,16 @@ Cheap runs deserve short notes — three sections filled honestly beat seven
 padded ones; only Source, Queries, Outcome, and Improvement signal are
 mandatory.
 
+For a gate run, draft the note and the run-check handoff's body with the
+script, after recording the batch (apodict D602):
+`node ~/.cache/apodict/pinned/current/bin/corpus-note.js "$WORK/batch.json" --store <the store you recorded into> --note "$WORK/corpus.md" --handoff "$WORK/handoff.md" --ring <your ListAgents name>`.
+It writes Summary, Source with the files the gate did not read, Provenance,
+Queries as a row per question with its record's hash (the record holds the
+request JSON verbatim), and Outcome. Write the Improvement signal from what
+the findings and your own reading past the gate show, replacing the draft's
+"Everything worked" when your reading found anything, add the conditions you
+asked by hand, and file the note.
+
 ## Consumption modes
 
 - **Constructive** — gate your own edit. **Run the gate from the pinned copy,
