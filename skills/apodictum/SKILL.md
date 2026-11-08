@@ -189,11 +189,12 @@ mandatory.
   rides in the environment, never on the command line; with no `APODICTUM_API_URL`
   the pinned copy answers in-process, the same commit.
   The gate's last line says how many of the files given it read, and each file
-  it did not read is listed with why. Exit 3 from the gate (a file of a kind it
-  reads went unread: a parse failure, a named file not there) or from
-  `--summary` (a question left undecided or declined) means the run is no
-  pass: report what it left unchecked, never that the change is clean
-  (apodict D598).
+  it did not read is listed with why. Exit 3 from the gate (code went unread:
+  a shell or other script it has no reader for, a file opening with `#!`, a
+  parse failure, a named file not there) or from `--summary` (a question left
+  undecided or declined) means the run is no pass: report what it left
+  unchecked, never that the change is clean (apodict D598, D600). A hook edit
+  in shell is such a run until the gate reads shell.
   **That store is inside apodict's working tree**, so the global
   § Cross-repo work rules apply to it. From a session that doesn't hold the
   apodict lease, record into a scratch store (`--store "$WORK/<repo>.json"`)
