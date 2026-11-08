@@ -102,7 +102,8 @@ is missing) is Eugene's call:
 - An **array** of requests returns an array of `{ok, result}` /
   `{ok, error}` envelopes — batch a whole analysis into one call. Over MCP
   pass the array as `request`; over the CLI it is one process, many queries
-  (exit codes: 0 all answered, 1 some request errored, 2 input unreadable),
+  (exit codes: 0 all answered, 1 some request errored, 2 input unreadable;
+  with `--summary`, 3 a question left undecided or declined),
   and request files go under a `mktemp -d` dir, not a bare `/tmp` name.
 - `simplify` resolves the `house-tactics` bank and `simplifySkeleton`
   `base-statements` by default; `"bank"` overrides, `null` runs bank-free.
@@ -187,6 +188,12 @@ mandatory.
   ~/Open/apodict/dev-docs/campaign/records/<repo>.json "$WORK/batch.json"`. The key
   rides in the environment, never on the command line; with no `APODICTUM_API_URL`
   the pinned copy answers in-process, the same commit.
+  The gate's last line says how many of the files given it read, and each file
+  it did not read is listed with why. Exit 3 from the gate (a file of a kind it
+  reads went unread: a parse failure, a named file not there) or from
+  `--summary` (a question left undecided or declined) means the run is no
+  pass: report what it left unchecked, never that the change is clean
+  (apodict D598).
   **That store is inside apodict's working tree**, so the global
   § Cross-repo work rules apply to it. From a session that doesn't hold the
   apodict lease, record into a scratch store (`--store "$WORK/<repo>.json"`)
