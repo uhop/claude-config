@@ -88,7 +88,63 @@ fi
 # ─── Load recorded baseline from vault ───────────────────────────────────────
 
 vault_path="/vault/projects/${PROJECT}/state.md"
-raw_state=$(vault-curl "$vault_path" -s 2>/dev/null || true)
+
+# The MCP adapter's windows and waits (mcp/src/client.js): past a host's reboot, past a
+# resize of the account's database.
+NETWORK_WAIT_MS=120000
+DATABASE_WAIT_MS=600000
+MAX_STEP_MS=16000
+
+# How long an answer may be asked again, or 0: only what applied nothing and may clear is.
+retry_window_ms() {
+  if [ "$1" = 000 ]; then
+    echo "$NETWORK_WAIT_MS"
+    return
+  fi
+  if [ "$1" != 503 ]; then
+    echo 0
+    return
+  fi
+  jq -r --argjson network "$NETWORK_WAIT_MS" --argjson database "$DATABASE_WAIT_MS" '
+    if (.code | IN("tenant_unavailable", "verification_unavailable")) | not then 0
+    elif .details.reason == "database" then $database
+    else $network end' 2>/dev/null <<<"$2" || echo 0
+}
+
+# A failed read must not pass for "no baseline": --update would overwrite one it never read.
+spent_ms=0
+step_ms=250
+said_retry=false
+while :; do
+  started=$SECONDS
+  response=$(vault-curl "$vault_path" -s -w '\n%{http_code}') || true
+  status=${response##*$'\n'}
+  raw_state=${response%$'\n'*}
+  [ "$status" = 200 ] && break
+  if [ "$status" = 404 ]; then
+    raw_state=""
+    break
+  fi
+  said=${status:-no answer}
+  [ "$said" = 000 ] && said="no connection"
+  code=$(jq -r '.code? // empty' 2>/dev/null <<<"$raw_state" || true)
+  window_ms=$(retry_window_ms "$status" "$raw_state")
+  spent_ms=$((spent_ms + (SECONDS - started) * 1000))
+  left_ms=$((${window_ms:-0} - spent_ms))
+  if [ "$left_ms" -le 0 ]; then
+    echo "check-drift: could not read ${vault_path}: ${said}${code:+ $code}. Nothing compared, nothing written." >&2
+    exit 2
+  fi
+  if ! $said_retry; then
+    echo "check-drift: ${vault_path}: ${said}${code:+ $code}; retrying for up to $((window_ms / 1000)) s." >&2
+    said_retry=true
+  fi
+  wait_ms=$((step_ms < left_ms ? step_ms : left_ms))
+  sleep "$((wait_ms / 1000)).$(printf '%03d' $((wait_ms % 1000)))"
+  spent_ms=$((spent_ms + wait_ms))
+  step_ms=$((step_ms * 2 < MAX_STEP_MS ? step_ms * 2 : MAX_STEP_MS))
+done
+
 # Extract the fenced ```json ... ``` block from the markdown body.
 baseline_json=$(printf '%s' "$raw_state" | awk '
   /^```json$/ {cap=1; next}

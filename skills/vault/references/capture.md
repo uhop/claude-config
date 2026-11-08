@@ -70,6 +70,8 @@ lists the line among the logs with the body's path as `data_path`.
    directory so the next `/vault resume` starts from a clean baseline (the
    session's commits / tags / `npm publish` are typically done by the time
    you're logging). Bootstraps `state.md` if the project has no baseline yet.
+   Exit 2 means the baseline could not be read and nothing was written, so say
+   so in the report: the session's commits show as drift at the next resume.
    Skip only when there's no project working directory in scope (rare —
    logging cross-project work, vault-only sessions).
 

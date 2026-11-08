@@ -30,7 +30,7 @@ From a project directory:
 ~/.claude/skills/vault-check-drift/check-drift.sh --update   # report + refresh baseline
 ```
 
-Exit code `0` means clean; `1` means drift detected. The `--update` flag re-writes `projects/<name>/state.md` with the current values after reporting.
+Exit code `0` means clean; `1` means drift detected; `2` means the check could not run, so nothing was compared or written. The `--update` flag re-writes `projects/<name>/state.md` with the current values after reporting.
 
 ## Baseline storage
 
@@ -105,6 +105,8 @@ DRIFT since last baseline:
 
 Run once with `--update` to seed `state.md`. Subsequent checks compare against that snapshot.
 
+Only a 404, or a `state.md` with no baseline block, counts as no baseline. Any other failed read exits `2` and names the status, with `--update` writing nothing. A 503 `tenant_unavailable` or `verification_unavailable` and a lost connection are asked again first, with waits doubling from a quarter second to 16 s, for two minutes, or ten when the refusal names the account's database.
+
 ## When to update the baseline
 
 - **After a commit / push / publish that this session performed.** Run `--update` at session end so the next resume sees the new baseline, not the old one.
@@ -120,4 +122,4 @@ Safe to re-run repeatedly: `state.md` is idempotent. Rate-limit: a separate `las
 - `npm` — registry query when a publishable package is detected.
 - `vault-curl` — vault REST API access (reads + writes `state.md`).
 
-Script exits 2 on missing deps or when invoked outside a git repo.
+Script exits 2 on missing deps, when invoked outside a git repo, or when the baseline cannot be read.

@@ -200,6 +200,8 @@ const OPEN_KINDS = {
   'file-stalls': 'Loop stalls not filed'
 };
 
+const lastLine = text => text.trim().split(/\r?\n/).at(-1);
+
 const openLines = ({project: p, owed, logBody, drift}) => {
   const lines = [];
   const open = logBody === null ? null : sectionOf(logBody, 'open');
@@ -218,7 +220,11 @@ const openLines = ({project: p, owed, logBody, drift}) => {
   for (const notice of p.notices) {
     lines.push(`- ${notice.by.title ?? notice.by.file_path} ${notice.type} ${notice.file}`);
   }
-  if (drift.code !== 0 && drift.stdout.trim() !== '') lines.push('Drift:', drift.stdout.trim());
+  if (drift.code !== 0) {
+    const report = drift.stdout.trim();
+    if (report !== '') lines.push('Drift:', report);
+    else lines.push(`Drift not checked: ${lastLine(drift.stderr) || 'the check was stopped'}`);
+  }
   return lines;
 };
 

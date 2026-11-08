@@ -376,6 +376,27 @@ test('GitHub unreadable reports it beside the stored view; a clean tree shows no
   assert.ok(!text.includes('Drift:'));
 });
 
+test('a drift check that could not run says so, and a report stays a report', () => {
+  const refused = digestOf(
+    inputs({
+      drift: {
+        code: 2,
+        stdout: '',
+        stderr: 'check-drift: retrying.\ncheck-drift: could not read x: 401 unauthorized.\n'
+      }
+    })
+  );
+  assert.ok(
+    refused.includes('Drift not checked: check-drift: could not read x: 401 unauthorized.')
+  );
+  assert.ok(!refused.includes('retrying'));
+  const stopped = digestOf(inputs({drift: {code: 1, stdout: '', stderr: ''}}));
+  assert.ok(stopped.includes('Drift not checked: the check was stopped'));
+  const report = digestOf(inputs({drift: {code: 1, stdout: 'two new commits', stderr: ''}}));
+  assert.ok(report.includes('Drift:\ntwo new commits'));
+  assert.ok(!report.includes('Drift not checked'));
+});
+
 test('a tracker other than GitHub is named and never read', () => {
   const text = digestOf(
     inputs({
