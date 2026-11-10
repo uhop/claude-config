@@ -637,11 +637,26 @@ const notesFor = version => {
   const kept = [];
   for (const rel of [...(wiki ? [`${wiki}/Release-notes.md`] : []), 'README.md']) {
     let level = 0;
+    let bulletIndent = -1;
     for (const line of read(rel)) {
+      const indent = line.search(/\S/);
+      // a wrapped bullet (prettier's proseWrap) continues on lines indented past its marker
+      if (bulletIndent >= 0) {
+        if (indent < 0) continue;
+        if (indent > bulletIndent) {
+          kept.push(line);
+          continue;
+        }
+        bulletIndent = -1;
+      }
       const heading = line.match(/^(#{1,6})\s/)?.[1].length ?? 0;
       if (heading && level && heading <= level) level = 0;
       if (heading && !level && named.test(line)) level = heading;
-      if (level || (/^\s*[-*]\s/.test(line) && named.test(line))) kept.push(line);
+      if (level) kept.push(line);
+      else if (/^\s*[-*]\s/.test(line) && named.test(line)) {
+        kept.push(line);
+        bulletIndent = indent;
+      }
     }
   }
   return new Set(kept.join('\n').match(/[\w$]+/g) ?? []);

@@ -693,6 +693,21 @@ test('a release section ends at the next heading of its level', t => {
   assert.deepEqual(surface(c).unmentioned, ['past']);
 });
 
+test('a wrapped release bullet keeps the lines under it, up to the next bullet', t => {
+  const c = tagged(t);
+  c.git('tag', '1.0.0');
+  c.save(
+    'index.d.ts',
+    'export function inWrap(): void;\nexport function inSub(): void;\nexport function inLoose(): void;\nexport function inOld(): void;\n'
+  );
+  c.save('package.json', '{"name": "root", "version": "1.1.0"}\n');
+  c.save(
+    'wiki/Release-notes.md',
+    '# Release notes\n\n- 1.1.0 _A long entry whose text wraps,\n  so `inWrap` lands on the next line._\n  - `inSub` in a sub-item.\n\n  `inLoose` in a second paragraph.\n\n- 1.0.0 _An old entry,\n  where `inOld` shipped._\n'
+  );
+  assert.deepEqual(surface(c).unmentioned, ['inOld']);
+});
+
 test('a fix commit that adds public surface is flagged on its own', t => {
   const c = tagged(t);
   c.save('index.d.ts', 'export function old(a: string): void;\n');
