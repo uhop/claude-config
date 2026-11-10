@@ -1,5 +1,24 @@
 # Cross-project rules
 
+## Two goals for every tool
+
+Where this came from: [[topics/our-tools-help-ai-agents-write-correct-code]].
+
+Eugene, 2026-11-09: _"we are in the era of AI agents writing code."_ Every tool of the fleet serves
+two goals: **help AI agents write correct code**, fast and cheap, with less time spent finding bugs
+and debugging, ideally correct as written; and **help people supervise the whole process**. Weigh a
+feature, an arc, or a design by which goal it serves; one that serves neither is questioned before
+it is built.
+
+Each tool's part, in his words: **tape-six** for testing, which people and agents still need beside
+proofs (fast, flexible, several modes of isolation, run in a real browser in place of a simulated
+DOM, every test directly runnable); **nano-bench** for a statistical foundation under an agent's
+performance decisions; **Program Clerk** (vault-storage) for agents working in coordination and
+sharing knowledge across projects, machines, and sessions, learning, getting feedback, and following
+plans; **Apodictum** for verifying as soon as there is code. Global refactoring has no tool of ours:
+agents or others' tools do it, and a proposal that reaches into it is a new direction brought to
+him.
+
 ## Git / npm gates
 
 Where these rules came from: [[projects/agent-workflow/claude-md-origins/git-npm-gates]].
