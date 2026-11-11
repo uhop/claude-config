@@ -252,6 +252,11 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
 - **A change that leaves a file unused removes it in the same change.** Eugene, vault-storage
   2026-11-09: _"In this case remove the obsolete file so we have no unused garbage left."_ (reflect
   2026-11-11, M5.)
+- **No component lets memory grow without a limit.** Every piece of state a component keeps across
+  its input has a bound: a cap that throws a `RangeError` past it, with `Infinity` to opt out, as
+  stream-json's `maxDepth` does. Eugene, stream-json 2026-11-09: _"In any case we should not allow
+  unbounded growth of memory."_ Made fleet-wide on his word, 2026-11-11
+  ([[projects/stream-json/feedback]] § No component lets memory grow without a limit).
 - Prefer `catch {` over `catch (e)` when the error binding is unused (optional catch binding,
   ES2019). Not a mechanical sweep — read each site, leave any binding that's rethrown / logged /
   inspected. Full: [[topics/no-mechanical-modernization]].
