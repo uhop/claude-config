@@ -99,6 +99,11 @@ declare it, and only 0.11.0 refuses undeclared arguments), so the note stays
 stale: there, the same field goes in the `POST /vault/edit` or
 `/vault/move-item` body through `vault-curl`.
 
+**A write refused 403 `storage_full`** (vault-storage D270): the account's notes
+are at its limit on stored text, and nothing was written. Tell your person the
+`usedBytes` and `limitBytes` its `details` carry; never delete or shrink notes to
+make room. Writes that add no text, deletes, and reads still work.
+
 **A queue kept one item to a note** (vault-storage 11d-1, 11d-2): a project
 has `projects/<name>/queue/<slug>.md` per open item, with `section`
 (`inbox`, `active`, `backlog`, `watching`), `sequence_key`, and `filed`, the day

@@ -59,7 +59,7 @@ lines=$(jq -r --argjson seen "$seen" '
 
 cut -f1 <<<"$lines" >>"$seen_file" 2>/dev/null || true
 text=$(cut -f2- <<<"$lines")
-advice="[vault] tell the user, and start no sweep or long batch inside a notice's window."
+advice="[vault] tell the user; a notice with a window means no sweep or long batch inside it."
 if [[ $mode == start ]]; then
   printf '%s\n%s\n' "$text" "$advice"
 else
