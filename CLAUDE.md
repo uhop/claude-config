@@ -305,6 +305,11 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
   removed from the package, functions called against their docs. Keep the cheap check (an
   `instanceof`, a direct property read) and let the unsupported case fail, even when the failure is
   hard to trace.
+- **We answer for our own project only.** A defect in a dependency's code (RE2, V8, any other) is
+  that project's: never work around it through the dependency's undocumented, non-public internals,
+  and how it takes reports is its reporter's business. Eugene, node-re2 GHSA-wcr5, closed
+  2026-11-11: _"we are not going to mess with any undocumented non-public internals of RE2 or
+  anything else --- it is not our project and we are not taking a responsibility for it."_
 - **Build the basics first; never invent work the goal does not need.** Before adding a field, a
   check, a parse, an option, or a dependency, name the reader or writer that needs it today; with
   none, cut it. Data the system does not need to understand is an opaque text snippet: define
