@@ -63,6 +63,7 @@ import path from 'node:path';
 import process from 'node:process';
 import {reportPathFor} from './triage-report.mjs';
 import {vaultSettings} from './vault-settings.mjs';
+import {vaultFetch} from './vault-fetch.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -161,7 +162,7 @@ for (const k of [...(opts.include ?? []), ...opts.exclude])
   if (!ALL_KINDS.includes(k)) fail(2, `unknown kind: ${k}\n${usage}`);
 
 const api = async (method, apiPath) => {
-  const response = await fetch(`${base}${apiPath}`, {
+  const response = await vaultFetch(`${base}${apiPath}`, {
     method,
     headers: {Authorization: `Bearer ${token}`}
   });
@@ -178,7 +179,7 @@ const api = async (method, apiPath) => {
 // the summary reports, so a sweep from a host newer than the singleton
 // server still runs everything else instead of aborting at begin.
 const apiOptional = async (method, apiPath) => {
-  const response = await fetch(`${base}${apiPath}`, {
+  const response = await vaultFetch(`${base}${apiPath}`, {
     method,
     headers: {Authorization: `Bearer ${token}`}
   });

@@ -23,6 +23,7 @@
 import {readFileSync} from 'node:fs';
 import process from 'node:process';
 import {vaultSettings} from './vault-settings.mjs';
+import {vaultFetch} from './vault-fetch.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -109,7 +110,7 @@ const put = async (contentType, payload, etag) => {
     );
     return;
   }
-  const response = await fetch(url, {
+  const response = await vaultFetch(url, {
     method: 'PUT',
     headers: {
       ...headers,
@@ -144,7 +145,7 @@ const editOp = async op => {
     console.log(`DRY RUN — would POST /vault/edit ${JSON.stringify({path, ...op}).slice(0, 2000)}`);
     return true;
   }
-  const response = await fetch(`${base}/vault/edit`, {
+  const response = await vaultFetch(`${base}/vault/edit`, {
     method: 'POST',
     headers: {...headers, 'Content-Type': 'application/json'},
     body: JSON.stringify({path, ...op})
@@ -164,7 +165,7 @@ const editOp = async op => {
 };
 
 const getDoc = async () => {
-  const response = await fetch(url, {headers});
+  const response = await vaultFetch(url, {headers});
   if (!response.ok) fail(1, `GET ${path}: ${response.status} ${response.statusText}`);
   const text = await response.text(),
     etag = response.headers.get('etag');

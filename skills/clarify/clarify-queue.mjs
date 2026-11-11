@@ -27,6 +27,7 @@ import process from 'node:process';
 import {readFileSync} from 'node:fs';
 import {hostname} from 'node:os';
 import {vaultSettings} from '../vault/vault-settings.mjs';
+import {vaultFetch} from '../vault/vault-fetch.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -70,13 +71,13 @@ if (problem) fail(2, problem);
 
 const headers = {Authorization: `Bearer ${token}`};
 const get = async (path, {optional = false} = {}) => {
-  const response = await fetch(`${base}/vault/${path}`, {headers});
+  const response = await vaultFetch(`${base}/vault/${path}`, {headers});
   if (response.status === 404 && optional) return null;
   if (!response.ok) fail(1, `GET ${path}: ${response.status} ${response.statusText}`);
   return {text: await response.text(), etag: response.headers.get('etag')};
 };
 const put = async (path, body, etag, contentType = 'text/markdown') => {
-  const response = await fetch(`${base}/vault/${path}`, {
+  const response = await vaultFetch(`${base}/vault/${path}`, {
     method: 'PUT',
     headers: {...headers, 'Content-Type': contentType, ...(etag ? {'If-Match': etag} : {})},
     body

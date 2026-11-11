@@ -17,6 +17,7 @@
 import {readFileSync} from 'node:fs';
 import {readTrackers, trackerLine} from './trackers.mjs';
 import {vaultSettings} from './vault-settings.mjs';
+import {vaultFetch} from './vault-fetch.mjs';
 
 export const SECTIONS = ['inbox', 'active', 'backlog', 'watching'];
 export const CLOSE_REASONS = ['shipped', 'rejected', 'parked', 'deferred'];
@@ -79,7 +80,7 @@ export const client = () => {
   const {base, token, problem} = vaultSettings();
   if (problem) throw new Error(problem);
   return async (method, path, {json, headers = {}} = {}) => {
-    const r = await fetch(`${base}${path}`, {
+    const r = await vaultFetch(`${base}${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,

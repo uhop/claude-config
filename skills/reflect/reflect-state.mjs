@@ -29,6 +29,7 @@ import {homedir, hostname} from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import {vaultSettings} from '../vault/vault-settings.mjs';
+import {vaultFetch} from '../vault/vault-fetch.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -99,7 +100,7 @@ const STATE = 'projects/agent-workflow/state.md';
 const url = `${base}/vault/${STATE}`;
 const headers = {Authorization: `Bearer ${token}`};
 
-const get = await fetch(url, {headers});
+const get = await vaultFetch(url, {headers});
 if (!get.ok) fail(1, `GET ${STATE}: ${get.status} ${get.statusText}`);
 const etag = get.headers.get('etag');
 const text = await get.text();
@@ -118,7 +119,7 @@ const host = hostname().split('.')[0];
 map[host] = entry;
 
 const edited = text.replace(fence[0], '```json\n' + JSON.stringify(map, null, 2) + '\n```');
-const put = await fetch(url, {
+const put = await vaultFetch(url, {
   method: 'PUT',
   headers: {...headers, 'Content-Type': 'text/markdown', 'If-Match': etag},
   body: edited

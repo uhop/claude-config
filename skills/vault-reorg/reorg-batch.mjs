@@ -34,6 +34,7 @@ import {basename, dirname, isAbsolute, join} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import process from 'node:process';
 import {vaultSettings} from '../vault/vault-settings.mjs';
+import {vaultFetch} from '../vault/vault-fetch.mjs';
 import {
   CLASSES,
   archivePathOf,
@@ -104,7 +105,7 @@ const encodePath = path => path.split('/').map(encodeURIComponent).join('/');
 
 /** One HTTP exchange; never throws on a status, so a caller can read a 404 as an answer. */
 const request = async (method, apiPath, body, headers = {}) => {
-  const response = await fetch(`${base}${apiPath}`, {
+  const response = await vaultFetch(`${base}${apiPath}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,

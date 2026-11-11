@@ -54,11 +54,13 @@ A skill's `SKILL.md` carries the judgment and its scripts carry the mechanical s
 a compact digest. The larger families:
 
 - **The vault:** `vault` and the `vault-*` skills drive the knowledge base over its REST API.
-  `skills/vault/vault-settings.mjs` resolves the server's settings, and
-  `skills/vault/queue-items.mjs` owns a queue kept as one note per item. An agent reaches the same
-  server through MCP tools; a script cannot call those. `/vault resume` loads a skill's whole
-  `SKILL.md` into context, so the vault's holds that command and a table, and `references/` holds
-  the rest, read on demand.
+  `skills/vault/vault-settings.mjs` resolves the server's settings, every script calls the API
+  through `skills/vault/vault-fetch.mjs`, which waits out a 429 that names its `Retry-After` for
+  five minutes at most, and `skills/vault/queue-items.mjs` owns a queue kept as one note per item.
+  The hooks call `curl` themselves, with their one- or two-second caps, and fail open. An agent
+  reaches the same server through MCP tools; a script cannot call those. `/vault resume` loads a
+  skill's whole `SKILL.md` into context, so the vault's holds that command and a table, and
+  `references/` holds the rest, read on demand.
 - **Fleet checks:** `fleet-fix`, `fleet-status`, `release-check`, `release-prep`, and
   `ai-docs-update` read and audit the other repositories.
 - **Retrospectives:** `reflect`, `clarify`, `process-review`, and `transcript-profile` read session

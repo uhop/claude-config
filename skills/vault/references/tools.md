@@ -190,7 +190,11 @@ hooks, and the MCP server alike:
 Each falls back to its old name, `VAULT_API_URL` and `VAULT_API_TOKEN` (vault-storage
 D141, D206; the skill scripts read both through `vault-settings.mjs`). From adapter
 0.17.0 every client reads the new pair first, so a host that sets it reaches one
-server through all of them. `vault-curl`'s only home is the dotfiles, where chezmoi
-installs it as `~/.local/bin/vault-curl`; it reads the new names from 2026-10-14 on.
+server through all of them. On the pool, a request past the account's rate is
+refused with a 429 that names its `Retry-After`, before it applied: the adapter,
+the skill scripts (through `vault-fetch.mjs`), and `vault-curl` send it again
+after that, for five minutes at most (vault-storage 7z-2). `vault-curl`'s only
+home is the dotfiles, where chezmoi installs it as `~/.local/bin/vault-curl`; it
+reads the new names from 2026-10-14 on.
 Never copy another version over it, since chezmoi then refuses to overwrite the
 changed file and the daily update fails (2026-10-14).

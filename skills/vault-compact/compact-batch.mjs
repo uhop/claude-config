@@ -25,6 +25,7 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import {hostname} from 'node:os';
 import process from 'node:process';
 import {vaultSettings} from '../vault/vault-settings.mjs';
+import {vaultFetch} from '../vault/vault-fetch.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -112,7 +113,7 @@ class ApiError extends Error {
 }
 
 const api = async (method, apiPath, body) => {
-  const response = await fetch(`${base}${apiPath}`, {
+  const response = await vaultFetch(`${base}${apiPath}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,

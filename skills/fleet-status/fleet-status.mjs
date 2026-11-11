@@ -74,6 +74,7 @@ import {
 } from '../vault/queue-items.mjs';
 import {projectOf} from '../vault/vault-project.mjs';
 import {vaultSettings} from '../vault/vault-settings.mjs';
+import {vaultFetch as fetchWaiting} from '../vault/vault-fetch.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -331,7 +332,7 @@ const requireVault = () => {
 };
 
 const vaultFetch = (route, init = {}) =>
-  fetch(`${VAULT}${route}`, {
+  fetchWaiting(`${VAULT}${route}`, {
     ...init,
     headers: {Authorization: `Bearer ${TOKEN}`, ...(init.headers ?? {})}
   });

@@ -63,6 +63,7 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import {hostname} from 'node:os';
 import process from 'node:process';
 import {vaultSettings} from '../vault/vault-settings.mjs';
+import {vaultFetch} from '../vault/vault-fetch.mjs';
 import {pageOf, renderIndex, renderItem} from './worksheet-view.mjs';
 
 if (!import.meta.main)
@@ -189,7 +190,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const fetchWithRetry = async (url, init) => {
   for (let attempt = 0; ; ++attempt) {
     try {
-      return await fetch(url, init);
+      return await vaultFetch(url, init);
     } catch (error) {
       if (init.method !== 'GET' || attempt >= RETRY_DELAYS_MS.length) throw error;
       await sleep(RETRY_DELAYS_MS[attempt] * (0.75 + Math.random() * 0.5));

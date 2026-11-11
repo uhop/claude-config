@@ -41,6 +41,7 @@ import process from 'node:process';
 import {nearestTags, neighborPrefixes, NEIGHBOR_KEEP, NEIGHBOR_WINDOW} from './tag-distance.mjs';
 import {reportPathFor, worksheetPathFor} from './triage-report.mjs';
 import {vaultSettings} from './vault-settings.mjs';
+import {vaultFetch} from './vault-fetch.mjs';
 
 if (!import.meta.main)
   throw new Error(
@@ -144,7 +145,7 @@ class ApiError extends Error {
 }
 
 const api = async (method, path, body) => {
-  const response = await fetch(`${base}${path}`, {
+  const response = await vaultFetch(`${base}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
