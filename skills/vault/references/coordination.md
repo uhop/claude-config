@@ -150,7 +150,11 @@ rather than closing it.
 path, and their remote is the held checkout's. It **fails open** on every
 unknown — no vault env, unreachable server, non-repo path, unclaimed repo —
 so a blocked edit always means a real, current, someone-else lease, never
-infrastructure trouble. It reconstructs your holder id as
+infrastructure trouble. A lookup refused with a 429 (the account past its rate
+on the pool) lets the edit through too, and the gate says so in your context
+after that tool call, once per 15 minutes a repository: if another session may
+hold that repository, move the change to a worktree and a handoff. It
+reconstructs your holder id as
 `<hostname>/<session-prefix>`, so **claiming under a different string will
 block your own edits**; the message prints both sides when that happens.
 

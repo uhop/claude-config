@@ -16,6 +16,10 @@
 # discipline was already collision-safe before this hook existed, so the
 # check may only *redirect* work, never deny it on infrastructure trouble.
 # A blocked edit is therefore always a real, current, someone-else lease.
+# A lookup refused with a 429 (the account past its rate on the pool) is
+# allowed the same way, and said at that tool call's PostToolUse, once per
+# RENEW_EVERY a repository (vault-storage question 385); an unreachable server,
+# or a restart's 502, 503, or 504, stays silent.
 #
 # Liveness rides here too (2026-08-18): when the lease is ours, an edit
 # renews it (throttled to once per RENEW_EVERY seconds), and when the edited
@@ -108,6 +112,7 @@ fi
 # which is why the block message prints both sides — that makes a convention
 # slip diagnosable instead of just baffling.
 session_id=$(jq -r '.session_id // ""' <<<"$payload" 2>/dev/null)
+agent_id=$(jq -r '.agent_id // ""' <<<"$payload" 2>/dev/null)
 me="$(hostname -s)/${session_id:0:8}"
 cwd=$(jq -r '.cwd // ""' <<<"$payload" 2>/dev/null)
 [[ -n "$cwd" && -d "$cwd" ]] || cwd=$PWD
@@ -121,6 +126,8 @@ auth=(-H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: applicatio
 holder=""
 kind=""
 refused=""
+refused_code=""
+refused_why=""
 
 # Renew and re-claim present the claim's token (vault-storage D67). Without
 # the library they send none, and the server refuses the renew: the lease
@@ -164,9 +171,9 @@ cache_file_of() { printf '%s/%s' "$cache_dir" "$(printf '%s' "$1" | cksum | tr -
 # so an edit burst costs one request, not one per edit — stale by at most TTL
 # seconds, which matches the protocol's own model: a holder discovers
 # demotion at its next touch, not instantly. Returns 1 on infrastructure
-# trouble, and the caller allows.
+# trouble, and the caller allows; a 429 sets refused_code and refused_why.
 lookup() {
-  local resource=$1 cf stamp=0 resp parsed
+  local resource=$1 cf stamp=0 raw code resp parsed
   holder=""
   kind=""
   cf=$(cache_file_of "$resource")
@@ -176,8 +183,18 @@ lookup() {
     holder=""
     kind=""
   fi
-  resp=$(curl -sf --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $PROGRAM_CLERK_KEY" \
-    --get --data-urlencode "resource=$resource" "$PROGRAM_CLERK_URL/leases") || return 1
+  raw=$(curl -s --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $PROGRAM_CLERK_KEY" \
+    --get --data-urlencode "resource=$resource" -w $'\n%{http_code}' "$PROGRAM_CLERK_URL/leases") ||
+    return 1
+  code=${raw##*$'\n'}
+  resp=${raw%$'\n'*}
+  # A gateway's 502 or 504, or the front's 503, is a restart in progress and stays as silent as
+  # an unreachable server; only the account's rate (429) is said.
+  if [[ $code == 429 ]]; then
+    refused_code=$code
+    refused_why=$(jq -r 'if type == "object" then .code // empty else empty end' <<<"$resp" 2>/dev/null)
+  fi
+  [[ $code == 200 ]] || return 1
   # Empty `items` means "not held" — an answer, not an error.
   parsed=$(jq -r '(.items[0] // {}) | "\(.holder // "")\n\(.holder_kind // "")"' \
     <<<"$resp" 2>/dev/null) || return 1
@@ -237,6 +254,25 @@ renew_if_due() {
   printf '%s\n' "$now" >"$stamp" 2>/dev/null || true
 }
 
+# This session's (or sub-agent's) notes for its next PostToolUse.
+pending_of() { printf '%s/pending-%s' "$cache_dir" "$(printf '%s\t%s' "$session_id" "$agent_id" | cksum | tr -d ' ')"; }
+
+# A lookup the server refused, noted for this tool call's PostToolUse to say, once per RENEW_EVERY
+# a repository and session (question 385).
+note_refused_lookup() {
+  local resource=$1 what=$2 stamp last=0
+  [[ -n "$refused_code" ]] || return 0
+  stamp="$(cache_file_of "$me"$'\t'"$resource").refused"
+  [[ -f "$stamp" ]] && read -r last <"$stamp" 2>/dev/null
+  [[ ${last:-0} =~ ^[0-9]+$ ]] || last=0
+  ((now - last >= RENEW_EVERY)) || return 0
+  mkdir -p "$cache_dir" 2>/dev/null || return 0
+  printf '%s\n' "$now" >"$stamp" 2>/dev/null || return 0
+  printf '[vault] lease: the check of %s was refused (HTTP %s%s), so this %s went through unchecked, as when the vault is unreachable. If another session holds %s, move the change to a worktree and a handoff addressed to it. Said once per %d minutes a repository.\n' \
+    "$resource" "$refused_code" "${refused_why:+, $refused_why}" "$what" "$resource" \
+    $((RENEW_EVERY / 60)) >>"$(pending_of)" 2>/dev/null || true
+}
+
 # The block messages. `what` names the call: "Edit", or "Bash write (`…`)".
 block() {
   local what=$1 resource=$2 root=$3
@@ -285,7 +321,10 @@ check_root() {
   local root=$1 what=$2 resource
   is_linked_worktree "$root" && return 0
   resource=$(resource_of "$root")
-  lookup "$resource" || return 0
+  if ! lookup "$resource"; then
+    note_refused_lookup "$resource" "$what"
+    return 0
+  fi
   if [[ -z "$holder" ]]; then
     [[ "$root" == "$cwd_root" ]] || return 0
     claim_cwd "$resource" || return 0
@@ -301,7 +340,13 @@ check_root() {
 # ── --touch: liveness for the session's own repo, from every tool call ───
 
 if [[ $mode == touch ]]; then
-  agent_id=$(jq -r '.agent_id // ""' <<<"$payload" 2>/dev/null) || exit 0
+  pending=$(pending_of)
+  if [[ -s "$pending" ]]; then
+    msg=$(<"$pending")
+    rm -f "$pending"
+    jq -cn --arg m "$msg" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}'
+    exit 0
+  fi
   [[ -z "$agent_id" ]] || exit 0
   [[ -n "$cwd_root" ]] || exit 0
   resource=$(resource_of "$cwd_root")

@@ -91,12 +91,15 @@ ignored. Anything else in `~/.claude/` (per-host `settings.local.json`, runtime 
   the worktree + handoff path instead. Linked worktrees are never blocked, since they are that path.
   **Fails open on every unknown** — no vault env, no `jq`/`curl`, unreachable or slow server,
   non-repo path, unclaimed repo — because the worktree discipline was already collision-safe, so the
-  hook may only redirect work, never deny it on infrastructure trouble. A 10-second per-repo cache
-  keeps an edit burst to one request. Solo sessions with an empty lease registry never notice it.
-  The same script runs as `vault-lease-gate.sh --touch` from `hooks.PostToolUse` on every tool call:
-  it renews the session's own cwd lease (and re-claims it after a lapse) so a session that edits
-  through Bash or works through MCP tools alone stays live; a fresh renew stamp costs a `stat`, and
-  touch mode never blocks or prints. The command reader is `hooks/lib/shell_segments.py`, shared
+  hook may only redirect work, never deny it on infrastructure trouble. A lookup refused with a 429
+  (the account past its rate on the pool) is allowed too, and said in the agent's context after that
+  tool call, once per 15 minutes a repository; an unreachable server stays silent. A 10-second
+  per-repo cache keeps an edit burst to one request. Solo sessions with an empty lease registry
+  never notice it. The same script runs as `vault-lease-gate.sh --touch` from `hooks.PostToolUse` on
+  every tool call: it renews the session's own cwd lease (and re-claims it after a lapse) so a
+  session that edits through Bash or works through MCP tools alone stays live; a fresh renew stamp
+  costs a `stat`. Touch mode never blocks, and speaks only to say a refused lookup or claim, or that
+  another session took the cwd lease. The command reader is `hooks/lib/shell_segments.py`, shared
   with the commit gate (2026-09-06).
 - `vault-notices.sh` — the hosted vault's notices (vault-storage 7q-4): what still interrupts the
   service, from `GET /system/notices`, which the front answers. As

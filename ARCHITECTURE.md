@@ -57,10 +57,10 @@ a compact digest. The larger families:
   `skills/vault/vault-settings.mjs` resolves the server's settings, every script calls the API
   through `skills/vault/vault-fetch.mjs`, which waits out a 429 that names its `Retry-After` for
   five minutes at most, and `skills/vault/queue-items.mjs` owns a queue kept as one note per item.
-  The hooks call `curl` themselves, with their one- or two-second caps, and fail open. An agent
-  reaches the same server through MCP tools; a script cannot call those. `/vault resume` loads a
-  skill's whole `SKILL.md` into context, so the vault's holds that command and a table, and
-  `references/` holds the rest, read on demand.
+  The hooks call `curl` themselves, with their one- or two-second caps, and fail open; the lease
+  gate says a lookup the server refused. An agent reaches the same server through MCP tools; a
+  script cannot call those. `/vault resume` loads a skill's whole `SKILL.md` into context, so the
+  vault's holds that command and a table, and `references/` holds the rest, read on demand.
 - **Fleet checks:** `fleet-fix`, `fleet-status`, `release-check`, `release-prep`, and
   `ai-docs-update` read and audit the other repositories.
 - **Retrospectives:** `reflect`, `clarify`, `process-review`, and `transcript-profile` read session

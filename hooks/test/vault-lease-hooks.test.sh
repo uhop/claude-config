@@ -115,6 +115,68 @@ run "$GATE" "$(jq -nc --arg c "$RF" --arg f "$RF/x" '{tool_name:"Edit",tool_inpu
 kill "$srv" 2>/dev/null
 rm -rf "$RF"
 
+# A lookup the server refuses lets the call through, and that tool call's touch says so, once per
+# RENEW_EVERY a repository and session; an unreachable server stays silent (vault-storage question 385).
+# fake_lookup <status> <body>: every request answers it, with Retry-After: 1.
+fake_lookup() {
+  local pf
+  pf=$(mktemp)
+  node -e '
+const [pf, status, body] = process.argv.slice(1);
+const s = require("http").createServer((q, r) => {
+  q.resume();
+  q.on("end", () => {
+    r.writeHead(Number(status), {"content-type": "application/json", "retry-after": "1"});
+    r.end(body);
+  });
+}).listen(0, "127.0.0.1", () => require("fs").writeFileSync(pf, String(s.address().port)));' "$pf" "$1" "$2" &
+  srv=$!
+  for _ in $(seq 50); do [[ -s $pf ]] && break; sleep 0.1; done
+  fake="http://127.0.0.1:$(cat "$pf")"
+  rm -f "$pf"
+}
+RF=$(mktemp -d)
+git -C "$RF" init -q && git -C "$RF" remote add origin https://github.com/uhop/zz-lease-hook-test.git
+RENV=(XDG_CACHE_HOME="$RF/cache" XDG_STATE_HOME="$RF/state" PROGRAM_CLERK_KEY=pck VAULT_API_URL= VAULT_API_TOKEN=)
+# edit_in <session> [agent]: an Edit of a file in $RF from a non-repo cwd; after: its PostToolUse.
+edit_in() { jq -nc --arg f "$RF/x" --arg s "$1" --arg a "${2:-}" '{tool_name:"Edit",tool_input:{file_path:$f},session_id:$s,cwd:"/tmp"} + (if $a == "" then {} else {agent_id:$a} end)'; }
+after() { jq -nc --arg s "$1" --arg a "${2:-}" '{session_id:$s,cwd:"/tmp"} + (if $a == "" then {} else {agent_id:$a} end)'; }
+said() { ctx=$(jq -r '.hookSpecificOutput.additionalContext // ""' <<<"$out" 2>/dev/null); }
+fake_lookup 429 '{"code":"too_many_requests","error":"this account sends more than a server takes"}'
+run "$GATE" "$(edit_in feedfacecafe)" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+[[ $rc -eq 0 && -z "$out" ]] && ok || bad "gate: a refused lookup must allow the edit silently (rc=$rc out=$out)"
+touch_ "$(after feedfacecafe)" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+said
+[[ $rc -eq 0 && "$ctx" == "[vault] lease: the check of $RRES was refused (HTTP 429, too_many_requests), so this Edit went through unchecked"* ]] && ok ||
+  bad "touch: a refused lookup must reach the agent's context (rc=$rc out=$out)"
+touch_ "$(after feedfacecafe)" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+[[ $rc -eq 0 && -z "$out" ]] && ok || bad "touch: a refused lookup is said once (rc=$rc out=$out)"
+run "$GATE" "$(edit_in feedfacecafe)" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+touch_ "$(after feedfacecafe)" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+[[ $rc -eq 0 && -z "$out" ]] && ok || bad "touch: a second refusal within RENEW_EVERY stays unsaid (rc=$rc out=$out)"
+run "$GATE" "$(edit_in abad1deacafe)" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+touch_ "$(after abad1deacafe)" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+said
+[[ -n "$ctx" ]] && ok || bad "touch: another session hears its own refusal (out=$out)"
+run "$GATE" "$(edit_in c0ffeecafe00 sub-1)" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+touch_ "$(after c0ffeecafe00)" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+[[ $rc -eq 0 && -z "$out" ]] && ok || bad "touch: a sub-agent's refusal is not its parent's (out=$out)"
+touch_ "$(after c0ffeecafe00 sub-1)" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+said
+[[ $rc -eq 0 && -n "$ctx" ]] && ok || bad "touch: a sub-agent hears its own refusal (rc=$rc out=$out)"
+kill "$srv" 2>/dev/null
+for status in 502 503 504; do
+  fake_lookup "$status" '{"code":"tenant_unavailable","error":"restarting"}'
+  run "$GATE" "$(edit_in "0dd0${status}cafe")" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+  touch_ "$(after "0dd0${status}cafe")" "${RENV[@]}" PROGRAM_CLERK_URL="$fake"
+  [[ $rc -eq 0 && -z "$out" ]] && ok || bad "touch: a $status during a restart stays silent (rc=$rc out=$out)"
+  kill "$srv" 2>/dev/null
+done
+run "$GATE" "$(edit_in deadbeefcafe)" "${RENV[@]}" PROGRAM_CLERK_URL=http://127.0.0.1:9
+touch_ "$(after deadbeefcafe)" "${RENV[@]}" PROGRAM_CLERK_URL=http://127.0.0.1:9
+[[ $rc -eq 0 && -z "$out" ]] && ok || bad "touch: an unreachable server stays silent (rc=$rc out=$out)"
+rm -rf "$RF"
+
 # ── LIVE: round-trip on a throwaway repo with a fake remote ──────────────
 if live_server /leases; then
   W=$(mktemp -d)
