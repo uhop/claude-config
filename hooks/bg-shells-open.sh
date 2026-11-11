@@ -21,7 +21,9 @@
 # Claude Code before 2.1.47 (reflect 2026-10-04, 5 false blocks after 8548b9b).
 # A declared shell still costs one block when no `sleep` timer is live beside it,
 # since an idle session says nothing when the run's estimate passes (reflect
-# 2026-11-05 P1: four overruns he had to ask about, in three sessions).
+# 2026-11-05 P1: four overruns he had to ask about, in three sessions). A background
+# agent still running at a Stop with no timer live costs one block too, named by its
+# description, since its id is never quoted to him (D87; reflect 2026-11-11, M1).
 #
 # FAILS OPEN, silently: no jq, no node, no transcript, a sub-agent run
 # (agent_id present) all exit 0 with no output. The lister is
@@ -55,7 +57,7 @@ lister="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../skills/bg-shells/bg-s
 [[ -f "$lister" ]] || exit 0
 
 live=$(node "$lister" --json --live --session="$transcript" 2>/dev/null |
-  jq -r '.[].shells[] | "\(.shell_id)\t\(.launched_this_turn)\t\(.command | test("^\\s*(command\\s+)?sleep\\s+[0-9]"))\t\(if .description == "" then .command else .description end)"' 2>/dev/null) || exit 0
+  jq -r '.[].shells[] | "\(.shell_id)\t\(.launched_this_turn)\t\(.command | test("^\\s*(command\\s+)?sleep\\s+[0-9]"))\t\(if .description == "" then .command else .description end)\t\(.kind // "shell")"' 2>/dev/null) || exit 0
 [[ -n "$live" ]] || exit 0
 
 state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-bg-shells"
@@ -80,9 +82,17 @@ printf '%s\n' "$live" | cut -f3 | command grep -qx true && timer_live=true
 
 new=""
 untimed=""
-while IFS=$'\t' read -r id this_turn timer desc || [[ -n "$id" ]]; do
+agents=""
+while IFS=$'\t' read -r id this_turn timer desc kind || [[ -n "$id" ]]; do
   [[ -n "$id" ]] || continue
   command grep -qxF "$id" "$marker" && continue
+  # An agent's id is never quoted to him, so no closing message declares it: one block
+  # when no timer is live, in the turn that launched it too (reflect 2026-11-11, M1).
+  if [[ "$kind" == "agent" ]]; then
+    printf '%s\n' "$id" >>"$marker"
+    [[ "$timer_live" == "true" ]] || agents+="${agents:+; }${desc:0:70}"
+    continue
+  fi
   if [[ -n "$closing" && "$closing" == *"$id"* ]]; then
     printf '%s\n' "$id" >>"$marker"
     [[ "$timer" == "true" || "$timer_live" == "true" ]] || untimed+="${untimed:+, }$id"
@@ -91,7 +101,7 @@ while IFS=$'\t' read -r id this_turn timer desc || [[ -n "$id" ]]; do
   [[ "$this_turn" == "true" ]] && continue
   new+="$id"$'\t'"$desc"$'\n'
 done <<<"$live"
-[[ -n "$new" || -n "$untimed" ]] || exit 0
+[[ -n "$new" || -n "$untimed" || -n "$agents" ]] || exit 0
 
 reason=""
 if [[ -n "$new" ]]; then
@@ -102,6 +112,9 @@ if [[ -n "$new" ]]; then
 fi
 if [[ -n "$untimed" ]]; then
   reason+="${reason:+ }[bg-shells] $untimed declared as still running, with no timer set. Start a background \`sleep\` that ends at the run's estimate, so an overrun is reported before he has to ask; a server or a watcher with no end needs none (CLAUDE.md § Tools; reflect 2026-11-05, P1)."
+fi
+if [[ -n "$agents" ]]; then
+  reason+="${reason:+ }[bg-shells] Background agent(s) still running, with no timer set: $agents. Start a background \`sleep\` that ends at their estimate, so an overrun is reported before he has to ask (CLAUDE.md § Tools; reflect 2026-11-11, M1)."
 fi
 
 jq -n --arg r "$reason" '{decision: "block", reason: $r}'

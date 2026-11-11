@@ -171,9 +171,10 @@ for (const sessionPath of sessionPaths) {
     if (row.type === 'assistant' && Array.isArray(row.message?.content)) {
       for (const b of row.message.content) {
         if (b?.type !== 'tool_use') continue;
-        if (b.name === 'Bash') {
+        if (b.name === 'Bash' || b.name === 'Agent' || b.name === 'Task') {
           bashByUseId.set(b.id, {
             tool_use_id: b.id,
+            kind: b.name === 'Bash' ? 'shell' : 'agent',
             command: b.input?.command ?? '',
             description: b.input?.description ?? '',
             started_iso: row.timestamp ?? null,
@@ -203,6 +204,22 @@ for (const sessionPath of sessionPaths) {
     }
     const entry = bashByUseId.get(trBlock.tool_use_id);
     if (!entry) continue;
+
+    // An async agent's result names its id; its notification and TaskStop use the same id
+    // (reflect 2026-11-11, M1).
+    if (entry.kind === 'agent') {
+      const text =
+        typeof trBlock.content === 'string'
+          ? trBlock.content
+          : Array.isArray(trBlock.content)
+            ? trBlock.content.map(s => s?.text ?? '').join('\n')
+            : '';
+      const id = /^Async agent launched/.test(text)
+        ? /agentId:\s*([A-Za-z0-9_-]+)/.exec(text)?.[1]
+        : null;
+      if (id) entry.shell_id = id;
+      continue;
+    }
 
     const bgId = row.toolUseResult?.backgroundTaskId;
     if (bgId) {
@@ -266,7 +283,7 @@ if (AS_JSON) {
       continue;
     }
     const live = shells.filter(sh => sh.live).length;
-    console.log(`  Found ${shells.length} background Bash call(s), ${live} live:\n`);
+    console.log(`  Found ${shells.length} background shell(s) or agent(s), ${live} live:\n`);
     for (const sh of shells) {
       const cmd = sh.command.replace(/\s+/g, ' ');
       const cmdPreview = cmd.length > 120 ? cmd.slice(0, 119) + '…' : cmd;

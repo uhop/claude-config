@@ -152,6 +152,31 @@ stop 'Started.'; quiet 'first turn, for the stopped case'
 user 'next'; stopped bshell12; say 'Stopped it.'
 stop 'Stopped it.'; quiet 'a stopped shell is not raised'
 
+# ── a background agent with no timer is raised once, by its description (reflect 2026-11-11, M1) ──
+# agent <id> [description]: an async Agent launch and its result; the id is never quoted to him.
+agent() {
+  jq -nc --arg u "use-$1" --arg d "${2:-Read the vault-storage turns}" \
+    '{type: "assistant", message: {role: "assistant", content: [{type: "tool_use", id: $u, name: "Agent", input: {description: $d, prompt: "x"}}]}}' >>"$T"
+  jq -nc --arg u "use-$1" --arg b "Async agent launched successfully.
+agentId: $1 (internal ID - do not mention to user.)" \
+    '{type: "user", toolUseResult: {status: "async_launched"}, message: {role: "user", content: [{type: "tool_result", tool_use_id: $u, content: [{type: "text", text: $b}]}]}}' >>"$T"
+}
+fresh; user 'go'; agent a1b2c3; say 'Readers are working.'
+stop 'Readers are working.'; raised 'an agent running with no timer is raised in its own turn' 'Read the vault-storage turns'
+[[ "$out" != *a1b2c3* ]] && ok || bad "the agent's id stays out of the reason (out=$out)"
+stop 'Readers are working.'; quiet 'an agent is raised once'
+fresh; user 'go'; agent a4b5c6; timer btimer9; say 'Readers are working; a timer is set.'
+stop 'Readers are working; a timer is set.'; quiet 'an agent with a timer live is not raised'
+fresh; user 'go'; agent a7b8c9; notify a7b8c9; say 'The reader finished.'
+stop 'The reader finished.'; quiet 'a finished agent is not raised'
+fresh; user 'go'; agent a7b8d0; stopped a7b8d0; say 'Stopped the reader.'
+stop 'Stopped the reader.'; quiet 'a stopped agent is not raised'
+fresh; user 'go'
+jq -nc '{type: "assistant", message: {role: "assistant", content: [{type: "tool_use", id: "use-fg", name: "Agent", input: {description: "Look it up", prompt: "x"}}]}}' >>"$T"
+jq -nc '{type: "user", toolUseResult: {status: "completed"}, message: {role: "user", content: [{type: "tool_result", tool_use_id: "use-fg", content: [{type: "text", text: "The answer is 4."}]}]}}' >>"$T"
+say 'Done.'
+stop 'Done.'; quiet 'a foreground agent is not raised'
+
 # ── no shells, a re-entry, a sub-agent, and a missing transcript all pass ──
 fresh; user 'go'; say 'Nothing started.'
 stop 'Nothing started.'; quiet 'no shells'

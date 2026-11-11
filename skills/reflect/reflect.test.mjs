@@ -14,6 +14,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import {
+  answerOf,
   windowShortfallDays,
   classifyUserTurn,
   errorSignature,
@@ -610,6 +611,150 @@ test('a marker reads a turn that answers a reply, whatever row sits between them
     JSON.parse(r.stdout).user_turns.map(u => [u.first_line, u.withheld === true])
   );
   assert.deepEqual(marks, {'what is 1a?': false, 'what is 4f?': true, 'what is 5g?': true});
+});
+
+// The 2026-11-11 report, P4: vault-storage 73f09b18's correction arrived as the
+// answer to an AskUserQuestion, and blog-hugo 087d048c's image note was listed as
+// his turn.
+test('an AskUserQuestion answer in his words is his turn, a pick is listed unclassified, a meta row is not his', t => {
+  const home = mkdtempSync(path.join(tmpdir(), 'reflect-answers-'));
+  t.after(() => rmSync(home, {recursive: true, force: true}));
+  const dir = path.join(home, '.claude/projects/-x');
+  mkdirSync(dir, {recursive: true});
+  const base = Date.now() - 3600e3;
+  const at = i => new Date(base + i * 1000).toISOString();
+  const common = {sessionId: 's', cwd: home, entrypoint: 'cli'};
+  const ask = (id, question, labels, i) => ({
+    ...common,
+    type: 'assistant',
+    timestamp: at(i),
+    message: {
+      role: 'assistant',
+      content: [
+        {
+          type: 'tool_use',
+          id,
+          name: 'AskUserQuestion',
+          input: {questions: [{question, options: labels.map(label => ({label}))}]}
+        }
+      ]
+    }
+  });
+  const answer = (id, question, labels, given, i, notes) => ({
+    ...common,
+    type: 'user',
+    timestamp: at(i),
+    message: {
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: id,
+          content: `Your questions have been answered: "${question}"="${given}".`
+        }
+      ]
+    },
+    toolUseResult: {
+      questions: [
+        {
+          question,
+          header: 'Q',
+          multiSelect: false,
+          options: labels.map(label => ({label, description: ''}))
+        }
+      ],
+      answers: {[question]: given},
+      ...(notes && {annotations: {[question]: {notes}}})
+    }
+  });
+  const labels = ['After 11e-5 (Recommended)', 'Release 0.20.0 now'];
+  const rows = [
+    {
+      ...common,
+      type: 'user',
+      timestamp: at(0),
+      message: {role: 'user', content: 'Is it a time to release the adapter?'}
+    },
+    ask('q1', 'When should it release?', labels, 1),
+    answer(
+      'q1',
+      'When should it release?',
+      labels,
+      'I asked a question, not asked for a release.',
+      2
+    ),
+    ask('q2', 'Which first?', labels, 3),
+    answer('q2', 'Which first?', labels, 'Release 0.20.0 now', 4),
+    ask('q3', 'And then?', labels, 5),
+    answer('q3', 'And then?', labels, 'After 11e-5 (Recommended)', 6, 'but tag it first'),
+    {
+      ...common,
+      type: 'user',
+      isMeta: true,
+      timestamp: at(7),
+      message: {role: 'user', content: '[Image: original 2432x1632, displayed at 2337x1568.]'}
+    },
+    {
+      ...common,
+      type: 'user',
+      isMeta: true,
+      timestamp: at(8),
+      message: {
+        role: 'user',
+        content: 'Stop hook feedback:\n[unchecked] This reply says "from memory".'
+      }
+    }
+  ];
+  const file = path.join(dir, 's.jsonl');
+  writeFileSync(file, rows.map(r => `${JSON.stringify(r)}\n`).join(''));
+  utimesSync(file, new Date(base), new Date(base));
+  const script = new URL('reflect.mjs', import.meta.url).pathname;
+  const r = spawnSync('node', [script, '--since=1d'], {
+    encoding: 'utf8',
+    env: {...process.env, HOME: home}
+  });
+  const scan = JSON.parse(r.stdout);
+  // A gate's firings are counted apart, so a week of them can be judged (D85).
+  assert.deepEqual(
+    scan.signals.hook_firings.map(h => [h.hook, h.first_line]),
+    [['unchecked', '[unchecked] This reply says "from memory".']]
+  );
+  assert.equal(scan.totals.hook_firings, 1);
+  const turns = scan.user_turns.map(u => ({
+    line: u.first_line,
+    answer: u.answer === true,
+    picked: u.picked === true
+  }));
+  assert.deepEqual(turns, [
+    {line: 'Is it a time to release the adapter?', answer: false, picked: false},
+    {line: 'I asked a question, not asked for a release.', answer: true, picked: false},
+    {line: '[picked] Release 0.20.0 now', answer: true, picked: true},
+    {line: 'but tag it first', answer: true, picked: false}
+  ]);
+});
+
+test('an answer that names offered labels is a pick, in quotes or several at once', () => {
+  const labels = ['None, cut now (Recommended)', 'Remove http-errors', 'Add keywords'];
+  const row = given => ({
+    type: 'user',
+    toolUseResult: {
+      questions: [{question: 'Q?', options: labels.map(label => ({label}))}],
+      answers: {'Q?': given}
+    }
+  });
+  assert.deepEqual(answerOf(row('"None, cut now (Recommended)"')), {
+    own: '',
+    picks: ['None, cut now (Recommended)']
+  });
+  assert.deepEqual(answerOf(row('Remove http-errors, Add keywords')), {
+    own: '',
+    picks: ['Remove http-errors', 'Add keywords']
+  });
+  assert.deepEqual(answerOf(row('Remove http-errors, Give me more info')), {
+    own: 'Remove http-errors, Give me more info',
+    picks: []
+  });
+  assert.equal(answerOf({type: 'user', toolUseResult: {stdout: 'x'}}), null);
 });
 
 const gateGaps = commands => {

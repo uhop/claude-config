@@ -39,6 +39,10 @@ question by changing state is the failure the check/prep split exists to prevent
 infer the decision from an unreleased changeset on `main`, from a docket/task list (even one the
 agent wrote), or from a generic "deal with it"; surface "main has unreleased work" as information,
 not as a task. He decides _when_ — he may deliberately batch more items before cutting a version.
+"Release X or keep working on Y?" is neither ask: it asks which work comes first, answered from the
+plan in a few lines, with no `/release-check` and no question about when to release
+([[projects/agent-workflow/feedback]] § "Release X or keep working on Y?" asks which work comes
+first).
 
 Asking is also useless because of the gate itself: `hooks/git-commit-gate.sh` blocks `git commit`,
 and every other verb that makes a commit (`am`, `merge`, `cherry-pick`, `revert`, `rebase`, a `pull`
@@ -85,6 +89,12 @@ moment a decision needs the state, use the answer, discard it; never carry "N ah
 landed" across turns or re-confirm what git already tracks. A `/vault wrap`-style session log
 written once from `git log` is fine; a running tally babysat mid-session is not.
 
+**Read local git before stating a unit's commit state.** At a work stop and before the next arc,
+`git status --short` and `git log --oneline -3` say whether it is committed; never wait on his word,
+and read whether it is pushed or published only when a step depends on it. Eugene, 2026-11-09: _"You
+never check git, while it is almost free."_ ([[projects/agent-workflow/feedback]] § Read local git
+before stating a unit's commit state.)
+
 **A work stop re-names the unit, so he never scrolls back to find out what he is reviewing.** The
 report that ends a long stretch — scripts, diffs, more scripts, 20 to 60 minutes, with his own work
 interleaved — has to stand on its own. The message that opened the arc is far up the scroll by then,
@@ -94,11 +104,13 @@ was announced under, and one sentence of what it does; the per-file detail follo
 label is not a name** — "Arc 8b", "cluster 4", "D193" carry nothing on their own, so the sentence is
 what does the work and is never dropped as redundant. The report **ends with a pasteable git
 subject** in its own fenced block, one per repository when the stop spans several, each labeled with
-its repository: past-tense verb first, sentence case, a closing period, **50 characters or fewer and
-never past 72** (git's subject convention), and **no body** — _"I usually use just a title. For the
-rest --- read the diff."_ The name serves the review, the subject serves the commit, and the review
-is why the rule exists. Naming the unit is not offering to commit; the verb gate above is untouched.
-(Shape: [[topics/commit-message-cliff-notes]]; boundary: [[topics/agent-stops-at-staged-diff]].)
+its repository on the line above its block, never inside it (the block is what he pastes; reflect
+2026-11-11, M2: 34 subjects carried `apodict:` in the fence, and he stripped every one): past-tense
+verb first, sentence case, a closing period, **50 characters or fewer and never past 72** (git's
+subject convention), and **no body** — _"I usually use just a title. For the rest --- read the
+diff."_ The name serves the review, the subject serves the commit, and the review is why the rule
+exists. Naming the unit is not offering to commit; the verb gate above is untouched. (Shape:
+[[topics/commit-message-cliff-notes]]; boundary: [[topics/agent-stops-at-staged-diff]].)
 
 Pushed history is immutable: no `--amend`, `rebase`, force-push, or moving published tags. Fix
 forward with a new commit.
@@ -220,6 +232,11 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
   When a simplification matches a tactic, double-check it (tests/probes), then apply — don't just
   note it.
 - Prefer prefix `++i` / `--i` when the result is unused.
+- **JavaScript a program needs as text is a function, converted with `toString()`.** A test's
+  fixture or a generated input is written as a real function and taken as text with
+  `Function.prototype.toString()`, never as a string constant; module syntax, TypeScript, another
+  language, and code meant to fail parsing stay text ([[projects/agent-workflow/feedback]] §
+  JavaScript a program needs as text…, apodict 2026-11-09).
 - **Never `var`; a genuinely global binding goes on `globalThis` explicitly** (`window` in
   browser-only code), everything else is `const`/`let`. Eugene, 2026-09-19: _"in my code I avoid
   `var` completely and for truly global variables I use `globalThis` explicitly. Or `window` on
@@ -232,6 +249,9 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
   `((window.__ns ||= {}).queue ||= []).push(…)` binds no name and is safe pasted any number of
   times. Measured trade-off table: [[topics/render-data-before-first-paint]] § Scoping a pasted head
   script.
+- **A change that leaves a file unused removes it in the same change.** Eugene, vault-storage
+  2026-11-09: _"In this case remove the obsolete file so we have no unused garbage left."_ (reflect
+  2026-11-11, M5.)
 - Prefer `catch {` over `catch (e)` when the error binding is unused (optional catch binding,
   ES2019). Not a mechanical sweep — read each site, leave any binding that's rethrown / logged /
   inspected. Full: [[topics/no-mechanical-modernization]].
@@ -491,6 +511,11 @@ the `prose-tells --check` shim are in `skills/writing-style/references/ai-tells.
 `topics/ai-writing-tells-calibrated`). The full word list is
 `skills/writing-style/references/word-list.md` — grep it before guessing a term.
 
+**A polite decline gives his circumstances and encourages the other person.** When he asks for a
+polite answer declining an offer, his blunt reasons are the brief: state the reason as his present
+circumstances, judge nothing of the other person's work, and close with goodwill
+([[projects/agent-workflow/feedback]] § A polite decline…, blog 2026-11-03).
+
 **A rule, a decision, or a queue item is cited by its title; the number is the locator, not the
 reference.** A title that does not say what the item does (a feature name like "Rich completion
 descriptions", a label like "the dual-stack visitor item") gets one clause of what it does, unless
@@ -607,9 +632,12 @@ this project' I usually mean the project of the current `cwd`. … But typically
 practices to all fleet projects, so it can be equally applied to other supported projects we work
 on. So you can safely extend it on others."_ So the referent is the repository the session runs in,
 never a project the sentence mentions in passing; and a coding or process practice he states in one
-session routes as a fleet rule (this file, or the topic it belongs to) unless he scopes it — a
-`/reflect` correction about practice is cross-project by default, and only a fact about that
-repository stays in its own notes.
+session routes as a fleet rule unless he scopes it — a `/reflect` correction about practice is
+cross-project by default, and only a fact about that repository stays in its own notes. A fleet rule
+gets a line in this file, with any long form in [[projects/agent-workflow/feedback]] or a topic: a
+session's start prints only its own project's feedback digest, and no session runs in agent-workflow
+(the 2026-11-11 reflect report, P2: a rule recorded only there broke 75 minutes later in another
+project).
 
 **An anecdote in design talk is context, not an instruction.** A story he tells about a system he
 worked on or saw, phrased in the past tense, informs the design; it does not specify it. A current
@@ -844,11 +872,13 @@ approved design is a ruling too: before building a change to it (a swapped mecha
 cut, a wider reach that drops an exception the ruling kept, a new rank or default, a cost accepted,
 a trigger it named crossed, a premise the approval rested on found false), put the change at the top
 of the reply as a question with your pick; a mention in passing, or a line in the next decision
-entry or stop report, is building around it. An approval covers what he addressed: an "LGTM" on a
-note with open questions approves its direction, and each suggested answer stays your proposal until
-he rules it ([[projects/agent-workflow/feedback]] § A ruling holds for its conditions; bring a
-contradicted one to him; the design clause: reflect 2026-10-22 P1; recurred: the 2026-10-30 report,
-P3).
+entry or stop report, is building around it. The stop that closes an arc built from an approved
+design carries one line, _Against the approval:_, naming each departure or _none_, so the comparison
+is a step the stop always takes (the 2026-11-11 reflect report, P5: 11 departures in 8 sessions, 10
+caught only by side notes). An approval covers what he addressed: an "LGTM" on a note with open
+questions approves its direction, and each suggested answer stays your proposal until he rules it
+([[projects/agent-workflow/feedback]] § A ruling holds for its conditions; bring a contradicted one
+to him; the design clause: reflect 2026-10-22 P1; recurred: the 2026-10-30 report, P3).
 
 **Dependencies first.** Before calling a tool defective, compare its installed version with the
 latest published (`node -p "require('./node_modules/<pkg>/package.json').version"` against
@@ -888,7 +918,8 @@ undisclosed deviation as skipping a lockfile. Do it, or say in the wrap that you
 _unchecked_, _not verified_, _I haven't verified_, _partly checked_, or _still open_, and the check
 runs in this session in minutes, run it and report the result instead. An unknown that decides
 whether a deploy, a release, or a migration works is settled before that step, by a read-only query
-where one exists, never by the step.
+where one exists, never by the step. `hooks/unchecked-claim-check.sh` (Stop) sends a closing message
+that says so back once (D85; the 2026-11-11 reflect report, P1).
 
 **A pilot says what it cannot show.** Before a pass over many notes or a cutover, name what the
 pilot or the tests lack that the real run has (a field, a second Unix user, a folder shape), then
@@ -1214,14 +1245,15 @@ terminate. Shell IDs (e.g. `bash_1`) are in the original Bash result — scan pr
 **never run `ps`**. Skill: `/bg-shells` enumerates them.
 
 **Background _agents_ are a separate registry from background shells — and killing one does not kill
-its children.** `Agent(run_in_background: true)` spawns tasks that `/bg-shells` and the "N shells"
-counter never show, and a sub-agent may fan out into sub-agents of its own. `TaskStop` on a parent
-reports `killed` and fires a clean completion notification while the grandchildren keep running and
-burning tokens, so the report reads finished while work continues. **`TaskList` is not the check** —
-it lists the session to-do list (`subject`/`status`/`owner`), so it returns "No tasks found" whether
-or not agents are running; an all-clear from it is meaningless. The reliable enumerator is
-`TaskStop` with the id `x` (that exact id: `/reflect` suppresses this spelling as a probe instead of
-scoring it as a stuck loop, 2026-09-15): the error names every live agent
+its children.** `Agent(run_in_background: true)` spawns tasks the "N shells" counter never shows;
+`/bg-shells` lists the session's own async agents since D87, never their children, and a sub-agent
+may fan out into sub-agents of its own. `TaskStop` on a parent reports `killed` and fires a clean
+completion notification while the grandchildren keep running and burning tokens, so the report reads
+finished while work continues. **`TaskList` is not the check** — it lists the session to-do list
+(`subject`/`status`/`owner`), so it returns "No tasks found" whether or not agents are running; an
+all-clear from it is meaningless. The reliable enumerator is `TaskStop` with the id `x` (that exact
+id: `/reflect` suppresses this spelling as a probe instead of scoring it as a stuck loop,
+2026-09-15): the error names every live agent
 (`No task found with ID: x. Running background agents: <id> (<label>), …`). Kill each id it names,
 then re-probe until the list is gone. `ListAgents` is the readable view — sub-agents with a
 `running` / `completed` status and no error line — but its `completed` can hide an agent whose
@@ -1254,7 +1286,8 @@ hook stays quiet in the turn that launched a shell and raises it at a later Stop
 named by its id in that turn's closing message, with why; the hook reads that as the declaration and
 does not block for it (reflect 2026-10-03: 14 firings in a week, every one a gate that had to
 finish), unless no `sleep` timer is live beside it, which costs one block (§ Tools, the long-run
-rule; reflect 2026-11-05, P1).
+rule; reflect 2026-11-05, P1). A background agent still running at a Stop with no timer live costs
+one block too, named by its description, since its id is never quoted to him (D87).
 
 **Herdr panes are a third registry, and this is the one he watches.** Background shells and
 background agents live in a status line; a pane sits in his window. A pane you split is yours to

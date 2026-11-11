@@ -34,6 +34,7 @@ import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
 import {correlateSession, releaseClusters} from '../process-review/git-correlate.mjs';
 import {
+  answerOf,
   asHumanRow,
   classifyUserTurn,
   stripSyntheticBlocks,
@@ -331,7 +332,8 @@ const signals = {
   multi_release: [],
   release_alerts: [],
   side_notes: [],
-  gate_gaps: []
+  gate_gaps: [],
+  hook_firings: []
 };
 
 // Every Bash command in the window, for the gate-gap watcher after the loop (8w). It reads
@@ -444,6 +446,17 @@ for (const t of transcripts) {
     // A queued message lands between the rows of one batch; it must not split it.
     if (row.type === 'user' && !row.queued) turnSeq++;
     const f = flatten(row);
+    // A meta row is the harness's (hook feedback, an image note, /context): 252 of
+    // 252 since 2026-10-15 on one host (reports/2026-11-11 P4).
+    // A Stop hook's feedback is counted apart, so a gate's week can be judged (D85).
+    const hook =
+      row.isMeta === true
+        ? (/^Stop hook feedback:\s*\[([\w-]+)\]/.exec(f.userText)?.[1] ?? null)
+        : null;
+    const hookLine = hook ? firstLine(f.userText.replace(/^Stop hook feedback:\s*/, '')) : null;
+    if (row.isMeta === true) f.userText = '';
+    const answer = answerOf(row);
+    if (answer) f.userText = answer.own;
     // Register tool_use ids → names for later tool_result name lookup
     const content2 = row.message?.content;
     if (Array.isArray(content2)) {
@@ -475,7 +488,11 @@ for (const t of transcripts) {
       toolNames: f.toolNames,
       toolInputs: f.toolInputs,
       toolUseIds: f.toolUseIds,
-      toolResultIds
+      toolResultIds,
+      answer: answer !== null,
+      picks: answer?.picks ?? [],
+      hook,
+      hookLine
     });
   }
 
@@ -492,6 +509,19 @@ for (const t of transcripts) {
     continue;
   }
   sessionsAnalyzed++;
+
+  for (const e of events) {
+    if (!e.hook) continue;
+    signals.hook_firings.push({
+      kind: 'hook_firing',
+      project: t.project,
+      session_id: t.session_id,
+      ts: e.ts,
+      ts_iso: iso(e.ts),
+      hook: e.hook,
+      first_line: e.hookLine
+    });
+  }
 
   // Pass 1: corrections + confirmations + surprises — scan user-authored
   // text only. Synthetic blocks (system reminders, command messages) have
@@ -699,7 +729,9 @@ for (const t of transcripts) {
   let prevHuman = -1;
   for (let i = 0; i < events.length; i++) {
     const e = events[i];
-    if (e.role !== 'user' || !e.userText) continue;
+    if (e.role !== 'user') continue;
+    const picked = !e.userText && e.picks.length > 0;
+    if (!e.userText && !picked) continue;
     const between = prevHuman >= 0 ? events.slice(prevHuman + 1, i) : [];
     const adjacent =
       between.length > 0 && between.every(x => x.role === 'assistant' && !x.hasToolUse);
@@ -708,15 +740,19 @@ for (const t of transcripts) {
     const side = parseSideNote(e.userText);
     const own = side ? side.addendum : e.userText;
     const answers = e.queued || between.some(x => x.role === 'assistant');
-    const withheld = answers && classifyUserTurn(own).withheld;
+    const withheld = answers && !picked && classifyUserTurn(own).withheld;
     const afterApiError = afterAssistant && /^API Error\b/.test(prev.userText ?? '');
     userTurns.push({
       project: t.project,
       session_id: t.session_id,
       ts: e.ts,
       ts_iso: iso(e.ts),
-      first_line: firstLine(side ? side.title : e.userText),
+      first_line: firstLine(
+        picked ? `[picked] ${e.picks.join('; ')}` : side ? side.title : e.userText
+      ),
       chars: e.userText.length,
+      ...(e.answer && {answer: true}),
+      ...(picked && {picked: true}),
       ...(side && {side_note: true}),
       ...(side?.addendum && {addendum: firstLine(side.addendum)}),
       ...(e.queued && {queued: true}),

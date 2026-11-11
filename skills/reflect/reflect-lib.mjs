@@ -345,6 +345,30 @@ const resultBody = block =>
 export const isHumanUserRow = row =>
   row?.type === 'user' && !(typeof row.origin?.kind === 'string' && row.origin.kind !== 'human');
 
+// His answer to AskUserQuestion is a tool result carrying `toolUseResult.answers`
+// (reports/2026-11-11 P4). An offered label he picked is the agent's text, so it
+// is a pick; free text and an option's notes are his words.
+export const answerOf = row => {
+  const r = row?.type === 'user' ? row.toolUseResult : null;
+  if (!r || typeof r.answers !== 'object' || r.answers === null) return null;
+  const own = [];
+  const picks = [];
+  for (const [question, given] of Object.entries(r.answers)) {
+    const q = Array.isArray(r.questions) ? r.questions.find(x => x?.question === question) : null;
+    const labels = new Set((q?.options ?? []).map(o => o?.label));
+    if (typeof given === 'string' && given) {
+      // apodict c30f564c stored a pick in quotes: "None, cut now (Recommended)"
+      const bare = given.replace(/^"([^"]*)"$/, '$1');
+      const parts = labels.has(bare) ? [bare] : given.split(', ');
+      if (parts.every(p => labels.has(p))) picks.push(...parts);
+      else own.push(given);
+    }
+    const notes = r.annotations?.[question]?.notes;
+    if (typeof notes === 'string' && notes.trim()) own.push(notes.trim());
+  }
+  return {own: own.join('\n'), picks};
+};
+
 // A message typed while the agent works is stored as an attachment, not a user
 // row (first seen 2026-08-18; reports/2026-09-17 P2). Hand-backs can ride
 // the same mode, so their envelopes stay out.

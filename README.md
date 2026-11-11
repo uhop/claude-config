@@ -81,7 +81,11 @@ ignored. Anything else in `~/.claude/` (per-host `settings.local.json`, runtime 
   marker is intended to be committed alongside the project so the opt-in travels with the code.
 - `handed-command-check.sh` — a `Stop` hook: a `<word>` placeholder or a scratch path in a command
   block of the turn's closing message sends the agent back once, since a command he runs carries no
-  placeholder the session can fill and the scratchpad is no delivery location.
+  placeholder the session can fill and the scratchpad is no delivery location. So does a quoted
+  value holding an instruction ("paste", "fill in", an ellipsis) and a `git push` behind `!` (D86).
+- `unchecked-claim-check.sh` — a `Stop` hook: a closing message that calls a fact unchecked ("I
+  haven't checked", "from memory", "as I recall") sends the agent back once to run the check or say
+  why it cannot, with its matcher in `lib/unchecked_claims.py` (D85).
 - `vault-lease-gate.sh` — enforces the agent-coordination repo lease on
   `Edit`/`Write`/`NotebookEdit` and on write-shaped `Bash`: resolves the edited file's repo (or, for
   Bash, every repository the command's write targets name: redirections, `sed -i`, `tee`, `cp`/`mv`

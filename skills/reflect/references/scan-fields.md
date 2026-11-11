@@ -73,7 +73,15 @@ harness's `API Error:` row, so a run of such turns is an outage, not a cluster. 
 (2026-09-17) marks a message typed while the agent was working: Claude Code stores it as an
 `attachment` row of type `queued_command`, not a `user` row, and every scan before this marker
 dropped it, 224 messages on one fleet host from 2026-08-18. These are the turns typed while watching
-the work, so they carry the densest steering; read them first.
+the work, so they carry the densest steering; read them first. `answer: true` (2026-11-11) is his
+answer to `AskUserQuestion`, a tool result no earlier scan read (vault-storage `73f09b18`'s
+correction arrived that way): his own words, free text or an option's notes, are a turn like any
+other, and a pick of an offered label lists as `[picked] <label>` with `picked: true`, unclassified,
+since the label is the agent's text. A meta row (`isMeta`: hook feedback, an image note, `/context`)
+is never his turn. A Stop hook's feedback is counted apart, in `hook_firings` (its `hook` is the
+bracketed tag, `bg-shells`, `unchecked`, `handed-command`): that list is how a gate's week is
+judged, as D85 asks of the unchecked-claim gate, so the report gives each gate its count and reads
+the firings when a decision says to.
 
 **`side_notes` are the side agent's findings, relayed by Eugene.** The built-in
 `cc-plugin-you-should-know` plugin (enabled 2026-10-03) watches a session and writes a heads-up; a

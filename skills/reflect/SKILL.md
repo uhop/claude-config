@@ -62,7 +62,7 @@ Read all three to dedupe; write only to vault + claude-config.
    ```json
    {
      "scan_window": {"since": "...", "start_iso": "...", "end_iso": "...", "earliest_row_iso": "..."},
-     "totals": {"corrections": N, "confirmations": N, "stuck_loops": N, "repeated_failures": N, "surprises": N, "multi_release": N, "release_alerts": N, "side_notes": N, "gate_gaps": N},
+     "totals": {"corrections": N, "confirmations": N, "stuck_loops": N, "repeated_failures": N, "surprises": N, "multi_release": N, "release_alerts": N, "side_notes": N, "gate_gaps": N, "hook_firings": N},
      "sessions_scanned": N,
      "automated": {"count": N, "included": false, "sessions": [{project, session_id, entrypoint, rows, first_turn}]},
      "transcripts_seen": N,
@@ -70,7 +70,7 @@ Read all three to dedupe; write only to vault + claude-config.
      "live_sessions": [{project, session_id, path, mtime_iso, age_seconds, first_row_iso}],
      "state_watermark_iso": "...",
      "session_git": [{project, session_id, start_iso, end_iso, first_turn, repo, commits, correction_driven_commits, shas, releases: [{package, version, ts_iso, sha, tag}], npm: {<package>: "ok" | "unpublished" | "not checked"}}],
-     "user_turns": [{project, session_id, ts, ts_iso, first_line, chars, side_note?, addendum?, queued?, adjacent?, correction?, withheld?, after_api_error?}],
+     "user_turns": [{project, session_id, ts, ts_iso, first_line, chars, answer?, picked?, side_note?, addendum?, queued?, adjacent?, correction?, withheld?, after_api_error?}],
      "gate_gap_scan": {"commands": N, "error": null},
      "signals": {
        "corrections":       [{kind, project, session_id, ts, ts_iso, matched_text, excerpt, unlanded?, scope_extension?}, ...],
@@ -81,7 +81,8 @@ Read all three to dedupe; write only to vault + claude-config.
        "multi_release":     [{kind, project, session_id, sessions, repo, package, count, span_min, releases: [{version, session_id, sha, subject, npm_iso, tag, driver}], note}],
        "release_alerts":    [{kind, project, session_id, repo, package, version, ts, ts_iso, tag_expected?, unrecorded?}],
        "side_notes":        [{kind, project, session_id, ts, ts_iso, title, heads_up, note, addendum?, queued?}],
-       "gate_gaps":         [{kind, item, title, shape, project, session_id, ts, ts_iso, matched, command}]
+       "gate_gaps":         [{kind, item, title, shape, project, session_id, ts, ts_iso, matched, command}],
+       "hook_firings":      [{kind, project, session_id, ts, ts_iso, hook, first_line}]
      }
    }
    ```

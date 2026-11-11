@@ -95,6 +95,20 @@ passes 'a scratch path in prose' 'I kept /tmp/tmp.abc123/x for now.'
 run "$(block bash 'deploy <host> /tmp/tmp.abc123/x')"
 [[ "$out" == *'<host>'* && "$out" == *'It also names a scratch path'* ]] && ok || bad "both are named (out=$out)"
 
+# ── an instruction where a value goes, and a push behind `!` (the 2026-11-11 reflect report, P3) ──
+blocks 'an instruction in a quoted value' "$(block bash "PULL_URL='paste the Address row from the export page here'
+git ls-remote \"\$PULL_URL\"")" 'paste the Address row'
+blocks 'a fill-in in double quotes' "$(block bash 'deploy --account "fill in your account"')" 'fill in your account'
+blocks 'an ellipsis in a quoted value' "$(block bash "KEY='pcg_…'")" "'pcg_…'"
+blocks 'a push behind !' "$(block '' '! git -C ~/Open/vault-storage push')" 'runs a push behind'
+blocks 'a push behind ! with an env word' "$(block bash '! GIT_TRACE=1 git push origin main')" 'runs a push behind'
+passes 'a push for his terminal' "$(block bash 'git -C ~/Open/vault-storage push')"
+passes 'a pull behind !' "$(block bash '! git -C ~/Open/vault-storage pull')"
+passes 'a grep for paste outside quotes' "$(block bash 'grep -n paste notes.md')"
+passes 'a paste in a heredoc body' "$(block bash "cat > a.md <<'EOF'
+'paste here'
+EOF")"
+
 # ── a re-entry, a sub-agent, and no message all pass ──
 M="$(block bash 'deploy <host>')"
 out=$(jq -nc --arg m "$M" '{last_assistant_message: $m, stop_hook_active: true}' | bash "$HOOK" 2>/dev/null); rc=$?

@@ -30,7 +30,7 @@ them. A section another note cites as "the vault skill § X" is here or in the f
 | Before you | Read | Its sections |
 | --- | --- | --- |
 | Pick a vault tool the next section does not name, or split or join a note | `references/tools.md` | Surface split (with A split note, A decisions note), Reads: the MCP tools |
-| Give a note frontmatter, tags, or edges, or declare trackers | `references/notes.md` | Vault structure, Note format |
+| Give a note frontmatter, tags, or edges, or declare trackers (a topic note's `type` is `permanent`: there is no `topic` type) | `references/notes.md` | Vault structure, Note format |
 | Call `vault-curl` or `vault-put`, or page through a list | `references/shell.md` | `vault-put`, Use `vault-curl`, Pagination, Guard `jq` pipes, Fallback: raw `curl` |
 | Edit another repository, or touch a lease, a handoff, or a pass's note leases | `references/coordination.md` | Note leases, Agent coordination |
 | Run `/vault wrap`, `/vault log`, `/vault learn`, or `/vault check` | `references/capture.md` | One per command |

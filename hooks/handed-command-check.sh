@@ -2,7 +2,8 @@
 # handed-command-check.sh — Stop hook: a command block in the turn's closing message that holds a
 # `<word>` placeholder or a scratch path sends the agent back once, since a command he runs carries
 # no placeholder the session can fill (CLAUDE.md § Tools) and the scratchpad is no delivery location
-# (§ Scratch files). claude-config D46.
+# (§ Scratch files). claude-config D46. Also a quoted value holding an instruction ("paste", "fill
+# in", an ellipsis) and a `git push` behind `!`, which the pre-push hook stops in the session (D86).
 #
 # It reads shell-labeled fences and unlabeled ones, where handed commands also land, and leaves
 # heredoc bodies alone. A scratch path on a `!` line passes: it runs at once, in this session. A quoted `<word>` counts, since `ACCOUNT='<account>'` is the measured form,
@@ -42,6 +43,8 @@ from shell_segments import strip_heredocs
 LANGS = {'bash', 'sh', 'shell', 'zsh', 'console', ''}
 FENCE = re.compile(r'^(?P<ind> {0,3})(?P<f>`{3,}|~{3,})(?P<lang>[^\n`]*)\n(?P<body>.*?)^(?P=ind)(?P=f)[ \t]*$', re.M | re.S)
 PLACEHOLDER = re.compile(r'(?:^|[^<\w])(<[A-Za-z][A-Za-z0-9_.-]*(?: [A-Za-z0-9_.-]+)*>)')
+BANG_PUSH = re.compile(r'^\s*!\s*(?:\S+=\S*\s+)*(?:command\s+)?git(?:\s+-[Cc]\s+\S+)*\s+push\b')
+INSTRUCTION = re.compile(r"'[^'\n]*(?:\bpaste\b|\bfill in\b|…)[^'\n]*'" r'|"[^"\n]*(?:\bpaste\b|\bfill in\b|…)[^"\n]*"', re.I)
 SCRATCH = re.compile(r'''[^\s'"=;&|()]*/claude-[^/\s]+/[^\s'"=;&|()]*/scratchpad[^\s'"=;&|()]*|[^\s'"=;&|()]*/(?:tmp|T)/tmp\.[A-Za-z0-9]+[^\s'"=;&|()]*''')
 
 seen = []
@@ -63,6 +66,10 @@ for m in FENCE.finditer(os.environ.get('MESSAGE', '')):
             continue
         for p in PLACEHOLDER.finditer(line):
             note('placeholder', p.group(1))
+        if BANG_PUSH.match(line):
+            note('bangpush', line.strip())
+        for q in INSTRUCTION.finditer(line):
+            note('instruction', q.group(0))
         if at_once or line.lstrip().startswith('!'):
             continue
         for s in SCRATCH.findall(line):
@@ -78,6 +85,8 @@ found=$(findings) || exit 0
 
 places=$(awk -F'\t' '$1 == "placeholder" {printf "%s%s", (n++ ? ", " : ""), $2}' <<<"$found")
 paths=$(awk -F'\t' '$1 == "scratch" {printf "%s%s", (n++ ? ", " : ""), $2}' <<<"$found")
+pushes=$(awk -F'\t' '$1 == "bangpush" {printf "%s%s", (n++ ? ", " : ""), $2}' <<<"$found")
+asks=$(awk -F'\t' '$1 == "instruction" {printf "%s%s", (n++ ? ", " : ""), $2}' <<<"$found")
 
 reason="[handed-command] A command block in your closing message"
 if [[ -n "$places" ]]; then
@@ -85,6 +94,15 @@ if [[ -n "$places" ]]; then
 fi
 if [[ -n "$paths" ]]; then
   reason+=" ${places:+It also }names a scratch path, $paths: copy what he needs to where he will look (~/.cache/<project>/, a vault note), or say in one line why the scratch path is right here."
+fi
+also=""
+[[ -z "$places$paths" ]] || also="It also "
+if [[ -n "$asks" ]]; then
+  reason+=" ${also}holds an instruction where a value goes, $asks: look the value up and put it in, or have the block read it."
+  also="It also "
+fi
+if [[ -n "$pushes" ]]; then
+  reason+=" ${also}runs a push behind \`!\`, $pushes, which runs it in this session, where the dotfiles' pre-push hook stops an agent session's push: hand it without \`!\`, for his own terminal."
 fi
 reason+=" Then finish."
 
