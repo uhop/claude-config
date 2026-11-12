@@ -585,6 +585,12 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/prefere
   demand-gated item with its trigger, keep the ordering rule the project's own, and replace the plan
   by supersession (vault skill `references/notes.md` § Note format;
   [[projects/vault-storage/feedback]] § Re-cluster and re-order the Backlog).
+- **Pivots and infrastructure work rank above the rest, and an item with no bearing on a pivot in
+  progress is placed after it when filed.** Only he puts other work first, case by case (UX, say).
+  Eugene, vault-storage 2026-11-12, on the cutover to the pool: _"In general all pivots and
+  infrastructure work is usually has higher priority over the rest. We may delay some infrastructure
+  work, e.g., prioritizing UX over the rest, but it is defined on case by case basis."_
+  ([[projects/vault-storage/plans/2026-09-29-backlog-order]] rule 0).
 - **Collections run by hand or on an event, never on a schedule.** A recurring step goes into a
   playbook he runs (`playbash-daily`, `playbash-weekly`) or fires from the event that needs it; no
   cron entries, no scheduled routines ([[projects/agent-workflow/feedback]] § Collections run by
