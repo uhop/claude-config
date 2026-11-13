@@ -318,6 +318,22 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
   ([[projects/agent-workflow/feedback]] § Build the basics first; vault-storage 2026-10-30: _"do not
   try to invent work for you … Let's do the basics and work on possible embelishments later"_ and
   _"With small questions I am losing the big picture."_)
+- **A bug is weighed by how many users it reaches and what share of them; a security defect, by
+  everyone an attacker can target.** Every project has bugs, so a case's existence decides nothing:
+  one death per 1,000 people differs from 100 per 1,000. A fix, a check, or a line on a README's
+  front page earns its code and its reading time by that rate, and a rare case goes to the wiki or
+  to "don't do that". Users can carry different weights: a commercial project weighs its customers,
+  and an open source maintainer may fast-track a corporate sponsor, a government, a favorite
+  charity, or a public project. "Nobody complained" counts complaints, a skewed sample (by his
+  estimate, one affected user in a hundred complains), yet in practice it means few users are
+  affected and they found a work-around: users left without one complain or move to another project.
+  An exploit can reach every user who becomes a target, so a security defect is fixed however rare
+  it is in honest use. Eugene, node-re2 GHSA-vf9g, 2026-11-12: _"'nobody complained' means 0. Yet
+  the real criteria is how many users are affected and what percentage of users are affected."_,
+  _"There is a difference how many people are killed --- 1 per 1,000 or 100 per 1,000. … The same
+  goes for bugs."_, and _"the former may affect some, while the exploit of the latter may affect all
+  --- anybody who became a target of hackers."_ (blog: _Open source, honestly_, on
+  price-performance; the draft _Ergonomics and cognitive load_, on complaints.)
 - **Repeated code is not automatically duplication — repetition is sometimes deliberate inlining for
   speed.** Before proposing to collapse repeated blocks into a helper (or flagging them in a
   review), decide which it is: an unrolled hot path, a per-branch copy that avoids a call, a
