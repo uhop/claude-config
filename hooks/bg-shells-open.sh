@@ -24,6 +24,9 @@
 # 2026-11-05 P1: four overruns he had to ask about, in three sessions). A background
 # agent still running at a Stop with no timer live costs one block too, named by its
 # description, since its id is never quoted to him (D87; reflect 2026-11-11, M1).
+# A `sleep` timer is not raised while a run or agent it can time is live beside it,
+# and a re-entry Stop records the ids its closing message names without blocking:
+# the hook had been blocking on the timer it had just asked for (reflect 2026-11-13, P1).
 #
 # FAILS OPEN, silently: no jq, no node, no transcript, a sub-agent run
 # (agent_id present) all exit 0 with no output. The lister is
@@ -45,7 +48,6 @@ agent_id=$(jq -r '.agent_id // ""' <<<"$payload" 2>/dev/null) || exit 0
 [[ -z "$agent_id" ]] || exit 0
 
 active=$(jq -r '.stop_hook_active // false' <<<"$payload" 2>/dev/null) || exit 0
-[[ "$active" != "true" ]] || exit 0
 
 transcript=$(jq -r '.transcript_path // ""' <<<"$payload" 2>/dev/null) || exit 0
 [[ -n "$transcript" && -f "$transcript" ]] || exit 0
@@ -77,8 +79,19 @@ for (const line of require("fs").readFileSync(0, "utf8").split("\n")) {
 }
 process.stdout.write(last);' 2>/dev/null) || closing=""
 
+if [[ "$active" == "true" ]]; then
+  [[ -n "$closing" ]] || exit 0
+  while IFS=$'\t' read -r id _ _ _ kind || [[ -n "$id" ]]; do
+    [[ -n "$id" && "$kind" != "agent" && "$closing" == *"$id"* ]] || continue
+    command grep -qxF "$id" "$marker" || printf '%s\n' "$id" >>"$marker"
+  done <<<"$live"
+  exit 0
+fi
+
 timer_live=false
 printf '%s\n' "$live" | cut -f3 | command grep -qx true && timer_live=true
+run_live=false
+printf '%s\n' "$live" | cut -f3 | command grep -qx false && run_live=true
 
 new=""
 untimed=""
@@ -98,6 +111,7 @@ while IFS=$'\t' read -r id this_turn timer desc kind || [[ -n "$id" ]]; do
     [[ "$timer" == "true" || "$timer_live" == "true" ]] || untimed+="${untimed:+, }$id"
     continue
   fi
+  [[ "$timer" == "true" && "$run_live" == "true" ]] && continue
   [[ "$this_turn" == "true" ]] && continue
   new+="$id"$'\t'"$desc"$'\n'
 done <<<"$live"

@@ -282,6 +282,12 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
   pick a duration alone, since an unmeasured "N minutes" is a question for him (tape-six 2026-10-22;
   reflect 2026-10-22 M2; the stall clause: [[projects/vault-storage/feedback]] § A stall is a
   regular occurrence, reflect 2026-10-27).
+- **A periodic job never overlaps itself.** A tick that finds the last run unfinished skips, and an
+  on-demand run of the same job takes the same claim and is refused while one runs. Eugene,
+  vault-storage 2026-11-12: _"if an hourly scan was not finished, we should not start another one. I
+  hope you know that about periodic processes."_ The on-demand clause is his vault-storage ruling of
+  2026-11-13 for its manual scan route (_"add the claim"_), taken as general by the agent
+  (vault-storage D739; reflect 2026-11-13, P2).
 - **Compound string keys join with `'\t'`** — the house impossible-id separator
   (`kind + '\t' + parts.join('\t')`), spelled as the two-character escape in source. Never
   NUL-as-separator, and **never a raw control byte in a text file** — one raw NUL makes git classify
@@ -471,6 +477,17 @@ draft names its destination, once).
 
 ## Security advisories
 
+**Triage an advisory before scoring it: a security defect or a bug report?** A failure reached only
+through what the user's own code chooses (a pattern, a filter, a callback, input from a source the
+user trusts) is the user's to judge and a bug report at most; one an attacker reaches with crafted
+data the library is documented to take untrusted is a security defect. Eugene, node-re2 2026-11-13:
+_"Number one: are they truly security advisories or bug reports? Number two: if it is something that
+user can do --- it is up to the user. If it can be manipulated by specially crafted input by hackers
+--- that is a problem."_ Long form: [[topics/library-helper-trust-boundary]] (the caller is the
+trust boundary; § When the report comes from a person). Per-project forms:
+[[projects/stream-json/feedback]] § The cost of a crafted document is not a security issue here, and
+node-re2's threat-model decision of 2026-11-11 (reflect 2026-11-13, P3).
+
 **Score a library advisory `AV:L`, never `AV:N`, unless the vulnerable component's job is serving
 requests from the open network — in the opinion as much as in the draft.** "Its inputs usually
 arrive over the network" / "parsing network JSON is the contract" describes a deployment, not the
@@ -548,7 +565,11 @@ descriptions", a label like "the dual-stack visitor item") gets one clause of wh
 this session has already discussed it; a resume's or a stop's list of open items is a list of these.
 `9.4`, `D86`, or "the 2026-09-02 item" alone is a lookup in a file the reader does not have open.
 Write _feedback 9.4, "Social engagement is an independent readership signal"_ the first time, and
-the number alone can carry the rest of the paragraph.
+the number alone can carry the rest of the paragraph. A project's own name for a part or an
+operation (the front, the tenants, a propose) gets the same clause the first time a message to him
+uses it, unless this session has already discussed it, as the `writing-style` skill's jargon rule
+asks of documents: _"What are "front" and "tenants"?"_, _"What is "a propose" and how is it
+different from a write?"_ (vault-storage, 2026-11-12 and 2026-11-13; reflect 2026-11-13, P4).
 
 **A task label with parents is explained down its chain.** Before a label like `7ap-8e-5` is used,
 say in a sentence or two the goal its top level serves and where the work stands, then what this
@@ -1318,8 +1339,10 @@ hook stays quiet in the turn that launched a shell and raises it at a later Stop
 named by its id in that turn's closing message, with why; the hook reads that as the declaration and
 does not block for it (reflect 2026-10-03: 14 firings in a week, every one a gate that had to
 finish), unless no `sleep` timer is live beside it, which costs one block (§ Tools, the long-run
-rule; reflect 2026-11-05, P1). A background agent still running at a Stop with no timer live costs
-one block too, named by its description, since its id is never quoted to him (D87).
+rule; reflect 2026-11-05, P1). The timer itself is not raised while the run it times is live, and a
+timer named in the turn that answers the block counts as declared (reflect 2026-11-13, P1). A
+background agent still running at a Stop with no timer live costs one block too, named by its
+description, since its id is never quoted to him (D87).
 
 **Herdr panes are a third registry, and this is the one he watches.** Background shells and
 background agents live in a status line; a pane sits in his window. A pane you split is yours to

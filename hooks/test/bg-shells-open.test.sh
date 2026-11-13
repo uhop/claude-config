@@ -111,8 +111,22 @@ stop 'Started.'; quiet 'first turn, for the naming case'
 user 'next'; timer btimer08; say 'bshell08 must keep running.'
 stop 'bshell08 must keep running.'; quiet 'named in a later turn with a timer: no block'
 user 'more'; say 'Fine.'
-stop 'Fine.'; raised 'a timer left running is raised like any shell' btimer08
+stop 'Fine.'; quiet 'a timer beside its live run is not raised'
+user 'more'; notify bshell08; say 'The run ended.'
+stop 'The run ended.'; raised 'a timer left after its run ends is raised like any shell' btimer08
 [[ "$out" != *bshell08* ]] && ok || bad "the declared shell stays declared (out=$out)"
+
+# A timer started on the hook's own ask and named in that re-entry turn is recorded there.
+fresh; user 'go'; launch bshell18; say 'Started.'
+stop 'Started.'; quiet 'first turn, for the re-entry case'
+user 'next'; say 'bshell18 must keep running.'
+stop 'bshell18 must keep running.'; raised 'named with no timer, for the re-entry case' bshell18
+timer btimer18; say 'Timer btimer18 fires at the estimate.'
+out=$(jq -nc --arg t "$T" --arg s "$S" --arg c 'Timer btimer18 fires at the estimate.' \
+  '{session_id: $s, transcript_path: $t, stop_hook_active: true, last_assistant_message: $c}' | bash "$HOOK" 2>/dev/null); rc=$?
+quiet 'a re-entry Stop never blocks'
+user 'more'; notify bshell18; say 'The run ended.'
+stop 'The run ended.'; quiet 'a timer named in the re-entry turn stays declared'
 
 fresh; user 'go'; launch bshell09; timer btimer09 'sleep 600; echo past the estimate'; say 'bshell09 keeps running.'
 stop 'bshell09 keeps running.'; quiet 'named in its own turn with a timer: no block'
