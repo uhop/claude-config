@@ -160,3 +160,16 @@ test('a cancelled call is not sent again', async () => {
   await assert.rejects(vaultFetch('http://v/x', {signal: cancelled.signal}, opts));
   assert.equal(sent.length, 1);
 });
+
+test('VAULT_FETCH_OUTAGE_S sets the window, as a hook that runs a script asks', async () => {
+  const before = process.env.VAULT_FETCH_OUTAGE_S;
+  process.env.VAULT_FETCH_OUTAGE_S = '3';
+  try {
+    const {slept, opts} = scripted([failed('ECONNREFUSED')]);
+    await assert.rejects(vaultFetch('http://v/x', {}, opts));
+    assert.equal(sum(slept), 3_000);
+  } finally {
+    if (before === undefined) delete process.env.VAULT_FETCH_OUTAGE_S;
+    else process.env.VAULT_FETCH_OUTAGE_S = before;
+  }
+});

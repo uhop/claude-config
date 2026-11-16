@@ -7,5 +7,5 @@ payload=$(cat)
 [[ -z $(jq -r '.agent_id // ""' <<<"$payload" 2>/dev/null) ]] || exit 0
 session=$(jq -r '.session_id // empty' <<<"$payload" 2>/dev/null) || exit 0
 [[ -n $session ]] || exit 0
-"$HOME/.claude/skills/vault/resume.mjs" --prepare --session "$session" >/dev/null 2>&1
+VAULT_FETCH_OUTAGE_S=3 "$HOME/.claude/skills/vault/resume.mjs" --prepare --session "$session" >/dev/null 2>&1
 exit 0

@@ -7,7 +7,8 @@
 //   connection never made, or a 503 that says nothing was applied, is sent again whatever the
 //   method; a read also after any other network failure, a 502, a 503, or a 504. The waits grow
 //   from 250 ms to 16 s, each at least the answer's `Retry-After`, for two minutes from the first
-//   failure. Once a call has waited that out, later calls in the process try once until the server
+//   failure, or `VAULT_FETCH_OUTAGE_S` seconds, which a hook that runs a script sets to its own
+//   few seconds, since it holds a session's start or a prompt. Once a call has waited that out, later calls in the process try once until the server
 //   answers with anything else (question 119), so a script's calls in a row do not each wait.
 //
 // Any other answer or failure, or one past its wait, is the caller's.
@@ -76,6 +77,8 @@ export const vaultFetch = async (
   {fetchImpl = fetch, wait = sleep, now = Date.now, outage = sharedOutage} = {}
 ) => {
   const read = isRead(init.method);
+  const window = Number(process.env.VAULT_FETCH_OUTAGE_S) * 1000;
+  const outageMs = window > 0 ? window : OUTAGE_WAIT_MS;
   let rateWaited = 0;
   let firstFailure = null;
   for (let step = 0; ;) {
@@ -111,7 +114,7 @@ export const vaultFetch = async (
       return response;
     }
     firstFailure ??= now();
-    const left = OUTAGE_WAIT_MS - (now() - firstFailure);
+    const left = outageMs - (now() - firstFailure);
     if (left <= 0) {
       outage.since ??= firstFailure;
       if (failure) throw failure;

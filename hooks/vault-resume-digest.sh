@@ -11,7 +11,7 @@ prompt=$(jq -r '.prompt // empty' <<<"$input" 2>/dev/null) || exit 0
 [[ $prompt =~ ^[[:space:]]*/vault[[:space:]]+resume[[:space:]]*$ ]] || exit 0
 session=$(jq -r '.session_id // empty' <<<"$input" 2>/dev/null) || exit 0
 [[ -n $session ]] || exit 0
-digests=$("$HOME/.claude/skills/vault/resume.mjs" --session "$session" --json 2>/dev/null) || exit 0
+digests=$(VAULT_FETCH_OUTAGE_S=3 "$HOME/.claude/skills/vault/resume.mjs" --session "$session" --json 2>/dev/null) || exit 0
 # Hook output reads as the user's words, and a digest quotes strangers; a random tag cannot be closed
 # from inside.
 tag="vault-digest-$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"

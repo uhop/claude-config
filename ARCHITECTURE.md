@@ -56,8 +56,9 @@ a compact digest. The larger families:
 - **The vault:** `vault` and the `vault-*` skills drive the knowledge base over its REST API.
   `skills/vault/vault-settings.mjs` resolves the server's settings, every script calls the API
   through `skills/vault/vault-fetch.mjs`, which waits out a 429 that names its `Retry-After` for
-  five minutes at most and an outage for two (vault-storage D751: a connection never made or a 503
-  that applied nothing for any method, a 502, 503, or 504 for a read), and
+  five minutes at most and an outage for two, or `VAULT_FETCH_OUTAGE_S` seconds, which the resume
+  hooks set to 3 since they hold a session's start or a prompt (vault-storage D751: a connection
+  never made or a 503 that applied nothing for any method, a 502, 503, or 504 for a read), and
   `skills/vault/queue-items.mjs` owns a queue kept as one note per item. The hooks call `curl`
   through `hooks/lib/vault-retry.sh`, with their one- or two-second caps and two more tries after 1
   and 2 s by the same rules, and fail open; the lease gate says a lookup the server refused. An

@@ -24,6 +24,7 @@ args="$home/args"
 cat >"$stub" <<STUB
 #!/usr/bin/env bash
 echo "\$*" >"$args"
+echo "\${VAULT_FETCH_OUTAGE_S:-unset}" >"$home/window"
 [[ -z "\${STUB_FAIL:-}" ]] || exit 1
 echo '{"digest": "# the digest", "styled": "the styled digest"}'
 STUB
@@ -54,6 +55,7 @@ for prompt in '/vault resume' '  /vault   resume  '; do
   [[ "$other" != "$tag" ]] && ok || bad "'$prompt' must pick a new tag each time ($tag)"
   [[ "$(jq -r .hookSpecificOutput.hookEventName <<<"$out")" == UserPromptSubmit ]] && ok || bad "'$prompt' must name its event (out=$out)"
   [[ "$(<"$args")" == '--session s1 --json' ]] && ok || bad "'$prompt' must name its session (args=$(<"$args"))"
+  [[ "$(<"$home/window")" == 3 ]] && ok || bad "'$prompt' must hold the prompt a few seconds at most in an outage (window=$(<"$home/window"))"
 done
 
 out=$(CLAUDE_CODE_ENTRYPOINT=cli HOME="$home" bash "$DIGEST" <<<"$(prompted '/vault resume')" 2>/dev/null); rc=$?
@@ -69,6 +71,7 @@ command rm -f "$args"
 out=$(HOME="$home" bash "$PREPARE" <<<'{"session_id": "s2"}' 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "prepare must stay silent (rc=$rc out=$out)"
 [[ "$(<"$args")" == '--prepare --session s2' ]] && ok || bad "prepare must ask to prepare its session (args=$(<"$args"))"
+[[ "$(<"$home/window")" == 3 ]] && ok || bad "prepare must hold the start a few seconds at most in an outage (window=$(<"$home/window"))"
 
 out=$(STUB_FAIL=1 HOME="$home" bash "$PREPARE" <<<'{"session_id": "s2"}' 2>/dev/null); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok || bad "a failed prepare must exit 0 silently (rc=$rc out=$out)"
