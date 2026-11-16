@@ -1,10 +1,23 @@
 // Pins the scripts' waits: a 429's (vault-storage 7z-2, question 383) and an outage's (7as-2,
-// D751). Run: node --test skills/vault/
+// D751, D752, question 430). Run: node --test skills/vault/
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {existsSync, mkdtempSync, rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 
 import {vaultFetch} from './vault-fetch.mjs';
+
+// The outage's mark, kept in memory for a test; the default keeps it in a file.
+const memoryOutage = () => {
+  let marked = false;
+  return {
+    active: () => marked,
+    mark: () => void (marked = true),
+    clear: () => void (marked = false)
+  };
+};
 
 const answer =
   (status, retryAfter = null, code = status === 429 ? 'too_many_requests' : 'ok') =>
@@ -35,7 +48,7 @@ const scripted = answers => {
       clock += ms;
     },
     now: () => clock,
-    outage: {since: null}
+    outage: memoryOutage()
   };
   return {sent, slept, opts};
 };
@@ -83,33 +96,40 @@ test('a refused write goes again, the waits growing, until the server listens', 
   assert.equal((await vaultFetch('http://v/vault/edit', WRITE, opts)).status, 200);
   assert.deepEqual(slept, [250, 500, 1_000]);
   assert.equal(sent.length, 4);
-  assert.equal(opts.outage.since, null, 'an answer leaves no outage remembered');
+  assert.equal(opts.outage.active(), false, 'the answer clears the outage');
 });
 
-test('a refused request waits two minutes in all, then fails with its cause', async () => {
+test("a refused request waits 90 s in all, under an agent's 120 s command limit, then fails", async () => {
   const {sent, slept, opts} = scripted([failed('ECONNREFUSED')]);
+  const markedAtFirstWait = [];
+  const wait = opts.wait;
+  opts.wait = async ms => {
+    if (markedAtFirstWait.length === 0) markedAtFirstWait.push(opts.outage.active());
+    await wait(ms);
+  };
   await assert.rejects(vaultFetch('http://v/vault/a.md', {}, opts), err => {
     assert.equal(err.cause.code, 'ECONNREFUSED');
     return true;
   });
   assert.deepEqual(slept.slice(0, 7), STEPS);
   assert.ok(slept.slice(7).every(ms => ms <= 16_000));
-  assert.equal(sum(slept), 120_000, 'the last wait cut to what was left');
+  assert.equal(sum(slept), 90_000, 'the last wait cut to what was left');
   assert.equal(sent.length, slept.length + 1);
-  assert.equal(opts.outage.since, 0, 'the outage is remembered from its first failure');
+  assert.deepEqual(markedAtFirstWait, [true], 'the outage is marked at its first failure');
+  assert.equal(opts.outage.active(), true, 'and stays marked past the window');
 });
 
-test('once an outage was waited out, later calls try once, until an answer ends it', async () => {
+test('while an outage is marked, a call tries once, until an answer ends it', async () => {
   const {sent, slept, opts} = scripted([failed('ECONNREFUSED')]);
-  opts.outage.since = 0;
+  opts.outage.mark();
   await assert.rejects(vaultFetch('http://v/vault/a.md', {}, opts));
   await assert.rejects(vaultFetch('http://v/vault/edit', WRITE, opts));
   assert.deepEqual([sent.length, slept.length], [2, 0], 'each tried once');
 
   const back = scripted([answer(200), failed('ECONNREFUSED'), answer(200)]);
-  back.opts.outage.since = 0;
+  back.opts.outage.mark();
   assert.equal((await vaultFetch('http://v/x', {}, back.opts)).status, 200);
-  assert.equal(back.opts.outage.since, null, 'the answer ends it');
+  assert.equal(back.opts.outage.active(), false, 'the answer ends it');
   assert.equal((await vaultFetch('http://v/x', {}, back.opts)).status, 200);
   assert.deepEqual(back.slept, [250], 'the next failure waits again');
 });
@@ -171,5 +191,34 @@ test('VAULT_FETCH_OUTAGE_S sets the window, as a hook that runs a script asks', 
   } finally {
     if (before === undefined) delete process.env.VAULT_FETCH_OUTAGE_S;
     else process.env.VAULT_FETCH_OUTAGE_S = before;
+  }
+});
+
+test('the mark outlives the process: a file another run reads, cleared by an answer', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vault-fetch-outage-'));
+  const before = process.env.XDG_RUNTIME_DIR;
+  process.env.XDG_RUNTIME_DIR = dir;
+  try {
+    const first = scripted([failed('ECONNREFUSED')]);
+    delete first.opts.outage;
+    process.env.VAULT_FETCH_OUTAGE_S = '1';
+    await assert.rejects(vaultFetch('http://v/x', {}, first.opts));
+    delete process.env.VAULT_FETCH_OUTAGE_S;
+    const marker = join(dir, `vault-fetch-outage-${process.getuid?.() ?? 'user'}`);
+    assert.ok(existsSync(marker), 'the mark is a file');
+
+    const next = scripted([failed('ECONNREFUSED')]);
+    delete next.opts.outage;
+    await assert.rejects(vaultFetch('http://v/x', {}, next.opts));
+    assert.deepEqual([next.sent.length, next.slept.length], [1, 0], 'a new run tries once');
+
+    const back = scripted([answer(200)]);
+    delete back.opts.outage;
+    assert.equal((await vaultFetch('http://v/x', {}, back.opts)).status, 200);
+    assert.ok(!existsSync(marker), 'an answer removes the file');
+  } finally {
+    if (before === undefined) delete process.env.XDG_RUNTIME_DIR;
+    else process.env.XDG_RUNTIME_DIR = before;
+    rmSync(dir, {recursive: true, force: true});
   }
 });

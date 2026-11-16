@@ -196,8 +196,9 @@ scripts (through `vault-fetch.mjs`) and `vault-curl` send it again after that,
 for five minutes at most (vault-storage 7z-2). Both also wait out an outage
 (vault-storage 7as-2, D751): a connection never made, or a 503 that applied
 nothing, goes again whatever the method, and a read also after a 502, a 503, or
-a 504, for two minutes, after which later calls try once until one gets an
-answer; the hooks wait a few seconds the same way (`hooks/lib/vault-retry.sh`), and
+a 504, for 90 s, under an agent's 120 s command limit (question 430); the first
+failure marks the outage in a file, so later calls, in any process, try once
+until one gets an answer; the hooks wait a few seconds the same way (`hooks/lib/vault-retry.sh`), and
 the resume hooks run the resume script with `VAULT_FETCH_OUTAGE_S=3` for the same reason.
 An agent's own MCP calls do not wait: after a 503 or a refused connection, wait
 and repeat a read, and check whether a write landed before repeating it. `vault-curl`'s only
