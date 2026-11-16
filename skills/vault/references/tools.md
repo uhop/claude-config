@@ -191,9 +191,15 @@ Each falls back to its old name, `VAULT_API_URL` and `VAULT_API_TOKEN` (vault-st
 D141, D206; the skill scripts read both through `vault-settings.mjs`). From adapter
 0.17.0 every client reads the new pair first, so a host that sets it reaches one
 server through all of them. On the pool, a request past the account's rate is
-refused with a 429 that names its `Retry-After`, before it applied: the adapter,
-the skill scripts (through `vault-fetch.mjs`), and `vault-curl` send it again
-after that, for five minutes at most (vault-storage 7z-2). `vault-curl`'s only
+refused with a 429 that names its `Retry-After`, before it applied: the skill
+scripts (through `vault-fetch.mjs`) and `vault-curl` send it again after that,
+for five minutes at most (vault-storage 7z-2). Both also wait out an outage
+(vault-storage 7as-2, D751): a connection never made, or a 503 that applied
+nothing, goes again whatever the method, and a read also after a 502, a 503, or
+a 504, for two minutes, after which later calls try once until one gets an
+answer; the hooks wait a few seconds the same way (`hooks/lib/vault-retry.sh`).
+An agent's own MCP calls do not wait: after a 503 or a refused connection, wait
+and repeat a read, and check whether a write landed before repeating it. `vault-curl`'s only
 home is the dotfiles, where chezmoi installs it as `~/.local/bin/vault-curl`; it
 reads the new names from 2026-10-14 on.
 Never copy another version over it, since chezmoi then refuses to overwrite the

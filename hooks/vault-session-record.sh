@@ -28,6 +28,8 @@ payload=$(cat)
 
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
+# shellcheck source=lib/vault-retry.sh source-path=SCRIPTDIR
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-retry.sh" || exit 0
 command -v git >/dev/null 2>&1 || exit 0
 # The product's names first, the old ones until the switch (vault-storage D141).
 PROGRAM_CLERK_URL=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}}
@@ -90,7 +92,7 @@ line=$(jq -cn --arg ended "$ended" --arg holder "$me" --arg started "$started" \
 
 # POST appends, creating the month's file on its first line (vault-storage 10a).
 path="projects/$project/data/sessions/${ended:0:7}.jsonl"
-curl -s -o /dev/null --connect-timeout 1 --max-time 2 \
+vault_retry -s -o /dev/null --connect-timeout 1 --max-time 2 \
   -X POST "$PROGRAM_CLERK_URL/data/$path" \
   -H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: text/plain; charset=utf-8' \
   --data-binary "$line"$'\n' >/dev/null 2>&1

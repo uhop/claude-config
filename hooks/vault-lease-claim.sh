@@ -32,6 +32,8 @@ payload=$(cat)
 
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
+# shellcheck source=lib/vault-retry.sh source-path=SCRIPTDIR
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-retry.sh" || exit 0
 # The product's names first, the old ones until the switch (vault-storage D141).
 PROGRAM_CLERK_URL=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}}
 PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
@@ -89,7 +91,7 @@ body=$(lease_cwd_claim_body "$resource" "$me" "$token") || exit 0
 
 # -w appends the status on its own line so a 409 body is still readable
 # (curl -f would discard it, and the 409 body is the whole point).
-raw=$(curl -s --connect-timeout 1 --max-time 2 \
+raw=$(vault_retry -s --connect-timeout 1 --max-time 2 \
   -H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json' \
   --data-binary "$body" -w $'\n%{http_code}' "$PROGRAM_CLERK_URL/leases/claim") || exit 0
 code=${raw##*$'\n'}

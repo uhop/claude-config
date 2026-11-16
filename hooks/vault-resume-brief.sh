@@ -13,6 +13,8 @@ PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
 [[ -n $PROGRAM_CLERK_URL && -n $PROGRAM_CLERK_KEY ]] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
+# shellcheck source=lib/vault-retry.sh source-path=SCRIPTDIR
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-retry.sh" || exit 0
 
 # Non-repo cwd → fleet-level digest (no project block).
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-project.sh" || exit 0
@@ -23,13 +25,13 @@ fi
 
 # Start loading the embedding model now, so the session's first semantic
 # search does not wait ~35 s for it (vault-storage D80); answers at once.
-curl -sf --connect-timeout 1 --max-time 1 -X POST -o /dev/null \
+vault_retry -sf --connect-timeout 1 --max-time 1 -X POST -o /dev/null \
   -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$PROGRAM_CLERK_URL/maintenance/warm-embedder" || true
 
 url="$PROGRAM_CLERK_URL/system/resume-brief"
 [[ $project =~ ^[a-z0-9][a-z0-9.-]*$ ]] && url="$url?project=$project"
 
-resp=$(curl -s --connect-timeout 1 --max-time 2 -w '\n%{http_code}' \
+resp=$(vault_retry -s --connect-timeout 1 --max-time 2 -w '\n%{http_code}' \
   -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$url") || exit 0
 code=${resp##*$'\n'}
 resp=${resp%$'\n'*}
@@ -37,7 +39,7 @@ resp=${resp%$'\n'*}
 # the frontmatter query (vault-storage 11d-1, 11d-2). An older server's own block stands.
 if [[ $code == 200 && $project =~ ^[a-z0-9][a-z0-9.-]*$ ]] \
   && jq -e '(.project.queue.active // [] | length) == 0 and (.project.queue.backlog // 0) == 0' <<<"$resp" >/dev/null 2>&1; then
-  items=$(curl -s --connect-timeout 1 --max-time 2 -X POST \
+  items=$(vault_retry -s --connect-timeout 1 --max-time 2 -X POST \
     -H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json' \
     -d "{\"folder\":\"projects/$project/queue\",\"sort\":\"sequence_key\",\"limit\":500}" \
     "$PROGRAM_CLERK_URL/notes/query") || items=''
@@ -67,7 +69,7 @@ if [[ $code == 200 && $project =~ ^[a-z0-9][a-z0-9.-]*$ ]] \
 fi
 # agent-workflow's Active items, which the server no longer reads (vault-storage 11d-2).
 if [[ $code == 200 ]] && [[ $(jq -r '.workflow.active // false' <<<"$resp" 2>/dev/null) == false ]]; then
-  active=$(curl -s --connect-timeout 1 --max-time 2 -X POST \
+  active=$(vault_retry -s --connect-timeout 1 --max-time 2 -X POST \
     -H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json' \
     -d '{"folder":"projects/agent-workflow/queue","match":{"section":"active"},"limit":1}' \
     "$PROGRAM_CLERK_URL/notes/query" | jq -r '.total // 0' 2>/dev/null)
@@ -164,7 +166,7 @@ jq -r '
 # stale baseline reads as stale rather than as quiet. No file, no line; any
 # failure, no line.
 if [[ $project =~ ^[a-z0-9][a-z0-9.-]*$ ]]; then
-  block=$(curl -sf --connect-timeout 1 --max-time 2 \
+  block=$(vault_retry -sf --connect-timeout 1 --max-time 2 \
     -H "Authorization: Bearer $PROGRAM_CLERK_KEY" \
     "$PROGRAM_CLERK_URL/data/projects/$project/data/github.json") || block=""
   if [[ -n "$block" ]]; then

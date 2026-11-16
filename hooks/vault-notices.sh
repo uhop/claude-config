@@ -16,6 +16,8 @@ PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
 [[ -n $PROGRAM_CLERK_URL && -n $PROGRAM_CLERK_KEY ]] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
+# shellcheck source=lib/vault-retry.sh source-path=SCRIPTDIR
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-retry.sh" || exit 0
 
 mode=tool
 [[ ${1:-} == --session-start ]] && mode=start
@@ -41,7 +43,7 @@ printf '%s\n' "$now" >"$stamp" 2>/dev/null || true
 # A week of sessions is plenty to remember.
 find "$dir" -type f -mtime +7 -delete 2>/dev/null || true
 
-resp=$(curl -sf --connect-timeout 1 --max-time 2 \
+resp=$(vault_retry -sf --connect-timeout 1 --max-time 2 \
   -H "Authorization: Bearer $PROGRAM_CLERK_KEY" "$PROGRAM_CLERK_URL/system/notices") || exit 0
 seen=$(jq -Rsc 'split("\n") | map(select(length > 0))' "$seen_file" 2>/dev/null) || seen='[]'
 [[ -n $seen ]] || seen='[]'

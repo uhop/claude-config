@@ -83,6 +83,8 @@ mode=edit
 
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
+# shellcheck source=lib/vault-retry.sh source-path=SCRIPTDIR
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-retry.sh" || exit 0
 # The product's names first, the old ones until the switch (vault-storage D141).
 PROGRAM_CLERK_URL=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}}
 PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
@@ -183,7 +185,7 @@ lookup() {
     holder=""
     kind=""
   fi
-  raw=$(curl -s --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $PROGRAM_CLERK_KEY" \
+  raw=$(vault_retry -s --connect-timeout 1 --max-time 2 -H "Authorization: Bearer $PROGRAM_CLERK_KEY" \
     --get --data-urlencode "resource=$resource" -w $'\n%{http_code}' "$PROGRAM_CLERK_URL/leases") ||
     return 1
   code=${raw##*$'\n'}
@@ -213,7 +215,7 @@ claim_cwd() {
   local resource=$1 cf body raw code resp parsed
   cf=$(cache_file_of "$resource")
   body=$(lease_cwd_claim_body "$resource" "$me" "$(lease_token_of "$me" "$resource")") || return 1
-  raw=$(curl -s --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
+  raw=$(vault_retry -s --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
     -w $'\n%{http_code}' "$PROGRAM_CLERK_URL/leases/claim") || return 1
   code=${raw##*$'\n'}
   resp=${raw%$'\n'*}
@@ -249,7 +251,7 @@ renew_if_due() {
   ((now - last >= RENEW_EVERY)) || return 0
   body=$(jq -cn --arg r "$resource" --arg h "$me" --arg t "$(lease_token_of "$me" "$resource")" \
     '{resource: $r, holder: $h} + (if $t == "" then {} else {claim_token: $t} end)') || return 0
-  curl -s -o /dev/null --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
+  vault_retry -s -o /dev/null --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
     "$PROGRAM_CLERK_URL/leases/renew" || true
   printf '%s\n' "$now" >"$stamp" 2>/dev/null || true
 }

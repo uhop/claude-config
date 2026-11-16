@@ -12,13 +12,15 @@ PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
 [[ -n $PROGRAM_CLERK_URL && -n $PROGRAM_CLERK_KEY ]] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
+# shellcheck source=lib/vault-retry.sh source-path=SCRIPTDIR
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-retry.sh" || exit 0
 
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-project.sh" || exit 0
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 project=$(vault_project_of "$root")
 [[ $project =~ ^[a-z0-9][a-z0-9.-]*$ ]] || exit 0
 
-resp=$(curl -sf --connect-timeout 1 --max-time 2 \
+resp=$(vault_retry -sf --connect-timeout 1 --max-time 2 \
   -H "Authorization: Bearer $PROGRAM_CLERK_KEY" \
   "$PROGRAM_CLERK_URL/projects/$project/rules") || exit 0
 jq -r '.text // empty' <<<"$resp" 2>/dev/null || true
