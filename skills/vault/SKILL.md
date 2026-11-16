@@ -7,18 +7,19 @@ user_invocable: true
 # Knowledge Base
 
 Persistent knowledge base (vault-storage), reachable two ways: **MCP tools**
-(`mcp__vault__*`) and the **REST API** via the `vault-curl` wrapper. The LLM
+(`mcp__program-clerk__*`) and the **REST API** via the `vault-curl` wrapper. The LLM
 writes and maintains all content.
 
-The MCP server is registered once per host, in `~/.claude.json`, because
-`settings.json` cannot carry a server definition (claude-config learnings,
-2026-08-02):
-`claude mcp add --scope user vault -- npx -y @uhop/vault-storage-mcp@latest`.
-It reads `PROGRAM_CLERK_URL` and `PROGRAM_CLERK_KEY` from the shell (from 0.17.0;
-the old `VAULT_API_URL` and `VAULT_API_TOKEN` where those are unset,
-vault-storage D206), and a session loads it only at start. When no `mcp__vault__*` tool is in the session, the
-host has no registration (`claude mcp list` says which): use `vault-curl` for
-the session and give the user that command; the next session has the tools.
+The MCP server is the server's own endpoint (vault-storage 7as), registered
+once per host, in `~/.claude.json`, because `settings.json` cannot carry a
+server definition (claude-config learnings, 2026-08-02):
+`claude mcp add --scope user --transport http program-clerk https://api.programclerk.dev/mcp --header 'Authorization: Bearer ${PROGRAM_CLERK_KEY}'`.
+The single quotes keep the reference, which Claude Code expands from the
+shell's `PROGRAM_CLERK_KEY` when it connects, so the file holds no key; a
+session loads the server only at start. When no `mcp__program-clerk__*` tool
+is in the session, the host has no registration (`claude mcp list` says
+which): use `vault-curl` for the session and give the user that command; the
+next session has the tools.
 
 ## Where the rest is
 
@@ -40,18 +41,18 @@ them. A section another note cites as "the vault skill § X" is here or in the f
 
 ## Writing to the vault
 
-**Prefer the narrow write over the whole-document one.** `vault_write_file`
-and `vault_update_piece` replace an entire document, so a mistake costs the
-whole document; `vault_append`, `vault_replace`, `vault_replace_section`, and
-`vault_patch_fm` are atomic server-side ops whose blast radius is the thing
+**Prefer the narrow write over the whole-document one.** `write_file`
+and `update_piece` replace an entire document, so a mistake costs the
+whole document; `append`, `replace`, `replace_section`, and
+`patch_fm` are atomic server-side ops whose blast radius is the thing
 being changed. Reach
 for a whole-document write only when authoring a new note or genuinely
 rewriting one.
 
 **Keep the enrichment current in the same write** (server from 2026-09-27,
-D74; adapter ≥ 0.11.0). `vault_append`, `vault_replace`,
-`vault_replace_section`, `vault_remove_item`, and `vault_insert_item` take an
-optional `agent` patch, and `vault_move_item` takes `from_agent` and
+D74; adapter ≥ 0.11.0). `append`, `replace`,
+`replace_section`, `remove_item`, and `insert_item` take an
+optional `agent` patch, and `move_item` takes `from_agent` and
 `to_agent`: the fields given are merged over the stored `agent:` block and
 the block is stamped current for the new body, so the edit files no stale
 suggestion of its own. The server's backstop still files one after ten body
@@ -63,8 +64,8 @@ summary is still true after the edit, as on an append to a rolling note
 (queue, archive, decisions, learnings, stack, feedback) of more entries of
 the kind it describes; pass `agent: {summary: "…"}` when your text opens
 something the summary does not cover. **A move or removal out of a note
-always restates its summary** (`from_agent: {summary}` on `vault_move_item`,
-`agent: {summary}` on `vault_remove_item`), since the item leaving is often
+always restates its summary** (`from_agent: {summary}` on `move_item`,
+`agent: {summary}` on `remove_item`), since the item leaving is often
 what the summary names as next, in flight, or open; the server refuses a
 patch there without a new summary, the stored one sent back included, with a
 400 `summary_required` (server from 2026-10-17, vault-storage D283), and
@@ -128,7 +129,7 @@ Q=~/.claude/skills/vault/queue-items.mjs
 ```
 
 `file` starts a queue for a project with none.
-Edit an item's prose with `vault_replace` on its own path, with no `agent`
+Edit an item's prose with `replace` on its own path, with no `agent`
 patch: an item carries no summary.
 `--source` names a tracker's ticket: `github owner/repo#15`,
 `github owner/repo discussion#15`, `github owner/repo GHSA-xxxx-xxxx-xxxx`,

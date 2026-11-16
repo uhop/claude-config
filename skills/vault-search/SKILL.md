@@ -27,7 +27,7 @@ Combinable: `/vault-search auth flow --semantic --limit=10`.
    - Extract `--limit=N` → integer; default 20; clamp to `[1, 100]`.
    - The remaining tokens (joined with single spaces) are the query.
 
-2. **Run the search** with `mcp__vault__vault_search{query, mode, limit}` — same three parameters, same response, no shell quoting to get wrong.
+2. **Run the search** with `mcp__program-clerk__search{query, mode, limit}` — same three parameters, same response, no shell quoting to get wrong.
 
    Fallback if that tool is absent from your registry (pre-0.1.0 adapter, or a host that has not restarted since it published):
 
@@ -76,5 +76,5 @@ vault-storage (`:8123`) is the only backend. It supports both lexical and semant
 
 ## Dependencies
 
-- `mcp__vault__vault_search` in your tool registry — the primary path, and it needs nothing else.
+- `mcp__program-clerk__search` in your tool registry — the primary path, and it needs nothing else.
 - Fallback only: `vault-curl` on `$PATH` (then raw `curl` with `Authorization: Bearer $PROGRAM_CLERK_KEY`, or the old `$VAULT_API_TOKEN`, if that is missing too).

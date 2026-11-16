@@ -36,7 +36,7 @@ W=$(mktemp -d)
 Each worksheet item carries the pair's `distance` plus both records'
 briefs — title, type, status, dates, agent summary, and the first ~30
 body lines (`body_head`) — usually enough to judge; fetch full bodies via
-`mcp__vault__vault_read_file{path}` (fallback `vault-curl /vault/<path>`) only when it isn't. `path_moved` flags mark
+`mcp__program-clerk__read_file{path}` (fallback `vault-curl /vault/<path>`) only when it isn't. `path_moved` flags mark
 records relocated since filing; writes use current paths.
 
 Decisions map — one value per item id:
@@ -96,7 +96,7 @@ then:
    is the operator's to end on the agents page (`/ui/agents.html`), never
    yours.
 1. **Choose canonical**: more recent `updated:`, more inbound wikilinks
-   (`mcp__vault__vault_backlinks{record_id}`; fallback
+   (`mcp__program-clerk__backlinks{record_id}`; fallback
    `vault-curl /sections/$ID/backlinks`), better structure; when in doubt
    prefer the older note and absorb the newer's unique content.
 2. **Write merged content** into the canonical (union tags; lose nothing
@@ -108,13 +108,13 @@ then:
 3. **Redirect inbound wikilinks**: for each backlink source, edit its body
    to point at the canonical (`vault-put --replace` per site).
 4. **Archive the redundant note** (record id, embeddings, history survive):
-   `mcp__vault__vault_move` to `<dir>/archive/<YYYY>/<name>.md` with the
+   `mcp__program-clerk__move` to `<dir>/archive/<YYYY>/<name>.md` with the
    batch's `claim_token`, then stamp `status: "superseded"` with
-   `vault_patch_fm` (fallbacks: `POST /vault/move` with `claim_token` in the
+   `patch_fm` (fallbacks: `POST /vault/move` with `claim_token` in the
    body, which is also the route on an adapter before 0.15.0, whose
-   `vault_move` refuses the argument; and a JSON PUT). `DELETE` is reserved
+   `move` refuses the argument; and a JSON PUT). `DELETE` is reserved
    for zero-history junk.
-5. **Accept the suggestion**: `mcp__vault__vault_accept_suggestion{id}`
+5. **Accept the suggestion**: `mcp__program-clerk__accept_suggestion{id}`
    (fallback `vault-curl /suggestions/$ID/accept -X POST`).
 6. **Release the batch**: `POST /leases/release` with `{holder,
    claim_token}`.

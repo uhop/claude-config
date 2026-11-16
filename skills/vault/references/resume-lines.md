@@ -16,11 +16,11 @@ for the session we want to start."* (Eugene, 2026-10-26.)
   pairs with that end alone, a resumed session's other ends included, and
   is not written twice. Append the line to the session's month file
   (`projects/<name>/data/sessions/<YYYY-MM>.jsonl`), or, when its `file` in
-  `vault_resume_bundle` is the sessions note (`projects/<name>/sessions.md`,
+  `resume_bundle` is the sessions note (`projects/<name>/sessions.md`,
   until the server takes it in), to the month file of now: a line pairs
   with a note's session by holder too.
 - `handoff` — another agent waits on this session: read the request
-  with `vault_handoff_get` before acting (§ Agent coordination —
+  with `handoff_get` before acting (§ Agent coordination —
   handoffs). `rework` — your own submission came back: surface it.
 - `upstream` — the item, by its slug, mirrors a ticket: read the ticket,
   and when it is closed or merged upstream, close the item
@@ -39,7 +39,7 @@ for the session we want to start."* (Eugene, 2026-10-26.)
   plan already places it. In a project with no plan, filing the item
   in its Backlog section placed it: confirm the section.
 - `fix-trackers` — the queue's `trackers:` declaration is malformed:
-  fix it with `vault_patch_fm` on the queue, and keep going on the
+  fix it with `patch_fm` on the queue, and keep going on the
   answer as given.
 - `file-stalls` — the server does not file its loop stalls, so this
   resume files what is not filed yet, since the server is shared: find
@@ -52,7 +52,7 @@ for the session we want to start."* (Eugene, 2026-10-26.)
   exactly that `at`. `-f` makes an HTTP error stop the step, since
   `vault-curl` exits 0 on one otherwise. **One open stall item at a
   time** (Eugene, 2026-10-09): when the newest item is still open, add
-  the records to it with one `vault_replace`, its title's time moved to
+  the records to it with one `replace`, its title's time moved to
   the latest record's `at` and the new records first, its `from`
   running from the title line through the newest existing record line,
   so another resume's filing refuses it whole; a 409 means another
@@ -80,13 +80,13 @@ holds the list; when the ticket closes, `queue-items.mjs archive …
 --reason shipped`, or `--reason parked` when the work moves off you.
 Before
 starting on a ticket, read what the vault holds about it:
-`vault_links({key: "<the source>"})` (or `{url}` for any link) lists
+`links({key: "<the source>"})` (or `{url}` for any link) lists
 the notes and queue items that mention it (vault-storage D112).
 `queue-items.mjs trackers <project>` reads the same view outside the
 resume flow.
 
-`vault_resume_bundle` still answers the raw blocks, for `/vault learn` and for a
+`resume_bundle` still answers the raw blocks, for `/vault learn` and for a
 reader that needs them; its tool description names each one. Before relaying a
 summary it marks stale, read the note, one over 64 KB (its `body_bytes`) by the
 sections you need, and restate the summary in your next write to it.
-`vault_project_changes` answers what changed since any time or commit.
+`project_changes` answers what changed since any time or commit.

@@ -286,7 +286,7 @@ expires — taking work from it is ask-first, by design.
 Ask before touching this working tree. If you have work for it, put it in a
 disposable worktree and file a handoff addressed to the role:
 
-  vault_handoff_create({idempotency_key, project, to: "$resource", kind, ref, from, body})
+  handoff_create({idempotency_key, project, to: "$resource", kind, ref, from, body})
 EOF
     exit 2
   fi
@@ -300,12 +300,12 @@ Do this instead:
   1. git -C "$root" worktree add <scratch> -b <topic>
   2. work there, and run that repo's gates there
   3. git format-patch --base=\$(git merge-base main HEAD) main..HEAD --stdout
-  4. vault_handoff_create({... to: "$resource" ...}), then vault_handoff_put_artifact
+  4. handoff_create({... to: "$resource" ...}), then handoff_put_artifact
 
 If this repo IS your session's working directory: a cwd claim preempts an
 agent-held SIDE lease, so try
 
-  vault_lease_claim({resource: "$resource", holder: "$me", priority: "cwd"})
+  lease_claim({resource: "$resource", holder: "$me", priority: "cwd"})
 
 — but if that returns 409, the holder is another cwd session and you are
 SUBORDINATE (ruled 2026-08-18): read freely, route edits through the worktree

@@ -22,22 +22,22 @@ _index.md          # archived 2026-04-29 — kept for inbound wikilinks; do not 
 
 Discovery is dynamic via the live API, not via a curated index file. The tool
 names below are the MCP tools — real, registered, and callable as
-`mcp__vault__<name>` once their schemas are fetched (see § Reads: the MCP
+`mcp__program-clerk__<name>` once their schemas are fetched (see § Reads: the MCP
 tools). They were aspirational until 2026-08-02, when registering the apodict
 MCP server surfaced that `mcpServers` had never been a recognized
 `settings.json` key and the vault MCP had been silently inert.
 
 | Question | Tool |
 | --- | --- |
-| What topics exist? | `vault_list_folder("topics/")` |
-| What projects? | `vault_list_folder("projects/")` |
-| Recent logs / queries | `vault_list_pieces(type=log, updated_since=…)` |
-| Find a note about X | `vault_search(X, mode=semantic)` |
-| What links to / from X? | `vault_backlinks(X)` / `vault_neighborhood(X)` |
-| Tag taxonomy | `vault_list_tags`, `vault_records_by_tag` |
+| What topics exist? | `list_folder("topics/")` |
+| What projects? | `list_folder("projects/")` |
+| Recent logs / queries | `list_pieces(type=log, updated_since=…)` |
+| Find a note about X | `search(X, mode=semantic)` |
+| What links to / from X? | `backlinks(X)` / `neighborhood(X)` |
+| Tag taxonomy | `list_tags`, `records_by_tag` |
 | Top items across the fleet | `queue-items.mjs fleet --limit N` |
 | One project's open queue | `queue-items.mjs list <name>` |
-| One project's archive | `vault_read_file` on its `queue-archive.md` |
+| One project's archive | `read_file` on its `queue-archive.md` |
 | Everything at priority N (Backlog) | `queue-items.mjs fleet --section backlog --priority N` |
 | Fleet-wide Active / Watching | `queue-items.mjs fleet --section <section>` |
 
@@ -79,16 +79,16 @@ Rules:
   D82 and D83, 2026-09-28). The taxonomy holds about 1,600 tags, and a name
   typed freehand is the main way near-duplicates get minted (`competitor-survey`
   beside `survey`, `integrations` beside `integration`). Before a write that
-  carries `tags:`, check the names: `vault_tag_nearest({tags: [...]})`, or
+  carries `tags:`, check the names: `tag_nearest({tags: [...]})`, or
   `{text: <the summary>}` for a draft with no names yet, answers per name with
   an `exact` hit (a canonical tag, or an alias resolved to one: use the tag as
   returned) and the nearest existing tags, each with a `score` and how it
   matched (`exact`, `alias`, `name`, `embedding`); take an existing tag whose
   description covers the note. Then write with `strict_tags: true` on
-  `vault_write_file`, `vault_update_piece`, or `vault_supersede`: a name still
+  `write_file`, `update_piece`, or `supersede`: a name still
   outside the taxonomy is a 409 `unknown_tags` carrying the same candidates in
   `details.unknown`, and nothing is written or filed, so fix the list and write
-  again. Mint with `vault_tag_create` (a description saying what a note
+  again. Mint with `tag_create` (a description saying what a note
   carrying the tag is about) only when no candidate fits, then write. A write
   without `strict_tags` still lands, but an unknown tag then files a `new_tag`
   suggestion for the sweep to triage and the answer carries `unknown_tags`:
@@ -112,7 +112,7 @@ Rules:
   vault records only the item in flight); `write` the fields the vault may
   write back (empty means read-only); `url` where a person opens it (derived
   for GitHub).
-  Declare it with `vault_patch_fm` on the queue, never by rewriting the note;
+  Declare it with `patch_fm` on the queue, never by rewriting the note;
   `queue-items.mjs trackers <project>` and a resume read it back, validated
   by `trackers.mjs` with malformed entries named in `problems`, and the server
   reads only each entry's `kind`, `ref`, and `url` to resolve links
@@ -134,7 +134,7 @@ Rules:
   `strict_tags: true`: a target that resolves to no note is then a 409
   `unresolved_edges` carrying `details.unresolved`, and nothing is written;
   without it the write lands and the answer carries `unresolved_edges`.
-  Check a target with `vault_read_meta` or `/resolve?wikilink=` when unsure
+  Check a target with `read_meta` or `/resolve?wikilink=` when unsure
   of its path.
 - **A ticket is named by a short reference, and anything else outside the
   vault by its URL** (vault-storage D97, 2026-09-29). In a note under
@@ -154,7 +154,7 @@ Rules:
   only what is open** (vault-storage D537, question 181, 2026-10-29). A
   project that works its Backlog from a plan note under
   `projects/<name>/plans/` re-clusters it at a cluster boundary, on a new
-  direction, or when the user asks, and replaces it with `vault_supersede`,
+  direction, or when the user asks, and replaces it with `supersede`,
   so every earlier order stays in the archive and links keep reaching the
   current plan (the plan's own rules name the archive slot). The new plan
   carries its rules for continuing and ordering, the rulings in force with

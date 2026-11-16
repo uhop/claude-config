@@ -5,10 +5,10 @@ Part of the vault skill: the table in its `SKILL.md` says which file holds a sec
 ### `vault-put` — the shell-side document writer
 
 Still the right tool from a **script**, from a pre-0.1.0 adapter, or when a
-multi-pair all-or-nothing replace is wanted (the MCP `vault_replace` is one op
+multi-pair all-or-nothing replace is wanted (the MCP `replace` is one op
 per call; `vault-put` batches pairs into a single round-trip). From the agent
-on a parity adapter, prefer `vault_append` / `vault_replace` /
-`vault_replace_section` / `vault_write_file` — same server ops, no scratch files.
+on a parity adapter, prefer `append` / `replace` /
+`replace_section` / `write_file` — same server ops, no scratch files.
 
 `~/.claude/skills/vault/vault-put.mjs` replaces the hand-rolled jq/python
 payload-assembly blocks (which failed 4× in one session — the 2026-07-10
@@ -76,21 +76,21 @@ right call when a large document is being *processed* rather than *read* —
 block to `vault-put --replace-file`. Two things make this a real exception
 rather than a preference:
 
-- **`vault_read_file` returns into context, and context is the scarce
+- **`read_file` returns into context, and context is the scarce
   resource.** Pulling a 100 KB `queue.md` to extract three lines spends the
   whole 100 KB. Big results do not even arrive inline: past some size the
   harness persists the tool result to disk and hands you a path, so the read
   costs a round-trip and lands in a file regardless — which is where the curl
   put it directly. The exact cutoff is unmeasured; the observed points
-  (2026-08-04) are `vault_read_file` on `schedule.md` at 52 KB,
-  `vault_resume_bundle` at 79 KB and a queue slice at 145 KB, all
+  (2026-08-04) are `read_file` on `schedule.md` at 52 KB,
+  `resume_bundle` at 79 KB and a queue slice at 145 KB, all
   three overflowed and had to be `jq`-ed off disk.
 - **Verbatim relocation must be mechanical.** A queue kept as item notes
   moves whole notes; in any other note, moving an item means reproducing multi-KB paragraphs exactly.
-  `vault_replace` takes `from`/`to` as strings, so that is you retyping them;
+  `replace` takes `from`/`to` as strings, so that is you retyping them;
   `--replace-file` matches byte-for-byte against what `sed` cut. Retyping is
   the risk, not the round-trip. **From D35 (2026-09-06) the server does the
-  move**: `vault_move_item({from_path, to_path, title, to_section, trail,
+  move**: `move_item({from_path, to_path, title, to_section, trail,
   create_section})` locates the item by its bold title exactly once (the
   `title` is the whole bold text, trailing period included — the same
   string without the period is a 409 `item_assert_failed`, hit 2026-09-07),
@@ -102,8 +102,8 @@ rather than a preference:
   date, not the recipe.
 - **A whole section is a server-side span, not a retyped block.** `## Active`,
   a decisions entry: read it with
-  `vault_read_section({path, heading: "## Active"})` and rewrite it with
-  `vault_replace_section({path, heading, body})` (vault-storage D30,
+  `read_section({path, heading: "## Active"})` and rewrite it with
+  `replace_section({path, heading, body})` (vault-storage D30,
   2026-09-06 — the heading is matched as a whole line, exactly once, with
   code fences masked; the span runs to the next heading of the same or
   higher level; the body is trimmed and framed; an absent or ambiguous
@@ -113,8 +113,8 @@ rather than a preference:
   Backlog through context — the item move stays on the file-based cut above.
 
 The boundary: **short strings you can type without risk go through
-`vault_replace` / `vault_patch_fm`, and a whole section through
-`vault_replace_section`** — the atomic server-side ops with the small blast
+`replace` / `patch_fm`, and a whole section through
+`replace_section`** — the atomic server-side ops with the small blast
 radius. Drop to file-based reads and `vault-put --replace-file`
 only when the block is too large to reproduce by hand or the document is too
 large to pull into context. Reads you actually intend to *read* — a note you
@@ -138,13 +138,13 @@ command -v vault-curl >/dev/null || { echo "vault-curl missing — falling back 
 
 API endpoints (invoked via `vault-curl <path> [curl-options...]`):
 
-- **Read**: `vault-curl /vault/{path} -s` — *prefer `vault_read_file`*; use
+- **Read**: `vault-curl /vault/{path} -s` — *prefer `read_file`*; use
   this when you need the response headers (`ETag` for a hand-rolled
   conditional write, `X-Program-Clerk-Composed` to detect a composed folder view),
   or when the bytes are headed for a file rather than your context —
   `-s > "$WORK/doc.md"` to `sed` a range out of a large document or to feed
   `vault-put --replace-file`. See the read-to-a-file exception above for the
-  boundary; a note you intend to actually read stays on `vault_read_file`.
+  boundary; a note you intend to actually read stays on `read_file`.
 - **Write (JSON — THE write path)**: `vault-curl /vault/{path} -X PUT -H 'Content-Type: application/json' --data-binary @payload.json`
   - Body shape: `{"frontmatter": {...}, "body": "..."}` — the server takes the FM object directly, skips YAML parse, and serializes safely (auto-quoting colon-space, leading-special-char, hex/bool/date-shadow strings). Always use this when authoring or modifying frontmatter values.
   - Construct the payload with `jq` and `--rawfile` to safely embed a body that contains arbitrary characters — write scratch under a `WORK=$(mktemp -d)` dir, not a hardcoded `/tmp` name (CLAUDE.md § "Scratch files"): `jq --null-input --rawfile body "$WORK/body.md" '{frontmatter: {title: "X", ...}, body: $body}' > "$WORK/payload.json"`.
@@ -156,17 +156,17 @@ API endpoints (invoked via `vault-curl <path> [curl-options...]`):
   - Add `-o /dev/null -w "%{http_code}\n"` to confirm a 204 without flooding stdout (works for either Content-Type).
 - **Conditional writes (`If-Match`, use for read-modify-write on shared docs)**: `GET /vault/{path}` returns an `ETag` header (sha256 of the document's bytes, with `-gzip`, `-br`, or `-zstd` inside the quotes when the response was compressed; the server accepts either form back, vault-storage D70); send it back as `-H 'If-Match: <etag>'` on the PUT (either Content-Type) and the write lands only if the document hasn't changed in between — otherwise **412** `precondition_failed` with `details.current_etag`, meaning another writer got there first: re-GET, re-apply your edit to the fresh copy, retry with the new tag. Adopt this for any flow that GETs a shared doc (queue.md, learnings.md, archives), modifies it, and PUTs it back — it converts silent last-writer-wins clobbering into a visible, retryable conflict. Capture the ETag with `-D-` or `-o /dev/null -D- | grep -i etag`; successful PUTs (204) return the new `ETag` so chained conditional edits don't need a re-GET. `If-Match` never creates files (412 on a missing path); plain unconditional PUT remains valid for docs only one session touches.
 - **Edit (atomic server-side body op)**: `vault-curl /vault/edit -X POST -H 'Content-Type: application/json' --data-binary @op.json` with `{path, op: "append", text}` or `{path, op: "replace", from, to, all?}` — one op per call, server ≥ 2026-07-24. Replace is asserted (absent `from` → 409, ambiguous without `all` → 409 with the count — never a silent no-op); append joins after a single trailing newline; FM rides verbatim (`updated` re-stamped) except for an optional `agent` patch, which is merged over the stored `agent:` block and stamped current (D74, § Keep the enrichment current in the same write). Prefer `vault-put --append/--replace`, which calls this automatically with a round-trip fallback; reach for the raw endpoint only from contexts without vault-put.
-- **FM patch (atomic single-key frontmatter op)**: `vault-curl /sections/{record_id}/fm -X PATCH -H 'Content-Type: application/json' --data-binary @ops.json` with `{ops: [{op: "add"|"remove", path: "/related", value: "..."}]}` (not `/tags`: a 400 `protected_field`; tags go through `POST /sections/{id}/tags` with `{"tag": …}` and `DELETE /sections/{id}/tags/{tag}`, each returning the resulting `tags` array) — server-side membership edit on an FM array, no body round-trip and therefore no way to clobber the document. Returns `{changed, results: [{op, path, changed, array}]}` with the resulting array, so no re-read is needed to confirm. Prefer this over any full-document write whose only purpose is one FM key. `record_id` comes from `vault_list_pieces({file_prefix})`. Used by `/vault-propose-related` (`related-batch.mjs`) to apply accepted candidates.
+- **FM patch (atomic single-key frontmatter op)**: `vault-curl /sections/{record_id}/fm -X PATCH -H 'Content-Type: application/json' --data-binary @ops.json` with `{ops: [{op: "add"|"remove", path: "/related", value: "..."}]}` (not `/tags`: a 400 `protected_field`; tags go through `POST /sections/{id}/tags` with `{"tag": …}` and `DELETE /sections/{id}/tags/{tag}`, each returning the resulting `tags` array) — server-side membership edit on an FM array, no body round-trip and therefore no way to clobber the document. Returns `{changed, results: [{op, path, changed, array}]}` with the resulting array, so no re-read is needed to confirm. Prefer this over any full-document write whose only purpose is one FM key. `record_id` comes from `list_pieces({file_prefix})`. Used by `/vault-propose-related` (`related-batch.mjs`) to apply accepted candidates.
 - **Supersede (replace a note, archiving the old)**: `vault-curl /vault/supersede -X POST -H 'Content-Type: application/json' --data-binary @payload.json` with `{old_path, new_path?, frontmatter, body}` — the successor in the standard JSON write shape; `new_path` defaults to `old_path` (supersede-in-place: the successor takes over the path, so inbound wikilinks resolve to the replacement). Use this — never DELETE+PUT or a wholesale overwrite — whenever a write *replaces* a note rather than evolving it: the old note moves to `<dir>/archive/<YYYY>/<name>` with its record id intact (edges/embeddings/suggestions survive) and gets `status: superseded`; the successor's body is auto-appended a `> Supersedes [[<archived-path>]].` footer that backs the typed `supersedes` edge (don't add your own). Validation-first — a rejected request (bad FM, occupied `new_path`) mutates nothing; a taken archive slot gives way to `<stem>-<YYYY-MM-DD>.md` (server from 2026-11-01, vault-storage D574). Routine edits to an existing note stay plain PUTs; supersession is for replacement semantics.
-- **List**: `vault-curl /vault/{path}/ -s` (trailing slash → `{"files": [...]}`) — *prefer `vault_list_folder`*.
-- **Delete**: `vault-curl /vault/{path} -X DELETE` — for junk with zero history value; a note retired *in favor of other content* should be superseded (or moved to an archive folder), not deleted. (`vault_delete_file` exists on MCP; the same judgment applies — supersede beats delete.)
-- **Search**: `vault-curl /search/simple/ -X POST -G --data-urlencode 'query=...'` — *prefer `vault_search`*.
+- **List**: `vault-curl /vault/{path}/ -s` (trailing slash → `{"files": [...]}`) — *prefer `list_folder`*.
+- **Delete**: `vault-curl /vault/{path} -X DELETE` — for junk with zero history value; a note retired *in favor of other content* should be superseded (or moved to an archive folder), not deleted. (`delete_file` exists on MCP; the same judgment applies — supersede beats delete.)
+- **Search**: `vault-curl /search/simple/ -X POST -G --data-urlencode 'query=...'` — *prefer `search`*.
   - The vault REST API expects `query` as a URL parameter on a POST; `-G --data-urlencode` produces the right form.
 
 ### Pagination — page by `items.length`, never by your requested `limit`
 
-**Applies to the MCP list tools too** — `vault_list_pieces`, `vault_backlinks`,
-`vault_list_suggestions` and friends take `limit`/`offset` and cap `limit` at
+**Applies to the MCP list tools too** — `list_pieces`, `backlinks`,
+`list_suggestions` and friends take `limit`/`offset` and cap `limit` at
 100 exactly as the REST endpoints do. Moving a read to MCP does not retire this
 rule; it only removes the `jq` step in front of it.
 

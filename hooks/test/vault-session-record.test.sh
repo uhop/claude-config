@@ -37,6 +37,8 @@ transcript="$work/session.jsonl"
   printf '{"timestamp":"2026-09-30T01:05:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"mcp__vault__vault_append","input":{"path":"projects/vs-demo/queue.md","text":"x"}}]}}\n'
   printf '{"timestamp":"2026-09-30T01:06:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"mcp__vault__vault_replace","input":{"path":"logs/2026-09-16-old.md","from":"a","to":"b"}}]}}\n'
   printf '{"timestamp":"2026-09-30T01:07:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"node ~/.claude/skills/vault/vault-put.mjs topics/x.md --fm fm.json --body body.md"}}]}}\n'
+  printf '{"timestamp":"2026-09-30T01:07:20.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"mcp__program-clerk__write_file","input":{"path":"topics/new-name.md","frontmatter":{},"body":"x"}}]}}\n'
+  printf '{"timestamp":"2026-09-30T01:07:40.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"mcp__program-clerk__supersede","input":{"old_path":"topics/old.md","new_path":"archive/2026/old.md"}}]}}\n'
   printf '{"timestamp":"2026-09-30T01:08:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"mcp__vault__vault_move_item","input":{"from_path":"projects/vs-demo/queue.md","to_path":"projects/vs-demo/queue-archive.md","title":"t"}}]}}\n'
   printf '{"timestamp":"2026-09-30T01:09:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"vault-curl /data/projects/vs-demo/data/sessions/logs/2026-09-30-deadbeef-arc.markdown -X PUT --data-binary @body.md"}}]}}\n'
 } >"$transcript"
@@ -75,7 +77,7 @@ body=$(jq -r '.body' <<<"$request")
 me="$(hostname -s)/deadbeef"
 expected=$(jq -cn --arg me "$me" '{
   kind: "end", holder: $me, started: "2026-09-30T01:00:00Z", reason: "prompt_input_exit",
-  wrote: ["logs/2026-09-16-old.md", "projects/vs-demo/queue-archive.md", "projects/vs-demo/queue.md", "topics/x.md"]
+  wrote: ["archive/2026/old.md", "logs/2026-09-16-old.md", "projects/vs-demo/queue-archive.md", "projects/vs-demo/queue.md", "topics/new-name.md", "topics/old.md", "topics/x.md"]
 }')
 got=$(jq -c '{kind, holder, started, reason, wrote}' <<<"$body")
 [[ $got == "$expected" ]] && ok || bad "the end's fields, the data file's write left out: $got"

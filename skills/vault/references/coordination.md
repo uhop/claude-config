@@ -28,7 +28,7 @@ leased notes out, so read a worklist before you lease, never after.
 `enrich-batch.mjs`, `compact-batch.mjs`, and `reorg-batch.mjs` lease for you;
 `/vault ingest` and the duplicate merge lease by hand (their procedures say
 where). Until the adapter's release after 11e-5, the batch form is REST
-only: `vault_lease_claim` takes one `resource`.
+only: `lease_claim` takes one `resource`.
 
 **A 409 `claimed_by_other` on a move, supersede, or delete** means another
 pass holds that note, or, on a move or a supersede's archive slot, the path
@@ -38,7 +38,7 @@ the note, move it elsewhere, or come back after the pass; edits and appends
 are never blocked, so ordinary writes need no lease. **Never force a
 release**, even when a lease looks stuck: one another holder left behind is
 the operator's to end on the agents page (`/ui/agents.html`). From adapter
-0.15.0 neither `vault_work_release` nor `vault_lease_release` offers
+0.15.0 neither `vault_work_release` nor `lease_release` offers
 `force`; the REST route's `force` is a signed-in person's act, refused to
 an agent's key.
 
@@ -57,7 +57,7 @@ call has waited the two minutes out, later calls try once until the vault
 answers again, their error naming since when in `details.unreachableSince`:
 the vault is down, so do not repeat such a call at once. When the error still
 arrives, read `details.cause`: a connection never made sent nothing, so
-repeat the call once `vault_health` answers; a message that says the write
+repeat the call once `health` answers; a message that says the write
 may have applied went out before the connection dropped, as did a 502
 `tenant_dropped`, so read the document before sending it again, since an
 `append`, or a `replace` whose `to` contains its `from`, applies twice. An
@@ -88,7 +88,7 @@ holds: send a text patch, or ask Eugene before `allow_secret`.
 **Never rewrite a whole document to change one frontmatter key.** That is the
 single most common reason an agent reaches for a full-document write, and it is
 the highest-risk way to do the lowest-risk edit. Use the atomic FM patch —
-`vault_patch_fm({record_id, ops: [{op: "add", path: "/related", value:
+`patch_fm({record_id, ops: [{op: "add", path: "/related", value:
 "[[projects/x/queue-archive]]"}]})`, or on a pre-0.1.0 adapter:
 
 ```bash
@@ -98,22 +98,22 @@ vault-curl /sections/<record_id>/fm -X PATCH -H 'Content-Type: application/json'
 
 One op per array member; `add` is idempotent on an existing member. The response
 echoes the resulting array, so the effect is visible without a re-read. Get the
-`record_id` from `vault_list_pieces({file_prefix: "<path>"})`. This is what
+`record_id` from `list_pieces({file_prefix: "<path>"})`. This is what
 `/vault-propose-related` applies its accepted candidates with — see
 `related-batch.mjs` (a script, so it stays on curl). Note the id is a *record*
 id, not a path.
 
 **Conditional writes from an MCP read** work as of adapter 0.1.0:
-`vault_read_file({path, include_etag: true})` returns `{path, etag, composed,
+`read_file({path, include_etag: true})` returns `{path, etag, composed,
 content}`, and that `etag` goes straight back as `expected_etag` on
-`vault_write_file` / `vault_update_piece` — the write lands only if nobody
+`write_file` / `update_piece` — the write lands only if nobody
 else wrote in between, otherwise 412 `precondition_failed` with
 `details.current_etag` to re-read and retry against. `composed: true` marks an
 atomized-folder view with no single file behind it; edit its pieces instead.
 On a pre-0.1.0 adapter the read carries no tag at all, so there is nothing to
 seed a conditional write with — use `vault-put --replace`/`--append` there,
 which performs its own atomic server-side op and never trusts your earlier
-read. Either way, prefer `vault_append`/`vault_replace` over a
+read. Either way, prefer `append`/`replace` over a
 read-then-rewrite: they need no ETag because the server holds the document.
 
 ### Agent coordination — repo leases and handoffs
@@ -122,9 +122,9 @@ The server carries two coordination surfaces: a repo-lease registry answering
 "which agent may edit this repo's working tree directly", and a handoff queue
 answering "how does a non-owner get work done there" (design:
 [[projects/vault-storage/design/agent-coordination]] § Ownership protocol;
-rulings D21/D23). Lease tools: `vault_lease_list` / `vault_lease_events`
-(reads), `vault_lease_claim` / `vault_lease_renew` / `vault_lease_release` /
-`vault_lease_transfer` (adapter ≥ 0.4.0; on an older adapter,
+rulings D21/D23). Lease tools: `lease_list` / `lease_events`
+(reads), `lease_claim` / `lease_renew` / `lease_release` /
+`lease_transfer` (adapter ≥ 0.4.0; on an older adapter,
 `vault-curl /leases` and `POST /leases/claim|renew|release|transfer`).
 Handoff tools: `vault_handoff_*` (adapter ≥ 0.5.0; on an older adapter,
 `vault-curl /handoffs[/{id}]` and
@@ -199,7 +199,7 @@ operator's act, never yours, and it happens in the UI only (ruled
 2026-09-19): he transfers, or force-releases in `/ui/agents.html`. When he
 says *"take the lease"*, point him there; **never force a lease release**,
 and never route a refused release through `vault-curl`. Adapter 0.15.0
-dropped `force` from `vault_lease_release`, and an older adapter still
+dropped `force` from `lease_release`, and an older adapter still
 offers it: do not send it. The REST route refuses `force` to an agent's key,
 and the auto-mode classifier refuses the call anyway. The same holds for a
 pass's note leases (§ Note leases).
@@ -209,15 +209,15 @@ claimed", which is why the claim moved into a hook.
 
 - **Before editing a repo outside the session's cwd** (the CLAUDE.md
   § Cross-repo work path), read the lease and the tree:
-  `vault_lease_list({resource: "repo:<normalized-remote-url>"})` — e.g.
+  `lease_list({resource: "repo:<normalized-remote-url>"})` — e.g.
   `repo:github.com/uhop/deep6`; a repo with no remote keys as
   `repo:<host>:<path>` — then `git -C <repo> status --porcelain`.
   - **Unclaimed and clean → side-claim, edit directly, release, tell the
-    user.** `vault_lease_claim({resource, holder, attestation: "clean at
+    user.** `lease_claim({resource, holder, attestation: "clean at
     <short-sha>"})`, which names no rank and so is what the hooks call a side
     claim; a `cwd` session takes it at once. Keep the `claim_token` it
     returns, edit the working tree, run that repo's gates,
-    `vault_lease_release({resource, holder, claim_token})`, then report "mods done in
+    `lease_release({resource, holder, claim_token})`, then report "mods done in
     `<repo>` — review, commit, push". No worktree, no branch — the daily
     no-other-agents case, ruled 2026-08-18. Clean = no modified, staged, or
     untracked-unignored files (ignored never count; stash entries: mention,
@@ -250,7 +250,7 @@ claimed", which is why the claim moved into a hook.
   operator holds as
   `kind: "human"` (no TTL, never preempted) and claims via the UI, since an
   agent's key gets a 403 there (vault-storage D606);
-  `vault_lease_transfer` with `to_kind: "human"` is the "please review and
+  `lease_transfer` with `to_kind: "human"` is the "please review and
   commit" handover.
 - **While holding a side lease**: it is yours for the burst — release it
   when the burst is done, with its `claim_token`. SessionEnd does not
@@ -267,13 +267,13 @@ survives its requester and is picked up by whoever holds that repo's lease,
 including an agent that starts tomorrow. Handoffs are durable across server
 restarts (the server keeps a spool of self-describing files); resolved ones
 archive into a data file each, `projects/<project>/data/handoffs/<id>.json`,
-which `vault_data_read` reads by the id once `vault_handoff_get` no longer
+which `data_read` reads by the id once `handoff_get` no longer
 finds it (server from vault-storage 10f; before it, the project's
 `handoff-archive.md`). Same no-op rule as
 leases: a single-agent session that owns its cwd repo never files one.
 
 - **Filing one** (you are not the owner): work in a disposable worktree,
-  then `vault_handoff_create({idempotency_key, project, to, kind, ref, from,
+  then `handoff_create({idempotency_key, project, to, kind, ref, from,
   body})`. The server reads neither `kind` nor `ref` (vault-storage D605), so
   these are this skill's own: `kind` is `review-branch`, `apply-patch`,
   `answer-question`, or `run-check`; `ref` is `{type, value}`, the type
@@ -297,7 +297,7 @@ leases: a single-agent session that owns its cwd repo never files one.
   reports `overlaps` with the other in-flight handoffs to the same role from
   exactly this list, and a handoff without it overlaps nothing.
 - **Attaching the work**: for anything the owner should *apply*, follow the
-  create with `vault_handoff_put_artifact({id, content})` — a patch from
+  create with `handoff_put_artifact({id, content})` — a patch from
   `git format-patch --base=$(git merge-base main HEAD) main..HEAD --stdout`
   (`format-patch` over a plain diff because it carries the commit message,
   author and date, and `--base` records what it applies to). This is what
@@ -312,7 +312,7 @@ leases: a single-agent session that owns its cwd repo never files one.
   The upload sets `ref` to `{type: "spool"}` itself, and reads the patch's
   `base-commit:` trailer into `base_sha`. The artifact is captured at submit
   time, so it no longer depends on your worktree surviving. **Then record the
-  gates you ran** with `vault_handoff_verify({id, check, sha, exit, by})`, one
+  gates you ran** with `handoff_verify({id, check, sha, exit, by})`, one
   call per check, `sha` being the head commit your gates ran on (the owner
   passes the `HEAD` it applied the patch on). The record also carries the
   artifact's sha256 at that moment, and every read shows it `stale` once the
@@ -355,7 +355,7 @@ leases: a single-agent session that owns its cwd repo never files one.
   with `git restore --staged <files>` to keep the change in `git diff`. Apply a handoff when it arrives, live files included; one that loosens
   a gate or a permission (a `permissions` change in `settings.json`, a gate
   made to allow what it refused) waits for his word (D73). After your own gates
-  pass on the applied result, `vault_handoff_verify` with the `HEAD` it was
+  pass on the applied result, `handoff_verify` with the `HEAD` it was
   applied on, so the record carries both sides' checks. **Then remove the
   submitter's worktree and branch** when `from.host` is yours:
   `git -C <repo> worktree remove <path>`, never with `--force`, and
@@ -370,7 +370,7 @@ leases: a single-agent session that owns its cwd repo never files one.
   `git log`. A patch that will not apply is a `rejected`
   resolution with the failure in `result`, never a silent drop; the submitter
   wakes on the status, rebases, and resubmits the same handoff.
-- **Waiting on one**: poll `vault_handoff_get({id})` and watch `status`. When
+- **Waiting on one**: poll `handoff_get({id})` and watch `status`. When
   actively blocked, a `Bash(run_in_background: true)` `until` loop over the
   status is the wake mechanism — the harness re-invokes you when it exits.
   When not blocked, don't poll: the result reaches you at the next
@@ -378,13 +378,13 @@ leases: a single-agent session that owns its cwd repo never files one.
   session.
 - **Receiving them** (you hold the lease): `/vault resume`'s project block
   carries the inbox — claiming a repo means inheriting it. Between resumes,
-  read it with `vault_handoff_list({project: "<name>", status: "open"})`, never
+  read it with `handoff_list({project: "<name>", status: "open"})`, never
   by the role, which goes stale when a repository moves (2026-11-01: a handoff
   to a moved repository's old remote read as an empty inbox). A ring is a
   breather: claim and apply the handoff it names before the work in hand goes
   on, and read the inbox between the rounds of a long pass too (a sweep, a
   census), since such a pass is where the 2026-11-06 nine waited. Claim before
-  reviewing (`vault_handoff_claim({id, holder})`, same holder id as the
+  reviewing (`handoff_claim({id, holder})`, same holder id as the
   lease, keeping the `claim_token` it returns), then resolve exactly once,
   passing that token: `done` (you applied it — you own any
   merge conflicts), `rejected`, or `returned` for rework. **`returned`
@@ -396,11 +396,11 @@ leases: a single-agent session that owns its cwd repo never files one.
   prevents. Claims expire lazily (~30 min), so an
   abandoned review reopens rather than wedging the work.
 - **Reworking**: a returned handoff comes back to *you*. Fix it, then
-  `vault_handoff_resubmit({id, ref?, body?, touches?})` — same record, same
+  `handoff_resubmit({id, ref?, body?, touches?})` — same record, same
   id, so the discussion and history stay in one place; `touches` is replaced
   whole when given, so restate the full list. Never file a fresh handoff for a
   second attempt.
-- **Discussion** rides `vault_handoff_note({id, author, text})`, append-only
+- **Discussion** rides `handoff_note({id, author, text})`, append-only
   and attached to the work; refused once the handoff is done/rejected.
 - **Never auto-resolve someone else's handoff.** Handoffs are deliberately
   not a suggestion kind — `/vault sweep` cannot see or drain them, and no

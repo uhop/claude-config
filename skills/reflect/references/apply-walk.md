@@ -42,9 +42,9 @@ AskUserQuestion({
 ```
 
 d. **Route:** "Apply as proposed" → execute the write. For vault paths prefer the narrow op: a queue
-item through `queue-items.mjs file <project>`; a rule or lesson through `vault_append` to its topic
-piece when the note's folder is grouped (`vault_list_pieces` lists them), else to the note's path;
-`vault_replace` for an edit; `vault_write_file` only when authoring a whole new note (fallback:
+item through `queue-items.mjs file <project>`; a rule or lesson through `append` to its topic piece
+when the note's folder is grouped (`list_pieces` lists them), else to the note's path; `replace` for
+an edit; `write_file` only when authoring a whole new note (fallback:
 `vault-put --append/--replace`); for claude-config paths use `Edit` against the real file under
 `~/Open/claude-config/`, never the `~/.claude/` symlink. "Edit then apply" → present the proposed
 body, ask for tweaks, then write. "Hang it" → `clarify-queue.mjs file` (step 7) with the rendered

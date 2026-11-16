@@ -7,7 +7,7 @@ Part of the vault skill: the table in its `SKILL.md` says which file holds a sec
 Compile **ready** raw notes into the wiki. Drafts (no `ready: true`)
 are skipped — the user is still iterating on them.
 
-1. **Pull the ready list.** `vault_raw_inbox` (pre-0.1.0 adapter:
+1. **Pull the ready list.** `raw_inbox` (pre-0.1.0 adapter:
    `vault-curl /maintenance/raw-inbox -s | jq`) returns
    `{ready: [{path, title, updated}], drafts: [...]}`. Process only `ready`. If
    that array is empty, report "no ready notes; N drafts waiting" and
@@ -21,7 +21,7 @@ are skipped — the user is still iterating on them.
    "ttl_seconds": 1800}'`; renew with `POST /leases/renew` and `{holder,
    claim_token, ttl_seconds}` when a run outlasts it. A note in `held` is
    being compiled by another session: skip it. Keep the `claim_token`.
-   Then, for each leased note, read the content with `vault_read_file`.
+   Then, for each leased note, read the content with `read_file`.
 3. Extract concepts — create or update topic notes in `topics/`,
    project notes in `projects/<name>/`, or queue items with
    `queue-items.mjs file <name>` per the content's nature. Before extending
@@ -30,12 +30,12 @@ are skipped — the user is still iterating on them.
    it under you; when `held` names it, write a new note instead, or leave
    that point for the next run. When a
    compilation *replaces* an existing topic outright (the old note is
-   being retired, not extended), use `vault_supersede` instead of
+   being retired, not extended), use `supersede` instead of
    overwriting in place — the predecessor is archived with its record id
    and a typed `supersedes` edge instead of silently vanishing into a
    PUT.
 4. Add wikilinks, backlinks, and tags on the derived notes. Tags per
-   § Note format: check the names with `vault_tag_nearest`, write with
+   § Note format: check the names with `tag_nearest`, write with
    `strict_tags: true`, mint only when nothing fits; declare the note's
    relations in `edges:` and write with `strict_edges: true`.
 5. **Enrich at capture.** When creating a new topic note (or materially
@@ -69,11 +69,11 @@ are skipped — the user is still iterating on them.
      union-merged on write, so *omitting* a key never deletes it. On an
      older server the sentinel is stored as a literal string; use
      `ready: false` there instead.
-   - `vault_move` from `raw/<name>.md` to
+   - `move` from `raw/<name>.md` to
      `raw/archive/<YYYY-MM-DD>-<name>.md`, with the batch's
      `claim_token`, so the inbox surfaces only pending material. (Before
-     adapter 0.15.0, `vault_move` refuses the token: use `vault-curl
-     /vault/move -X POST` with `{from, to, claim_token}`.) A `vault_supersede`
+     adapter 0.15.0, `move` refuses the token: use `vault-curl
+     /vault/move -X POST` with `{from, to, claim_token}`.) A `supersede`
      of a leased topic note carries that note's token the same way.
    Process notes one-at-a-time end-to-end: derived note created →
    source updated → moved to archive. A failure mid-ingest leaves
@@ -88,8 +88,8 @@ are skipped — the user is still iterating on them.
 
 Research a question against the vault.
 
-1. Use `vault_search` to find candidate notes — `mode=semantic` for conceptual queries, `mode=lexical` (the default) for verbatim phrases.
-2. Read the most relevant notes with `vault_read_file` (or `vault_read_meta` when frontmatter answers it); use `vault_neighborhood` / `vault_backlinks` / `vault_similar` to expand context if a single note isn't enough.
+1. Use `search` to find candidate notes — `mode=semantic` for conceptual queries, `mode=lexical` (the default) for verbatim phrases.
+2. Read the most relevant notes with `read_file` (or `read_meta` when frontmatter answers it); use `neighborhood` / `backlinks` / `similar` to expand context if a single note isn't enough.
 3. Synthesize an answer.
 4. Optionally file the answer into `queries/YYYY-MM-DD-{slug}.md` if substantive — wikilinks back to the source notes used.
 
@@ -115,7 +115,7 @@ it reports, never fixes. Full docs + flags + v1 limitations:
 
 Do not confuse it with the server-side **integrity** lint, which is a different
 tool (embeddings / orphans / temporal anomalies / tag aliases — *not* hygiene).
-Call `vault_lint` for it; the curl form below is the fallback. `vault_lint`
+Call `lint` for it; the curl form below is the fallback. `lint`
 does return the `coverage.enrichment` block (`by_type` breakdown +
 `unenriched_records` worklist) that `/vault sweep` reads — verified
 2026-08-03, and named in the tool description since `b1882f7`):
@@ -158,9 +158,9 @@ the project page names this command. GitHub first; Linear and Jira when he has s
    public github.com repositories only; for Linear or Jira, the vendor's MCP
    tools in this session's tool list. Missing access is reported beside the
    declaration, never a reason to skip it.
-4. **Write** with `vault_patch_fm({record_id, ops: [{op: "add", path:
+4. **Write** with `patch_fm({record_id, ops: [{op: "add", path:
    "/trackers", value: {kind, ref, role, create, intake, write}}]})` on the queue's
-   folder note (`vault_list_pieces({file_prefix:
+   folder note (`list_pieces({file_prefix:
    "projects/<name>/queue/_about.md"})` gives the id); an object member is accepted (checked 2026-09-29), and
    `remove` with the same value drops an entry. Never rewrite the note for it.
 5. **Read it back** with `queue-items.mjs trackers <project> --json` and report
@@ -204,6 +204,6 @@ repository", and correct.
 ### /vault (no subcommand)
 
 Show vault status: note counts per folder, recently updated notes, any lint
-warnings. All reads: `vault_status` (records / edges / pending suggestions /
-last indexed commit), `vault_list_folder` per folder, `vault_list_pieces`
-(`sort: "updated"`) for recency, `vault_lint` for warnings.
+warnings. All reads: `status` (records / edges / pending suggestions /
+last indexed commit), `list_folder` per folder, `list_pieces`
+(`sort: "updated"`) for recency, `lint` for warnings.

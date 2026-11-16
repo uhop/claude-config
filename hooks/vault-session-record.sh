@@ -59,15 +59,17 @@ wrote=""
 if [[ -f "$transcript" ]]; then
   started=$(jq -r 'select(.timestamp) | .timestamp' "$transcript" 2>/dev/null | head -1 | cut -c1-19)
   [[ -n "$started" ]] && started="${started}Z"
-  # The vault notes the session touched: the MCP write tools' path arguments,
+  # The vault notes the session touched: the MCP write tools' path arguments, by the
+  # adapter's names in older transcripts and the endpoint's since 7as-2,
   # and the paths of vault-put and vault-curl writes in Bash calls.
   wrote=$(
     jq -r '
       (.message.content // [])[]? | select(.type == "tool_use") |
-      if (.name | test("^mcp__vault__vault_(write_file|append|replace|replace_section|insert_item|remove_item|update_piece|delete_file)$")) then .input.path
-      elif .name == "mcp__vault__vault_supersede" then .input.old_path, (.input.new_path // .input.old_path)
-      elif .name == "mcp__vault__vault_move_item" then .input.from_path, .input.to_path
-      elif .name == "mcp__vault__vault_move" then .input.from, .input.to
+      (.name | if test("^mcp__(vault__vault_|program-clerk__)") then sub("^mcp__(vault__vault_|program-clerk__)"; "") else null end) as $tool |
+      if ($tool // "" | test("^(write_file|append|replace|replace_section|insert_item|remove_item|update_piece|delete_file)$")) then .input.path
+      elif $tool == "supersede" then .input.old_path, (.input.new_path // .input.old_path)
+      elif $tool == "move_item" then .input.from_path, .input.to_path
+      elif $tool == "move" then .input.from, .input.to
       elif .name == "Bash" then
         (.input.command // "" |
           scan("vault-put\\.mjs +([^ ]+\\.md) +--(?:fm|append|replace)")[0]?,

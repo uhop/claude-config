@@ -124,7 +124,7 @@ prompt: |
 
 ## When NOT to use this skill
 
-- **Per-query semantic search** — that's `/vault-search` / `vault_similar`
+- **Per-query semantic search** — that's `/vault-search` / `similar`
   at runtime; this is an offline curation pass (weekly / on-demand).
 - **Typed-edge classification** (`supersedes`, `derived-from`, …) — that's
   `/vault-review-edges`. This skill produces `related-to` only — the

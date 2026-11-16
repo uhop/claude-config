@@ -39,7 +39,7 @@ The helper also files: `clarify-queue.mjs file --question="…?" --context=@ctx.
 
 2. **Walk each item as a conversation, one per turn.** For each item:
 
-   a. **Context first, in chat.** The item's Question and Context lines, then the source moment rendered in human time: `~/.claude/skills/reflect/reflect-context.mjs --project=<dir> --session=<id prefix> --at=<ts>` from the Source line (his words and the reply that followed). For a vault-path source, `mcp__vault__vault_read_file` (fall back to `vault-curl /vault/<path> -s`). Name the session by its subject and day, never by its id.
+   a. **Context first, in chat.** The item's Question and Context lines, then the source moment rendered in human time: `~/.claude/skills/reflect/reflect-context.mjs --project=<dir> --session=<id prefix> --at=<ts>` from the Source line (his words and the reply that followed). For a vault-path source, `mcp__program-clerk__read_file` (fall back to `vault-curl /vault/<path> -s`). Name the session by its subject and day, never by its id.
 
    b. **Offer the moves in prose, and take them before any options form:** *go deeper* (widen `--before`/`--after`, re-explain in plain words what the agent did and what he said), *show an example* (a concrete before/after under each candidate), *research it* (a lookup, or a sub-agent for anything longer), or *hang it again* (leave it pending). Ask the form only when he asks for it or picks a candidate outright.
 

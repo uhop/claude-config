@@ -18,7 +18,7 @@ Walks every `~/.claude/projects/*/*.jsonl` session transcript, pairs each `tool_
 /transcript-profile --include-sidechain  # include sub-agent (Task) transcripts
 /transcript-profile --json            # JSON output instead of markdown
 /transcript-profile --sequences       # repeated call sequences, and values passed between calls
-/transcript-profile --sequences --tools mcp__vault__   # one tool family, by name prefix
+/transcript-profile --sequences --tools mcp__program-clerk__   # one tool family, by name prefix
 /transcript-profile --root DIR        # transcripts root (default ~/.claude/projects)
 ```
 

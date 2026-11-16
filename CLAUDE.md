@@ -743,19 +743,19 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/cross-r
 **Editing a repo outside the session's primary working directory starts with one lease read, and the
 answer picks the path** (ruled 2026-08-18; protocol in the vault skill `references/coordination.md`
 § Agent coordination, design `projects/vault-storage/design/agent-coordination` § Session-lifetime
-claims). `vault_lease_list({resource: "repo:<normalized-remote-url>"})`, then
+claims). `lease_list({resource: "repo:<normalized-remote-url>"})`, then
 `git -C <sibling> status --porcelain`:
 
 - **Unclaimed and clean → side-claim it, edit its working tree directly, release when the burst is
   done, and tell him** — "mods done in `<repo>`: review, commit, push." No worktree, no branch, no
   merge dance:
-  `vault_lease_claim({resource, holder: "<host>/<session-prefix>", attestation: "clean at <sha>"})`
-  → edit → run that repo's gates → `vault_lease_release` with the `claim_token` the claim returned.
-  This is the daily case (no other agents running) and it replaces the 2026-08-08 "always a
-  worktree" rule; Eugene: _"I would prefer direct modifications and notifying me that mods are done
-  and I need to review them and commit/push … I don't want to overcomplicate things in simple
-  situations."_ Clean means no modified, staged, or untracked-unignored files — a `git diff` in that
-  repo is then exactly my change, which is the review unit the worktree used to provide.
+  `lease_claim({resource, holder: "<host>/<session-prefix>", attestation: "clean at <sha>"})` → edit
+  → run that repo's gates → `lease_release` with the `claim_token` the claim returned. This is the
+  daily case (no other agents running) and it replaces the 2026-08-08 "always a worktree" rule;
+  Eugene: _"I would prefer direct modifications and notifying me that mods are done and I need to
+  review them and commit/push … I don't want to overcomplicate things in simple situations."_ Clean
+  means no modified, staged, or untracked-unignored files — a `git diff` in that repo is then
+  exactly my change, which is the review unit the worktree used to provide.
 - **Held by someone else → don't race it**: name the holder, work in a disposable worktree
   (`git -C <sibling> worktree add <scratch> -b <topic>`), commit there, and file a handoff addressed
   to the role `repo:<…>` with the patch, then ring the bell (below). Name the worktree and branch in
@@ -823,10 +823,10 @@ protocol: the vault skill `references/coordination.md` § Ring the bell, and rin
 [[projects/agent-workflow/feedback]] § A handoff rings a bell, and its owner rings back).
 
 **The lease holder reads its handoff inbox at every breather:**
-`vault_handoff_list({project: "<name>", status: "open"})` on a ring, during a long run's wait,
-between a long pass's rounds, at each work stop, and at the wrap, then apply what arrived, live
-files included, and remove the submitter's worktree and branch, never with `--force`, which would
-delete work it still holds; a handoff that loosens a gate or a permission waits for his word
+`handoff_list({project: "<name>", status: "open"})` on a ring, during a long run's wait, between a
+long pass's rounds, at each work stop, and at the wrap, then apply what arrived, live files
+included, and remove the submitter's worktree and branch, never with `--force`, which would delete
+work it still holds; a handoff that loosens a gate or a permission waits for his word
 ([[projects/claude-config/decisions]] D73; [[projects/agent-workflow/feedback]] § The lease holder
 reads its handoff inbox at every breather).
 

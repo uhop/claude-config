@@ -39,7 +39,7 @@ Read all three to dedupe; write only to vault + claude-config.
 
 1. **Pre-flight.** Confirm the agent-workflow project exists in the vault:
 
-   `mcp__vault__vault_read_file{path: "projects/agent-workflow/queue.md"}` — you need this file's content in step 3 anyway, so the read doubles as the check. Fallback if that tool is absent from your registry (pre-0.1.0 adapter, or a host that has not restarted since it published):
+   `mcp__program-clerk__read_file{path: "projects/agent-workflow/queue.md"}` — you need this file's content in step 3 anyway, so the read doubles as the check. Fallback if that tool is absent from your registry (pre-0.1.0 adapter, or a host that has not restarted since it published):
 
    ```bash
    vault-curl /vault/projects/agent-workflow/queue.md -s -o /dev/null -w "%{http_code}\n"
@@ -135,7 +135,7 @@ Read all three to dedupe; write only to vault + claude-config.
 
    A write to a `feedback.md` follows [[topics/project-feedback-md-convention]] § When to create or extend: a new rule is its own section, and a change to a rule goes in its heading or first sentence, the parts the session-start digest shows, checked against the digest's `omitted` count.
 
-6. **Write the report.** Path: `projects/agent-workflow/reports/YYYY-MM-DD.md`. If that exact path already exists (another machine's run, or a re-run, on the same day), append `-HHMM` → `YYYY-MM-DD-HHMM.md` rather than clobbering the earlier run: transcripts are local-only, so each host's run is distinct content, not a redundant overwrite. The machine, the short hostname (`hostname -s`), goes in the title and in the frontmatter as `host:`, never in the path, since report names reach public code as citations (Eugene, 2026-10-14). Reports named before that day keep their `-<host>` names. Write it with `mcp__vault__vault_write_file{path, frontmatter, body}` — it takes frontmatter as a JSON object and serializes the YAML server-side, which is what keeps the date fields from shadowing (fallback: the `vault-curl` JSON-PUT path, same reason). Body shape:
+6. **Write the report.** Path: `projects/agent-workflow/reports/YYYY-MM-DD.md`. If that exact path already exists (another machine's run, or a re-run, on the same day), append `-HHMM` → `YYYY-MM-DD-HHMM.md` rather than clobbering the earlier run: transcripts are local-only, so each host's run is distinct content, not a redundant overwrite. The machine, the short hostname (`hostname -s`), goes in the title and in the frontmatter as `host:`, never in the path, since report names reach public code as citations (Eugene, 2026-10-14). Reports named before that day keep their `-<host>` names. Write it with `mcp__program-clerk__write_file{path, frontmatter, body}` — it takes frontmatter as a JSON object and serializes the YAML server-side, which is what keeps the date fields from shadowing (fallback: the `vault-curl` JSON-PUT path, same reason). Body shape:
 
    ```markdown
    # Reflect — {date} · {host} (since {window_start_iso})

@@ -212,7 +212,7 @@ asked by hand, and file the note.
   `repo:github.com/uhop/apodict` with `batch.json` attached: the owner runs
   the same `ledger.js record` into the real store, and the records come out
   with the same hashes. The artifact route takes only `ext: patch` or
-  `bundle`, so attach the batch as `vault_handoff_put_artifact`'s default
+  `bundle`, so attach the batch as `handoff_put_artifact`'s default
   `patch` (a JSON batch goes through with its sha256 intact, 2026-11-05) and
   put its sha256 in the body. Never write into the checkout from outside.
   (2026-09-24: a nano-bench session wrote 29 records straight into apodict's

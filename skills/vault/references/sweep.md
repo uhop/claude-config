@@ -62,7 +62,7 @@ same stage run as parallel sub-agents):
 - **What a split cannot cut, and `/vault-reorg`.** Lint's advisory
   `size_bound` lists every note past its bound with its role and remedy
   (vault-storage 3k), the list the dashboard and `reorg-batch measure` show
-  too. The sweep splits and regroups what `vault_split` can cut (§ Procedure,
+  too. The sweep splits and regroups what `split` can cut (§ Procedure,
   step 0). The rest is a person's: a single section past the bound, a piece
   with no `##` heading, and a record's piece, whose remedy says "by hand"; and
   `/vault-reorg`, which curates lessons at millions of agent tokens and runs on
@@ -176,16 +176,16 @@ W=$(mktemp -d)
    step writes. Read lint's two advisory lists:
    `vault-curl /system/lint -s | jq '{size_bound: .checks.size_bound.samples, ungrouped_pieces: .checks.ungrouped_pieces.samples}'`.
    The work, one `vault-sweep` agent per note, in parallel:
-   - **A whole note past its bound** (`remedy` exactly `vault_split`): read
+   - **A whole note past its bound** (`remedy` exactly `split`): read
      its `##` headings with their sizes, name topics, and split it with
      `topics`. A `decisions.md` splits with no topics, one note per decision.
-   - **A piece past its bound** (`remedy` `vault_split with topics and pieces
+   - **A piece past its bound** (`remedy` `split with topics and pieces
      ["<name>"] on <note>`): read that piece alone, name two or more topics
      covering its sections, and regroup the note with `topics` and that
      `pieces` list.
    - **Appended pieces** (`ungrouped_pieces`, its `names` the appended
      pieces; lint leaves out a record's folder): read each appended piece and
-     the topic pieces' titles (`vault_list_pieces` with `file_prefix` the
+     the topic pieces' titles (`list_pieces` with `file_prefix` the
      folder and `exclude: "body"`), pick the topic each joins, or a new topic
      where none fits, read those topic pieces' `##` headings, and regroup with
      `topics` naming each topic's own sections plus the ones joining it, and
@@ -198,12 +198,12 @@ W=$(mktemp -d)
      headings repeat. Keep each existing topic's name: a topic keeps the piece
      holding most of its text whatever its name, so a new name changes only
      the title.
-   - Read the note's composed view with `vault_read_file` and `include_etag`
-     for the etag, and send `vault_split` with `expected_etag`. An adapter
+   - Read the note's composed view with `read_file` and `include_etag`
+     for the etag, and send `split` with `expected_etag`. An adapter
      without the tool (0.19.0 and before) takes the route instead:
      `vault-curl /vault/split -X POST -H 'Content-Type: application/json' -H 'If-Match: <etag>' --data-binary '{"path": "<note>", "topics": [...], "pieces": [...]}'`.
      On a 412 the note changed: read it again and retry once. Never
-     `vault_join` a note to regroup it: a join deletes every piece, with its
+     `join` a note to regroup it: a join deletes every piece, with its
      record, history, and summary (vault-storage question 272).
    - Report the answer's `pieces`, `removed`, and `oversized`. A section
      past 20 KB by itself stays in `oversized`, for a person.
@@ -288,7 +288,7 @@ W=$(mktemp -d)
    the report's own `size_bound` and `ungrouped_pieces` lists name every one,
    what step 0 left. A third advisory list, `small_splits`, names the split
    lessons and current views whose pieces add up to under half their bound:
-   name them in the summary, and join none, since whether to `vault_join` one
+   name them in the summary, and join none, since whether to `join` one
    is Eugene's call (vault-storage question 273, D623). `begin --dry-run`
    prints the same verdict and lists.
 

@@ -17,7 +17,7 @@ would drift from the bundle the first time the bundle changes.
 - **`topics/fleet-conventions-bundle`** — the umbrella note: numbered slices,
   the compliance checklist (inventory order), the application-cadence rule,
   the deviation policy, the project list, adoption snapshots. Read it FIRST:
-  `mcp__vault__vault_read_file{path: "topics/fleet-conventions-bundle.md"}`
+  `mcp__program-clerk__read_file{path: "topics/fleet-conventions-bundle.md"}`
   (fallback: `vault-curl /vault/topics/fleet-conventions-bundle.md -s`). Sister repos may
   themselves be behind — never infer the standard from a sister; when a
   sister is the sanctioned copy source for a config file, the bundle says so.
@@ -88,7 +88,7 @@ would drift from the bundle the first time the bundle changes.
    runtime the project claims).
 7. **Record the audit** in `projects/<name>/decisions.md` — one `##` section:
    date, compliant/fixed/skipped-with-reason, user-side residue. Use
-   `vault_append` with `agent: {}`, since the note may be a folder of one
+   `append` with `agent: {}`, since the note may be a folder of one
    note per decision, where a whole-document PUT is refused. Update the bundle note's adoption snapshots where
    its checklist carries them for a slice you touched.
 8. **Report** in four buckets: fixed, user-side (yours), documented overrides

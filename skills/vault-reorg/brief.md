@@ -26,9 +26,9 @@ as E.
   no reusable lesson at all. In piece mode, a lesson another piece of the same folder already
   carries is also C: name that piece.
 - **D, live:** still true today and recorded nowhere in the first or second list. Before calling a
-  bullet D, run `mcp__vault__vault_search` in `semantic` mode with its gist (load it with ToolSearch
-  `select:mcp__vault__vault_search`) and grep the snapshot; a hit that carries the lesson makes it A
-  or A_weak.
+  bullet D, run `mcp__program-clerk__search` in `semantic` mode with its gist (load it with
+  ToolSearch `select:mcp__program-clerk__search`) and grep the snapshot; a hit that carries the
+  lesson makes it A or A_weak.
 - **E, unsure:** you cannot tell within reasonable effort. Say what would settle it, starting
   "Settle by …" or "Settled when …".
 
@@ -54,8 +54,8 @@ as E.
 - The repository: `{{REPO}}` (exclude `node_modules` except its `skills/`, and large generated
   JSON); `git -C {{REPO}} log`.
 - `~/Open/claude-config/CLAUDE.md` and `~/Open/claude-config/skills/`.
-- Live vault reads through `mcp__vault__*` when the snapshot may be stale; `decisions.md` by search
-  or section, never whole.
+- Live vault reads through `mcp__program-clerk__*` when the snapshot may be stale; `decisions.md` by
+  search or section, never whole.
 
 Spend about the same effort on each {{UNIT}}, more on a candidate D, never more than a few minutes
 on one.

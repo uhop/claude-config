@@ -22,7 +22,7 @@ Combinable. `--depth=2 --via=supersedes,revises` traces a chain of revisions two
 
 ## Procedure
 
-1. **Resolve to record_id** if a path was given: `mcp__vault__vault_list_pieces{file_prefix: "<full path incl. .md>", exclude: "body", limit: 1}` → `items[0].record_id`. There is no path→id tool as such; an exact path used as a prefix is the resolver, and it is unambiguous for a full path because one `.md` path is never a prefix of another.
+1. **Resolve to record_id** if a path was given: `mcp__program-clerk__list_pieces{file_prefix: "<full path incl. .md>", exclude: "body", limit: 1}` → `items[0].record_id`. There is no path→id tool as such; an exact path used as a prefix is the resolver, and it is unambiguous for a full path because one `.md` path is never a prefix of another.
 
    Fallback (pre-0.1.0 adapter):
 
@@ -32,7 +32,7 @@ Combinable. `--depth=2 --via=supersedes,revises` traces a chain of revisions two
 
    `total: 0` / 404 / empty `items` → tell the user "no record at <path>." Skip if `--id` was given.
 
-2. **Walk the neighbourhood** with `mcp__vault__vault_neighborhood{record_id, depth, direction, via}` — `via` is an array of edge types there, omit for unfiltered. Fallback:
+2. **Walk the neighbourhood** with `mcp__program-clerk__neighborhood{record_id, depth, direction, via}` — `via` is an array of edge types there, omit for unfiltered. Fallback:
 
    ```bash
    vault-curl "/sections/$RECORD_ID/neighborhood?depth=$DEPTH&direction=$DIR&via=$VIA" -s
@@ -102,5 +102,5 @@ Vault-storage on `:8123` only.
 
 ## Dependencies
 
-- `mcp__vault__vault_neighborhood` + `vault_list_pieces` in your tool registry — the primary path.
+- `mcp__program-clerk__neighborhood` + `list_pieces` in your tool registry — the primary path.
 - Fallback only: `vault-curl` on `$PATH`, plus `jq` for path encoding and response shaping.

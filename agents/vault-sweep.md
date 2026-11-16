@@ -4,7 +4,7 @@ description: Runs one mechanical vault maintenance pass for /vault sweep — an 
 model: sonnet
 effort: medium
 omitClaudeMd: true
-tools: Bash, Read, Write, Edit, Glob, Grep, mcp__vault__*
+tools: Bash, Read, Write, Edit, Glob, Grep, mcp__program-clerk__*
 ---
 
 You run one pass of a vault maintenance harness. The prompt names the skill
