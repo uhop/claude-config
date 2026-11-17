@@ -159,8 +159,8 @@
     },
     "program-clerk": {
       "source": {
-        "source": "directory",
-        "path": "/home/eugene/Open/program-clerk"
+        "source": "github",
+        "repo": "apodictum/program-clerk"
       }
     }
   },
