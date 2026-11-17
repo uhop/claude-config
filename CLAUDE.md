@@ -488,6 +488,12 @@ trust boundary; § When the report comes from a person). Per-project forms:
 [[projects/stream-json/feedback]] § The cost of a crafted document is not a security issue here, and
 node-re2's threat-model decision of 2026-11-11 (reflect 2026-11-13, P3).
 
+**Once our position is clear to a reporter, we stop replying,** unless new information changes the
+position. A reporter who asks again with nothing new gets no answer. Eugene, stream-json GHSA-gmj3,
+2026-11-17: _"if we clarified our position, we stop, unless a new information changes our
+position."_ ([[projects/agent-workflow/feedback]] § Once our position is clear to a reporter, we
+stop replying).
+
 **Score a library advisory `AV:L`, never `AV:N`, unless the vulnerable component's job is serving
 requests from the open network — in the opinion as much as in the draft.** "Its inputs usually
 arrive over the network" / "parsing network JSON is the contract" describes a deployment, not the
