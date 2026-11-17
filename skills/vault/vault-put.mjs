@@ -202,7 +202,7 @@ const assertDoc = (frontmatter, body) => {
   if (!stripped || stripped === 'null')
     fail(
       1,
-      `refusing write: body is ${stripped ? 'the literal string "null"' : 'empty'} — to remove a document use DELETE (vault-curl /vault/${path} -X DELETE)`
+      `refusing write: body is ${stripped ? 'the literal string "null"' : 'empty'} — to remove a document use DELETE (pc-curl /vault/${path} -X DELETE)`
     );
 };
 

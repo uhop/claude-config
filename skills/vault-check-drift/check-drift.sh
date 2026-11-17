@@ -15,7 +15,7 @@
 #
 # Project name resolves as: explicit arg, else a `.claude/vault-project` file
 # at the repo root, else its main checkout's folder. State is
-# read/written via the vault REST API through `vault-curl`.
+# read/written via the vault REST API through `pc-curl`.
 
 set -euo pipefail
 
@@ -37,7 +37,7 @@ cd "$REPO_ROOT"
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../hooks/lib/vault-project.sh" || exit 2
 PROJECT="${PROJECT:-$(vault_project_of "$REPO_ROOT")}"
 
-command -v vault-curl >/dev/null || { echo "vault-curl missing" >&2; exit 2; }
+command -v pc-curl >/dev/null || { echo "pc-curl missing" >&2; exit 2; }
 command -v jq >/dev/null          || { echo "jq missing" >&2; exit 2; }
 
 # ─── Collect live state ──────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ step_ms=250
 said_retry=false
 while :; do
   started=$SECONDS
-  response=$(vault-curl "$vault_path" -s -w '\n%{http_code}') || true
+  response=$(pc-curl "$vault_path" -s -w '\n%{http_code}') || true
   status=${response##*$'\n'}
   raw_state=${response%$'\n'*}
   [ "$status" = 200 ] && break
@@ -352,7 +352,7 @@ if $UPDATE; then
     --arg body "$body" \
     '{frontmatter: {title: $title, type: "state", tags: ["state", "snapshot", $project]}, body: $body}' \
     > "$payload"
-  vault-curl "$vault_path" -X PUT -H 'Content-Type: application/json' \
+  pc-curl "$vault_path" -X PUT -H 'Content-Type: application/json' \
     --data-binary "@$payload" -o /dev/null -w "state: %{http_code}\n"
   rm -f "$payload"
 fi

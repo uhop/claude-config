@@ -134,7 +134,7 @@ const facts = {tracked, exists, history, tags, versions, manifests, commits, lin
 // --- notes from the vault ------------------------------------------------
 const api = path =>
   JSON.parse(
-    execFileSync('vault-curl', [path, '-s'], {encoding: 'utf8', maxBuffer: 512 * 1024 * 1024})
+    execFileSync('pc-curl', [path, '-s'], {encoding: 'utf8', maxBuffer: 512 * 1024 * 1024})
   );
 let notes = [];
 try {
@@ -147,7 +147,7 @@ try {
   }
 } catch (e) {
   console.error(
-    `vault-verify: failed to load projects/${PROJECT}/ via vault-curl — ${e.message.split(/\r?\n/)[0]}`
+    `vault-verify: failed to load projects/${PROJECT}/ via pc-curl — ${e.message.split(/\r?\n/)[0]}`
   );
   process.exit(2);
 }

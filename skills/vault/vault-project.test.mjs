@@ -91,12 +91,12 @@ const requestsOf = async (args, extraEnv = {}) => {
   return urls;
 };
 
-/** Runs a script in the worktree with a stand-in `vault-curl`, which no runner has, and what it asked. */
+/** Runs a script in the worktree with a stand-in `pc-curl`, which no runner has, and what it asked. */
 const vaultCurlAsks = async args => {
   const bin = mkdtempSync(join(work, 'bin-'));
   const log = join(bin, 'asked.log');
-  writeFileSync(join(bin, 'vault-curl'), `#!/usr/bin/env bash\nprintf '%s\\n' "$1" >>"${log}"\n`);
-  chmodSync(join(bin, 'vault-curl'), 0o755);
+  writeFileSync(join(bin, 'pc-curl'), `#!/usr/bin/env bash\nprintf '%s\\n' "$1" >>"${log}"\n`);
+  chmodSync(join(bin, 'pc-curl'), 0o755);
   await requestsOf(args, {PATH: `${bin}:${process.env.PATH}`});
   return decodeURIComponent(readFileSync(log, 'utf8'));
 };

@@ -11,7 +11,7 @@
 # build it), when it started (the transcript's first timestamp), the commits
 # that landed in the checkout meanwhile (`git log --since`, whoever made
 # them), and the vault notes the session touched (the vault MCP write tools
-# and `vault-put`/`vault-curl` writes in its transcript). Its log is not named
+# and `vault-put`/`pc-curl` writes in its transcript). Its log is not named
 # here: a wrap, or a later resume, appends a `log` line with the same holder,
 # and the server pairs the two.
 #
@@ -63,7 +63,8 @@ if [[ -f "$transcript" ]]; then
   [[ -n "$started" ]] && started="${started}Z"
   # The vault notes the session touched: the MCP write tools' path arguments, by the
   # adapter's names in older transcripts and the endpoint's since 7as-2,
-  # and the paths of vault-put and vault-curl writes in Bash calls.
+  # and the paths of vault-put and pc-curl writes in Bash calls, under its old
+  # name too, a link to it while skill text names it (vault-storage D757).
   wrote=$(
     jq -r '
       (.message.content // [])[]? | select(.type == "tool_use") |
@@ -75,7 +76,7 @@ if [[ -f "$transcript" ]]; then
       elif .name == "Bash" then
         (.input.command // "" |
           scan("vault-put\\.mjs +([^ ]+\\.md) +--(?:fm|append|replace)")[0]?,
-          scan("vault-curl +/vault/([^ ?]+\\.md) +-X +(?:PUT|DELETE)")[0]?)
+          scan("(?:pc|vault)-curl +/vault/([^ ?]+\\.md) +-X +(?:PUT|DELETE)")[0]?)
       else empty end // empty' "$transcript" 2>/dev/null |
       grep -E '^[a-z0-9][A-Za-z0-9._/-]*\.md$' | sort -u | head -20
   )

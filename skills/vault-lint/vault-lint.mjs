@@ -5,7 +5,7 @@
 // Exit 1 if any finding, 0 if clean, 2 on API error.
 //
 // Data source is vault-storage's /sections (bulk records incl. body), reached
-// through `vault-curl` — same auth path as every other vault skill. The only
+// through `pc-curl` — same auth path as every other vault skill. The only
 // required FM key not on /sections is `tags` (separate membership table); it is
 // out of scope for v1 (documented in SKILL.md). QUEUE reads each queue's item notes
 // through the frontmatter query.
@@ -76,16 +76,16 @@ const FETCH_CAP = NO_FETCH ? 0 : 300;
 const COLLAPSE_MIN_LINE = 400;
 const COLLAPSE_MIN_MARKS = 2;
 
-// --- API via vault-curl --------------------------------------------------
+// --- API via pc-curl --------------------------------------------------
 const api = path => {
-  const out = execFileSync('vault-curl', [path, '-s'], {
+  const out = execFileSync('pc-curl', [path, '-s'], {
     encoding: 'utf8',
     maxBuffer: 512 * 1024 * 1024
   });
   return JSON.parse(out);
 };
 const apiText = path =>
-  execFileSync('vault-curl', [path, '-s'], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
+  execFileSync('pc-curl', [path, '-s'], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
 
 let all;
 try {
@@ -96,7 +96,7 @@ try {
     all.push(...api(`/sections?limit=100&offset=${off}`).items);
 } catch (e) {
   console.error(
-    `vault-lint: failed to load /sections via vault-curl — ${e.message.split(/\r?\n/)[0]}`
+    `vault-lint: failed to load /sections via pc-curl — ${e.message.split(/\r?\n/)[0]}`
   );
   process.exit(2);
 }
@@ -398,7 +398,7 @@ if (want('queue')) {
   const query = body =>
     JSON.parse(
       execFileSync(
-        'vault-curl',
+        'pc-curl',
         [
           '/notes/query',
           '-s',

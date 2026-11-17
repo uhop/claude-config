@@ -82,7 +82,7 @@ const check = async (answers, args = []) => {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   fake(
-    join(dir, 'vault-curl'),
+    join(dir, 'pc-curl'),
     '#!/usr/bin/env bash\npath=$1\nshift\nexec curl --connect-timeout 1 "$@" "$DRIFT_TEST_URL$path"\n'
   );
   fake(join(dir, 'sleep'), `#!/usr/bin/env bash\nprintf '%s\\n' "$1" >>"${sleptLog}"\n`);

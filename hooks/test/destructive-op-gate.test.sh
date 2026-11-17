@@ -435,7 +435,7 @@ for v in 'git tag v1' 'git push origin main' 'npm publish' 'gh issue create -t x
     check ALLOW "$body$read"
   done
   note=$'cat > x.md <<\'EOF\'\nThe spelling `'"$v"$'` is refused.\nEOF\n'
-  for read in 'q file p --body-file x.md' 'wc -l x.md' 'grep -c y x.md' 'jq . x.md' 'npx prettier --check x.md' 'rm x.md' 'cat x.md' 'cat x.md | grep y' 'vault-curl /x --data-binary @x.md' 'node x.md' 'python3 x.md'; do
+  for read in 'q file p --body-file x.md' 'wc -l x.md' 'grep -c y x.md' 'jq . x.md' 'npx prettier --check x.md' 'rm x.md' 'cat x.md' 'cat x.md | grep y' 'pc-curl /x --data-binary @x.md' 'node x.md' 'python3 x.md'; do
     check ALLOW "$note$read"
   done
   check DENY  $'W=/tmp/w; cat > "$W/s.sh" <<\'EOF\'\n'"$v"$'\nEOF\nbash "$W/s.sh"'
