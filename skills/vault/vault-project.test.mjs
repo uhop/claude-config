@@ -110,12 +110,17 @@ test('vault-verify in a worktree reads its main checkout’s project', async () 
 });
 
 test('fleet-status --cwd in a worktree reads its main checkout’s project', async () => {
-  const urls = await requestsOf([
-    'node',
-    script('../fleet-status/fleet-status.mjs'),
-    'show',
-    '--cwd'
-  ]);
+  // The collector is the installed plugin's; a stand-in folder keeps the test off this machine's.
+  const plugin = mkdtempSync(join(work, 'plugin-'));
+  mkdirSync(join(plugin, 'scripts', 'lib'), {recursive: true});
+  writeFileSync(
+    join(plugin, 'scripts', 'lib', 'github.mjs'),
+    "export const renderBrief = () => '';\nexport const eventLine = () => '';\n"
+  );
+  const urls = await requestsOf(
+    ['node', script('../fleet-status/fleet-status.mjs'), 'show', '--cwd'],
+    {PROGRAM_CLERK_PLUGIN_ROOT: plugin}
+  );
   assert.ok(
     urls.some(url => url.includes('projects/main-name/')),
     urls.join('\n')

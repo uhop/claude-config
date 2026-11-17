@@ -85,17 +85,6 @@
             "timeout": 5
           }
         ]
-      },
-      {
-        "matcher": "startup",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/vault-resume-prepare.sh",
-            "timeout": 60,
-            "async": true
-          }
-        ]
       }
     ],
     "Stop": [
@@ -115,18 +104,6 @@
             "type": "command",
             "command": "$HOME/.claude/hooks/unchecked-claim-check.sh",
             "timeout": 10
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/vault-resume-digest.sh",
-            "timeout": 60,
-            "statusMessage": "Reading the vault digest"
           }
         ]
       }

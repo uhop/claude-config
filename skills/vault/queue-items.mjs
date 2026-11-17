@@ -129,12 +129,6 @@ const declarationIn = (project, notes) =>
     notes.find(n => n.path === `${folderOf(project)}/_about.md`)?.frontmatter.trackers
   );
 
-/** The open notes and the tracker declaration, from the one query a resume makes. */
-export const queueOf = async (call, project) => {
-  const notes = await queryAll(call, folderOf(project));
-  return {notes: notes.filter(isItem), trackers: declarationIn(project, notes)};
-};
-
 /** A project's tracker declaration, validated; `type: meta` leaves the items out of the query. */
 export const trackersOf = async (project, call = client()) =>
   declarationIn(project, await queryAll(call, folderOf(project), {type: 'meta'}));
@@ -344,39 +338,6 @@ export const archiveItem = async (project, ref, {reason, trail}, call = client()
     `move ${note.path}`
   );
   return {path: to};
-};
-
-/**
- * What a resume lists for a project's queue (`resume-owed.mjs`): items mirroring a ticket, to read
- * upstream, Inbox items to triage, and items filed into the Backlog on or after `since`'s day, none
- * when `since` is null.
- */
-export const owedItems = async (project, since, call = client()) =>
-  owedFrom(await openNotes(call, project), since);
-
-/** `owedItems`, from open notes already read. */
-export const owedFrom = (notes, since) => {
-  const day = since?.slice(0, 10);
-  // The server files its own stall item, so nobody places it.
-  const filedSince = n =>
-    day !== undefined &&
-    String(shaped(n).filed) >= day &&
-    !String(n.frontmatter.title).startsWith('Loop stalls recorded through ');
-  const owed = (kind, picked) => picked.map(n => ({kind, ...shaped(n)}));
-  return [
-    ...owed(
-      'upstream',
-      notes.filter(n => n.frontmatter.source)
-    ),
-    ...owed(
-      'triage',
-      notes.filter(n => n.frontmatter.section === 'inbox')
-    ),
-    ...owed(
-      'place',
-      notes.filter(n => n.frontmatter.section === 'backlog' && filedSince(n))
-    )
-  ];
 };
 
 const parseArgs = argv => {

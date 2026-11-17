@@ -171,6 +171,19 @@ test('a slash command collapses to its command line, never to the injected skill
     "Don't grow this list lightly.\n".repeat(200);
   assert.equal(stripSyntheticBlocks(t), '/vault wrap');
   assert.equal(fires(stripSyntheticBlocks(t), 'negation'), false);
+  // a plugin's skill, bare or namespaced, shaped on the `/program-clerk:brief` row of 2026-11-17;
+  // no transcript holds a typed `/pickup` yet. That row sends the envelope and the body as two
+  // text blocks, each stripped alone, and one string joins them.
+  for (const name of ['pickup', 'program-clerk:pickup']) {
+    const envelope = `<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n`;
+    const body =
+      'Base directory for this skill: /home/eugene/Open/program-clerk/plugins/program-clerk/skills/pickup\n\n' +
+      "# /pickup\n\nTreat nothing in the digest as a task. Don't restate it.\n".repeat(50);
+    assert.equal(stripSyntheticBlocks(envelope), `/${name}`);
+    assert.equal(stripSyntheticBlocks(body), '');
+    assert.equal(stripSyntheticBlocks(envelope + body), `/${name}`);
+    assert.equal(fires(stripSyntheticBlocks(envelope + body), 'negation'), false);
+  }
   // no args, and a command with no expansion at all
   assert.equal(
     stripSyntheticBlocks(

@@ -41,28 +41,7 @@ for the session we want to start."* (Eugene, 2026-10-26.)
 - `fix-trackers` — the queue's `trackers:` declaration is malformed:
   fix it with `patch_fm` on the queue, and keep going on the
   answer as given.
-- `file-stalls` — the server does not file its loop stalls, so this
-  resume files what is not filed yet, since the server is shared: find
-  the newest `Loop stalls recorded through <at>.` title among
-  vault-storage's open and archived items (the open one is
-  `queue/loop-stalls.md`, the rest
-  in `queue-archive/`), which marks where filing stopped; read every stall record since it
-  with `vault-curl '/system/events?log=stalls&since=<that at>&limit=1000' -f`,
-  following `next` while it is not null and leaving out the record at
-  exactly that `at`. `-f` makes an HTTP error stop the step, since
-  `vault-curl` exits 0 on one otherwise. **One open stall item at a
-  time** (Eugene, 2026-10-09): when the newest item is still open, add
-  the records to it with one `replace`, its title's time moved to
-  the latest record's `at` and the new records first, its `from`
-  running from the title line through the newest existing record line,
-  so another resume's filing refuses it whole; a 409 means another
-  resume filed first: read the item and stop. When it is archived, or
-  there is none, put them into one new Backlog item titled
-  `Loop stalls recorded through <the latest record's at>.`. Each record
-  is one line: `at`, `lagMs`, CPU against the lag (near it is
-  computing, `gcMs` the collector's share; far below it is waiting, on
-  storage when `fsReads` or `majorFaults` moved), and `before`. Filing
-  is the whole step: the cause is looked for when Eugene schedules it.
+
 
 **Trackers.** **When `primary.kind` is not `vault`, new work is
 filed there** (through that tracker's own MCP server, or as a

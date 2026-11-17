@@ -7,8 +7,7 @@
 //   the retired adapter): a connection never made, or a 503 that says nothing was applied, is sent
 //   again whatever the method; a read also after any other network failure, a 502, a 503, or a 504.
 //   The waits grow from 250 ms to 16 s, each at least the answer's `Retry-After`, for 90 s from the
-//   outage's first failure, under an agent's 120 s command limit, or `VAULT_FETCH_OUTAGE_S`
-//   seconds, which a hook that runs a script sets to its own few seconds. The first failure writes
+//   outage's first failure, under an agent's 120 s command limit. The first failure writes
 //   its time to a file, and every call that meets the outage, in this process or another, waits
 //   until that time plus the window, so the calls in a short restart all recover; past it, a call
 //   tries once until an answer clears the mark.
@@ -106,8 +105,7 @@ export const vaultFetch = async (
   {fetchImpl = fetch, wait = sleep, now = Date.now, outage = fileOutage()} = {}
 ) => {
   const read = isRead(init.method);
-  const window = Number(process.env.VAULT_FETCH_OUTAGE_S) * 1000;
-  const outageMs = window > 0 ? window : OUTAGE_WAIT_MS;
+  const outageMs = OUTAGE_WAIT_MS;
   let rateWaited = 0;
   let deadline = null;
   for (let step = 0; ;) {

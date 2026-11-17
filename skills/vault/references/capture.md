@@ -18,7 +18,7 @@ Extract learnings from the current project/session.
 3. Analyze recent work: git log, changed files, decisions made
 4. Create or update `projects/{name}/learnings.md`, `decisions.md`, `stack.md`. A learnings note kept as a folder (`projects/{name}/learnings/`, its `_about.md` opening "Atomized from") follows its `_about.md`, so read it first: a folder `/vault-reorg` made (apodict's since its 2026-10-27 reorganization) takes a new lesson as one bullet in its subject's piece, and a folder `split` made takes a new lesson appended to `learnings.md` as a `## ` section, which becomes a piece of its own (§ A split note). A note past its size bound is split losslessly with `split`, and `/vault-reorg`, which drops dead lessons and costs millions of tokens, runs only on Eugene's word.
 5. Extract cross-project patterns into `topics/` notes (e.g., "api-rate-limiting", "docker-networking"). Propose-then-write: before creating, check neighbours with `POST /vault/propose` (search-before-write); if an existing note already covers the concept, extend it, and if the new write would *replace* it wholesale, use `POST /vault/supersede` rather than minting a near-duplicate. When creating a new topic note here, enrich at capture per the `/vault ingest` step 5 procedure — write the `agent:` block in the same PUT, with `complexity` one of `prose` | `code-heavy` | `tabular` | `mixed` | `hub` | `log-entry`, never a judgment word.
-6. **Promote this session's new durable local memories into the vault.** During the session the agent's auto-memory writes land in *per-machine* local memory (`~/.claude/projects/<hash>/memory/`), which is not fleet-shared. For each `feedback_*.md` / `project_*.md` written or materially updated this session, route it by the `projects/agent-workflow/decisions` D1 table — feedback rules → `projects/<name>/feedback.md`, project facts / deferred options → `decisions.md` / `queue.md` Backlog — **deduped and propose-then-confirm**, never a blind copy. Most candidates are already captured elsewhere: verify against `decisions.md` / `learnings.md` / global `CLAUDE.md` / existing `topics/` first (per `topics/project-feedback-md-convention`). The vault is the durable source of truth; where a local memory is promoted, leave a thin local pointer rather than a duplicate fact (double-writing the same rule to both stores reintroduces drift). This makes the local→vault migration continuous so per-machine memories stop accumulating. This is the **write path** that pairs with `/vault resume`'s read of `feedback.md`.
+6. **Promote this session's new durable local memories into the vault.** During the session the agent's auto-memory writes land in *per-machine* local memory (`~/.claude/projects/<hash>/memory/`), which is not fleet-shared. For each `feedback_*.md` / `project_*.md` written or materially updated this session, route it by the `projects/agent-workflow/decisions` D1 table — feedback rules → `projects/<name>/feedback.md`, project facts / deferred options → `decisions.md` / `queue.md` Backlog — **deduped and propose-then-confirm**, never a blind copy. Most candidates are already captured elsewhere: verify against `decisions.md` / `learnings.md` / global `CLAUDE.md` / existing `topics/` first (per `topics/project-feedback-md-convention`). The vault is the durable source of truth; where a local memory is promoted, leave a thin local pointer rather than a duplicate fact (double-writing the same rule to both stores reintroduces drift). This makes the local→vault migration continuous so per-machine memories stop accumulating. This is the **write path** that pairs with the Program Clerk plugin's session-start read of the rules in `feedback.md`.
 
 ### /vault log {description}
 
@@ -67,17 +67,17 @@ lists the line among the logs with the body's path as `data_path`.
    days (§ /vault lint's retention).
 4. **Refresh the drift baseline.** Run
    `~/.claude/skills/vault-check-drift/check-drift.sh --update` from the project
-   directory so the next `/vault resume` starts from a clean baseline (the
+   directory so the next `/pickup` starts from a clean baseline (the
    session's commits / tags / `npm publish` are typically done by the time
    you're logging). Bootstraps `state.md` if the project has no baseline yet.
    Exit 2 means the baseline could not be read and nothing was written, so say
-   so in the report: the session's commits show as drift at the next resume.
+   so in the report: the session's commits show as drift at the next `/pickup`.
    Skip only when there's no project working directory in scope (rare —
    logging cross-project work, vault-only sessions).
 
 ### /vault wrap [optional log slug]
 
-Close the session cleanly — symmetric counterpart to `/vault resume`. Bundles
+Close the session cleanly — symmetric counterpart to `/pickup`. Bundles
 learning extraction, session log, and drift baseline refresh into one step so
 nothing the session produced gets lost.
 

@@ -379,10 +379,10 @@ leases: a single-agent session that owns its cwd repo never files one.
   actively blocked, a `Bash(run_in_background: true)` `until` loop over the
   status is the wake mechanism — the harness re-invokes you when it exits.
   When not blocked, don't poll: the result reaches you at the next
-  `/vault resume`, since it is attached to the repo rather than to your
+  `/pickup`, since it is attached to the repo rather than to your
   session.
-- **Receiving them** (you hold the lease): `/vault resume`'s project block
-  carries the inbox — claiming a repo means inheriting it. Between resumes,
+- **Receiving them** (you hold the lease): the `/pickup` digest's `Open`
+  section carries the inbox — claiming a repo means inheriting it. Between pickups,
   read it with `handoff_list({project: "<name>", status: "open"})`, never
   by the role, which goes stale when a repository moves (2026-11-01: a handoff
   to a moved repository's old remote read as an empty inbox). A ring is a

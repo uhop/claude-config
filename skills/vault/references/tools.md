@@ -200,7 +200,7 @@ a 504, for 90 s, under an agent's 120 s command limit (question 430); the first
 failure writes its time to a file, and every call that meets the outage, in any
 process, waits until 90 s past it, then tries once until one gets an answer
 (question 431, D755); the hooks wait a few seconds the same way (`hooks/lib/vault-retry.sh`), and
-the resume hooks run the resume script with `VAULT_FETCH_OUTAGE_S=3` for the same reason.
+the Program Clerk plugin's `/pickup` hook waits 3 s for the same reason.
 An agent's own MCP calls do not wait: after a 503 or a refused connection, wait
 and repeat a read, and check whether a write landed before repeating it. `vault-curl`'s only
 home is the dotfiles, where chezmoi installs it as `~/.local/bin/vault-curl`; it

@@ -108,8 +108,9 @@ prompt: |
 
 ## When this is the right tool
 
-- Accumulated default-cites edges that should be more specific; a
-  `/vault resume` or `/vault sweep` shows pending `edge_type` suggestions.
+- Accumulated default-cites edges that should be more specific; the
+  session-start `[pc]` line counts pending suggestions, or `/vault sweep`
+  shows pending `edge_type` suggestions.
 
 ## When NOT to use this
 

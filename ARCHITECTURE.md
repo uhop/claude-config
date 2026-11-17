@@ -33,17 +33,15 @@ the root documents (`AGENTS.md`, this file, `README.md`) stay out of it.
 
 - **PreToolUse:** `destructive-op-gate.sh` and `git-commit-gate.sh` gate commands;
   `vault-lease-gate.sh` blocks a Bash write into a repository another session holds.
-- **SessionStart:** `fleet-brief.sh` prints the brief's fleet-only lines; `vault-resume-prepare.sh`
-  collects GitHub in the background for a later `/vault resume`; the `herdr-*` hooks label the
-  terminal multiplexer's pane.
-- **UserPromptSubmit:** `vault-resume-digest.sh`, on `/vault resume`, shows the user the digest,
-  styled in a terminal, and puts it in the context.
+- **SessionStart:** `fleet-brief.sh` prints the brief's fleet-only lines; the `herdr-*` hooks label
+  the terminal multiplexer's pane.
 - **Stop:** `bg-shells-open.sh` names a background shell still running.
 
 The Program Clerk plugin (`apodictum/program-clerk`) runs the session's lease, brief, notices,
-feedback rules, and session record since vault-storage D761. A vault hook fails open: without
-settings or a server it stays silent and allows the call. `lib/shell_segments.py` is the parser the
-gates share.
+feedback rules, and session record since vault-storage D761, and the `/pickup` digest, which
+replaced `/vault resume`, since D763 and D764: its hooks collect GitHub at a fresh session's start
+and show the digest on `/pickup`. A vault hook fails open: without settings or a server it stays
+silent and allows the call. `lib/shell_segments.py` is the parser the gates share.
 
 ## Skills
 
@@ -54,15 +52,14 @@ a compact digest. The larger families:
   `skills/vault/vault-settings.mjs` resolves the server's settings, every script calls the API
   through `skills/vault/vault-fetch.mjs`, which waits out a 429 that names its `Retry-After` for
   five minutes at most and an outage for 90 s from its first failure, whose time a file shares so
-  every call that meets the outage waits until then and tries once after (questions 430 and 431), or
-  `VAULT_FETCH_OUTAGE_S` seconds, which the resume hooks set to 3 since they hold a session's start
-  or a prompt (vault-storage D751: a connection never made or a 503 that applied nothing for any
-  method, a 502, 503, or 504 for a read), and `skills/vault/queue-items.mjs` owns a queue kept as
-  one note per item. The hooks call `curl` through `hooks/lib/vault-retry.sh`, with their one- or
-  two-second caps and two more tries after 1 and 2 s by the same rules, and fail open; the lease
-  gate says a lookup the server refused. An agent reaches the same server through MCP tools; a
-  script cannot call those. `/vault resume` loads a skill's whole `SKILL.md` into context, so the
-  vault's holds that command and a table, and `references/` holds the rest, read on demand.
+  every call that meets the outage waits until then and tries once after (questions 430 and 431)
+  (vault-storage D751: a connection never made or a 503 that applied nothing for any method, a 502,
+  503, or 504 for a read), and `skills/vault/queue-items.mjs` owns a queue kept as one note per
+  item. The hooks call `curl` through `hooks/lib/vault-retry.sh`, with their one- or two-second caps
+  and two more tries after 1 and 2 s by the same rules, and fail open; the lease gate says a lookup
+  the server refused. An agent reaches the same server through MCP tools; a script cannot call
+  those. A `/vault` command loads the skill's whole `SKILL.md` into context, so the vault's holds
+  the rules a session needs most and a table, and `references/` holds the rest, read on demand.
 - **Fleet checks:** `fleet-fix`, `fleet-status`, `release-check`, `release-prep`, and
   `ai-docs-update` read and audit the other repositories.
 - **Retrospectives:** `reflect`, `clarify`, `process-review`, and `transcript-profile` read session

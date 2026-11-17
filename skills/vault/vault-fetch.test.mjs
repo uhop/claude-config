@@ -195,19 +195,6 @@ test('a cancelled call is not sent again', async () => {
   assert.equal(sent.length, 1);
 });
 
-test('VAULT_FETCH_OUTAGE_S sets the window, as a hook that runs a script asks', async () => {
-  const before = process.env.VAULT_FETCH_OUTAGE_S;
-  process.env.VAULT_FETCH_OUTAGE_S = '3';
-  try {
-    const {slept, opts} = scripted([failed('ECONNREFUSED')]);
-    await assert.rejects(vaultFetch('http://v/x', {}, opts));
-    assert.equal(sum(slept), 3_000);
-  } finally {
-    if (before === undefined) delete process.env.VAULT_FETCH_OUTAGE_S;
-    else process.env.VAULT_FETCH_OUTAGE_S = before;
-  }
-});
-
 test('the mark outlives the process: a file another run reads, cleared by an answer', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vault-fetch-outage-'));
   const before = process.env.XDG_RUNTIME_DIR;
@@ -219,9 +206,7 @@ test('the mark outlives the process: a file another run reads, cleared by an ans
   };
   try {
     const first = onFile([failed('ECONNREFUSED')], 0);
-    process.env.VAULT_FETCH_OUTAGE_S = '1';
     await assert.rejects(vaultFetch('http://v/x', {}, first.opts));
-    delete process.env.VAULT_FETCH_OUTAGE_S;
     const marker = join(dir, `vault-fetch-outage-${process.getuid?.() ?? 'user'}`);
     assert.equal(readFileSync(marker, 'utf8'), '1970-01-01T00:00:00.000Z\n', 'its time in a file');
 

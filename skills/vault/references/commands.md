@@ -171,7 +171,7 @@ What a note records about each tracker's objects, and which of the vendor's
 tools reads them, is in the per-tool notes under
 `projects/vault-storage/integrations/` (`github` first). How a session
 records the ticket it works on when the primary is outside the vault, one
-Active item with `source:`, is under **Trackers** in `/vault resume`, § When a digest line is taken up.
+Active item with `source:`, is under **Trackers** in § When a digest line is taken up.
 
 ### /vault verify [project] [--all] [--unchecked]
 

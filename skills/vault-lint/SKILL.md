@@ -126,7 +126,7 @@ filesystem. Exit `0` clean, `1` on any finding, `2` on API error / bad flag.
   link rewrite, archival move), not a side effect of linting.
 - Operates on **indexed records**; a note not yet imported won't be linted. Run
   `/maintenance/incremental-reindex` first if the tree may be ahead of the DB
-  (`/vault resume` already does this).
+  (`/pickup` already does this).
 
 ## When to run
 

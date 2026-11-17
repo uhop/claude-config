@@ -88,7 +88,7 @@ if (!rendered) {
 }
 const first = rendered.first;
 // the first human words, with the harness's command envelope and skill body
-// stripped the way the scanner strips them, so "/vault resume" reads as such
+// stripped the way the scanner strips them, so "/pickup" reads as such
 const firstText = stripSyntheticBlocks(
   first && typeof first.message?.content === 'string'
     ? first.message.content

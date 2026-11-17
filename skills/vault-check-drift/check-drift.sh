@@ -336,7 +336,7 @@ if $UPDATE; then
   # JSON write path (2026-06-11 convention): FM as a JSON object, body as
   # text — the server serializes YAML itself, so no quoting concerns here.
   # mktemp avoids clobbering between co-resident sessions sharing /tmp.
-  body=$(printf 'Auto-maintained by the `vault-check-drift` skill. Refresh: run `/vault check --update`\nfrom the project directory, or re-run `/vault resume`.\n\n## Baseline snapshot\n\n```json\n%s\n```\n' "$(jq . <<<"$current_json")")
+  body=$(printf 'Auto-maintained by the `vault-check-drift` skill. Refresh: run `/vault check --update`\nfrom the project directory, or `/vault wrap`.\n\n## Baseline snapshot\n\n```json\n%s\n```\n' "$(jq . <<<"$current_json")")
   # `## GitHub` and `## Packages` were the fleet-status baselines, data files since
   # vault-storage 10g-2 (2026-11-01). Carried over until every host's collector writes
   # the files, since the server takes a section in only at its next start: drop this

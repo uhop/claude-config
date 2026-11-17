@@ -149,9 +149,9 @@ any actual merges per § Merge with user confirmation.
 
 ## When this is the right tool
 
-- The duplicate scan has populated the queue (`/vault resume` / `/vault
-  sweep` shows pending `duplicate` suggestions); the user wants redundant
-  notes cleaned up. To find duplicates *now*, use `--scan`.
+- The duplicate scan has populated the queue (the session-start `[pc]` line
+  counts pending suggestions, or `/vault sweep` shows pending `duplicate`
+  suggestions); the user wants redundant notes cleaned up. To find duplicates *now*, use `--scan`.
 
 ## When NOT to use
 

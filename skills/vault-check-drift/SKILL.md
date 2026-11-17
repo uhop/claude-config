@@ -1,12 +1,12 @@
 ---
 name: vault-check-drift
-description: "Detect drift between a project's current state (git + npm) and the baseline recorded in the vault's `projects/<name>/state.md`. Flags: new commits / tags / publishes since the baseline, local branch ahead/behind upstream, working-tree mods / stash entries / untracked files, git-tag ↔ npm-version mismatches. Used automatically by `/vault resume` and standalone via `/vault check`."
+description: "Detect drift between a project's current state (git + npm) and the baseline recorded in the vault's `projects/<name>/state.md`. Flags: new commits / tags / publishes since the baseline, local branch ahead/behind upstream, working-tree mods / stash entries / untracked files, git-tag ↔ npm-version mismatches. Run by `/vault check` and by the wrap; Program Clerk's `/pickup` reads the same baseline with a drift check of its own."
 user_invocable: true
 ---
 
 # Vault — project state drift check
 
-Answers four questions for the current project every time a new session starts:
+Answers four questions for the current project:
 
 1. **What happened externally since I was last here?** — commits, tags, npm publishes.
 2. **Am I in sync with the remote?** — ahead / behind per branch and per submodule.
@@ -17,9 +17,9 @@ All signals are cheap: local `git` ops plus one `npm view` call when a publishab
 
 ## Invocation
 
-### Automatic — inside `/vault resume`
+### Automatic — the wrap, and `/pickup` beside it
 
-`skills/vault/resume.mjs` runs this skill without `--update` and puts a drifted report in the digest's `Open` section. The wrap refreshes the baseline (`/vault log` step 4).
+The wrap runs this skill with `--update` to refresh the baseline (`/vault log` step 4). The Program Clerk plugin's `/pickup` compares the checkout with the same `state.md` baseline through a drift check of its own, never advances it, and puts a drifted report in the digest's `Open` section.
 
 ### Manual — `/vault check [--update]`
 

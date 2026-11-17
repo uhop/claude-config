@@ -1,6 +1,6 @@
 ---
 name: fleet-status
-description: "Collect the GitHub-side state of fleet repositories — security advisories (a CVE landing on a known GHSA), issues, PRs, discussions and the movement on them (comments, reactions), forks with the forker's login, star and watcher counts, releases, Dependabot and code-scanning alert counts, the last CI conclusion — plus npm numbers for every package the account publishes (weekly downloads, top versions, deps.dev dependents, an all-time total) and each package's place in the `fleet-deps` graph; diff it against the per-project baseline in the vault, file review-the-change items on each project's queue, and advance the baseline. Use when the user invokes /fleet-status (the fleet sweep), /fleet-status OWNER/NAME (one repository), or /fleet-status show (the dashboard in chat: the stored state and movement of one repository or the fleet, no GitHub access), or as the GitHub step of /vault resume for the current repository. Backed by `fleet-status.mjs` (read-only `gh api`, github.com only)."
+description: "Collect the GitHub-side state of fleet repositories — security advisories (a CVE landing on a known GHSA), issues, PRs, discussions and the movement on them (comments, reactions), forks with the forker's login, star and watcher counts, releases, Dependabot and code-scanning alert counts, the last CI conclusion — plus npm numbers for every package the account publishes (weekly downloads, top versions, deps.dev dependents, an all-time total) and each package's place in the `fleet-deps` graph; diff it against the per-project baseline in the vault, file review-the-change items on each project's queue, and advance the baseline. Use when the user invokes /fleet-status (the fleet sweep), /fleet-status OWNER/NAME (one repository), or /fleet-status show (the dashboard in chat: the stored state and movement of one repository or the fleet, no GitHub access). Backed by `fleet-status.mjs` (read-only `gh api`, github.com only) on the Program Clerk plugin's GitHub collector, which /pickup also runs."
 user_invocable: true
 ---
 
@@ -124,8 +124,8 @@ WORK=$(mktemp -d)
 - The dotfiles shim `fleet-status` (`private_dot_local/bin/executable_fleet-status`) runs the
   same script from any shell on a host with claude-config installed.
 - `--no-packages` skips the packages pass, and a commit then leaves `packages.json` as it is.
-  `/vault resume` collects this way, so only a run of this skill moves the package numbers
-  (vault-storage D598). `--packages-only` skips the GitHub reads (the private
+  The Program Clerk plugin's `/pickup` reads no packages, so only a run of this skill moves the
+  package numbers (vault-storage D598). `--packages-only` skips the GitHub reads (the private
   gate still runs for `--cwd` and `--repo`) and its commit writes only `packages.json`, never
   `github.json`, so it refreshes the npm view without consuming GitHub events. `--npm-user LOGIN`
   names the npm account when the graph cannot. `show --fleet --table --packages` prints the
@@ -195,7 +195,7 @@ stored views render.
 3. For a `first_run: true` repository, report the snapshot summary in one line — open items,
    stars, forks, published advisories without a CVE — and file nothing. The baseline is the
    deliverable of a first run.
-4. For every other repository, surface **every** event with full detail (for a resume, `skills/vault/resume.mjs` does this mechanically: it lists what moved under `Outside`
+4. For every other repository, surface **every** event with full detail (for a pickup, the Program Clerk plugin does this mechanically: it lists what moved under `Outside`
    and files a one-line item for each new thread by a person and each CVE, § Review items), write the review items per § Review items, and end
    the reply with the brief, verbatim: `"$S" show "$WORK/github.json" --brief`.
 5. Commit, after the items exist, so the baseline advances only for changes that have been
@@ -206,10 +206,10 @@ stored views render.
    ```
 
    `commit` also appends the run, whenever it carried events and always for a fleet run, as one
-   JSON line of its events to the month's data file
-   `projects/agent-workflow/data/fleet-runs/<YYYY-MM>.jsonl` (vault-storage 10g-1). That line is
-   what the stored views read back, so the events a resume consumed are still there for the next
-   fleet look. Add `--dry-run` to see the writes without making them.
+   JSON line of its events for each project, beside the project's baseline in
+   `projects/<name>/data/github-runs/<YYYY-MM>.jsonl` (vault-storage D763). Those lines are what
+   the stored views read back, joined by the server, so the events a `/pickup` consumed are still
+   there for the next fleet look. Add `--dry-run` to see the writes without making them.
 
 ## The dashboard in chat
 
@@ -225,7 +225,7 @@ of a tool's output, so the paste is the deliverable.
 | `/fleet-status show --fleet --table` | `"$S" show --fleet --table` — standing counts per repository |
 | `/fleet-status show --live` | `"$S" collect --cwd --brief` (`--show` for the full view) — a fresh read of GitHub that is not committed, so the next sweep still sees the events |
 
-A `/vault resume` collects through `skills/vault/resume.mjs`, which lists each open thread's title
+A `/pickup` collects through the Program Clerk plugin, which lists each open thread's title
 and meta whether or not anything moved, files new threads and CVEs, and commits; the one-line summary is
 `show --cwd`'s job.
 
@@ -309,13 +309,13 @@ what it saw not-new to the next sweep anywhere. That is the intended meaning of 
 baseline.
 
 The stored runs are the second store, written by `commit` for every run that carried events
-(and every fleet run): one JSON line per run in the data file of the month it was collected in,
-`projects/agent-workflow/data/fleet-runs/<YYYY-MM>.jsonl`, each
-`{collected_at, mode, gh_user, totals, repos: [{repo, project, first_run, since, events, summary, errors}]}`,
-events only, no snapshots, and every run kept (vault-storage 10g-1; the digest note
-`projects/agent-workflow/fleet-status.md` kept the last 30, and the server takes its runs into
-the month files at a start). `show --fleet` and `show --repo` merge the runs in the window into
-one brief. A baseline answers
+(and every fleet run): one JSON line per run and project in the project's data file of the month
+it was collected in, `projects/<name>/data/github-runs/<YYYY-MM>.jsonl`, each
+`{collected_at, mode, gh_user, totals, repos: [{repo, project, first_run, since, events, summary, errors}]}`
+with that project's entries, events only, no snapshots, and every run kept (vault-storage D763;
+before it, whole runs in `projects/agent-workflow/data/fleet-runs/`, which the server still
+reads). `show --fleet` and `show --repo` read the runs the server joins back
+(`GET /fleet/status`) and merge the ones in the window into one brief. A baseline answers
 "what is the state", the digest answers "what moved since when" — which is what lets collection
 run as a section of the manual daily playbook without consuming what a later look needs. That
 section lives in one host's `~/.config/playbash/local/daily.sh`, which `playbash-daily` sources
@@ -389,6 +389,11 @@ snapshot items and discussions store the same two fields.
 - `gh` — authenticated as the fleet's account on the host (`gh auth status`); `repo` scope
   covers advisories and both alert endpoints (verified 2026-08-28).
 - `git` — remote resolution for `--cwd`.
+- The Program Clerk plugin, installed (`claude plugin list` shows `program-clerk@program-clerk`):
+  the script imports one repository's collection, its diff into events, the brief, and the
+  baseline's and run's writes from the plugin's `scripts/lib/github.mjs`, and keeps the fleet's
+  enumeration, the packages, and the stored views (vault-storage D763). A missing or older
+  plugin stops the script with exit 2 and `claude plugin update program-clerk@program-clerk`.
 - `fleet-deps` (dotfiles, `~/.local/bin`) — the fleet dependency graph; missing or failing, the
   packages keep their npm numbers and lose only their relations for that run.
 - Network access to `api.npmjs.org`, `registry.npmjs.org`, and `api.deps.dev` — no keys.

@@ -182,8 +182,8 @@ prompt: |
 
 ## When this is the right tool
 
-- `/vault resume` or `/vault sweep` shows a non-zero `new_tag` /
-  `tag_suggestion` queue.
+- The session-start `[pc]` line counts pending suggestions, or `/vault sweep`
+  shows a non-zero `new_tag` / `tag_suggestion` queue.
 - The user adds a tag and the indexer logs "rejected".
 - Periodic taxonomy curation.
 

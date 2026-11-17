@@ -10,7 +10,7 @@ Some folders accumulate pieces that no longer pull their weight individually
 but still carry value as compressed history — `logs/` is the obvious case. A
 compaction reads the oldest pieces, distills them into one summary file, and
 moves the originals to `<folder>/archive/<YYYY>/` (by each piece's own
-year). Originals stay reachable by direct read; default `/vault resume`
+year). Originals stay reachable by direct read; the `/pickup` digest
 doesn't descend into `archive/`. Per design constraint C7.
 
 ## Surfacing candidates

@@ -9,12 +9,9 @@ import {
   listFleet,
   listItems,
   openNotes,
-  owedFrom,
   openFields,
-  owedItems,
   slugOf,
   uniqueName,
-  queueOf,
   trackersOf
 } from './queue-items.mjs';
 
@@ -145,62 +142,6 @@ test('archive closes an item last in queue-archive/', async () => {
   assert.equal(closed.frontmatter.status, 'archived');
   assert.equal(closed.frontmatter.section, undefined);
   assert.match(closed.body, /\*\*Shipped\*\* \d{4}-\d{2}-\d{2}\. D1\.\n$/);
-});
-
-test('owed places a Backlog item by the day it was filed, and never the stall item', async () => {
-  const vault = fakeVault({queue: '', open: []});
-  const item = (section, filed) => ({
-    frontmatter: {title: `${section} ${filed}`, section, filed, created: '2026-11-01'},
-    body: 'Text.\n'
-  });
-  vault.notes.set('projects/p/queue/_about.md', {
-    frontmatter: {created: '2026-11-01'},
-    body: 'A.\n'
-  });
-  vault.notes.set('projects/p/queue/older.md', item('backlog', '2026-01-05'));
-  vault.notes.set('projects/p/queue/old.md', item('backlog', '2026-11-02'));
-  vault.notes.set('projects/p/queue/new.md', item('backlog', '2026-11-20'));
-  vault.notes.set('projects/p/queue/watch.md', item('watching', '2026-11-20'));
-  vault.notes.set('projects/p/queue/in.md', item('inbox', '2026-11-02'));
-  vault.notes.set('projects/p/queue/loop-stalls.md', {
-    frontmatter: {
-      title: 'Loop stalls recorded through 2026-11-20T00:00:00.000Z.',
-      section: 'backlog',
-      created: '2026-11-20'
-    },
-    body: 'Filed by the server.\n'
-  });
-  vault.notes.set('projects/p/queue/no-field.md', {
-    frontmatter: {title: 'No field', section: 'backlog', created: '2026-11-21'},
-    body: 'Text.\n'
-  });
-  const owed = await owedItems('p', '2026-11-10T12:00:00Z', vault.call);
-  assert.deepEqual(
-    owed.map(i => [i.kind, i.title]),
-    [
-      ['triage', 'inbox 2026-11-02'],
-      ['place', 'backlog 2026-11-20'],
-      ['place', 'No field']
-    ]
-  );
-  assert.deepEqual(
-    owedFrom(await openNotes(vault.call, 'p'), '2026-11-10T12:00:00Z'),
-    owed,
-    'the same from notes already read'
-  );
-  assert.equal(owed[1].filed, '2026-11-20', 'an item says when it was filed');
-  assert.equal(owed[2].filed, '2026-11-21', 'by its note where it has no field');
-  const early = await owedItems('p', '2026-10-01T00:00:00Z', vault.call);
-  assert.deepEqual(
-    early.filter(i => i.kind === 'place').map(i => i.title),
-    ['backlog 2026-11-02', 'backlog 2026-11-20', 'No field'],
-    'a conversion moves an item, and files nothing'
-  );
-  assert.deepEqual(
-    (await owedItems('p', null, vault.call)).filter(i => i.kind === 'place'),
-    [],
-    'with no session to go by, nothing is placed'
-  );
 });
 
 test('fleet lists the projects kept as item notes, in the order the convention gives', async () => {
@@ -387,27 +328,19 @@ test('file starts a queue for a project with none, and refuses a real queue.md',
   assert.ok(!vault.notes.has('projects/p/queue/third.md'), 'nothing written');
 });
 
-test('queueOf answers the items and the declaration from one query; trackersOf asks for the note', async () => {
+test('trackersOf asks for the folder note alone and reads its declaration', async () => {
   const about = {
     path: 'projects/p/queue/_about.md',
     frontmatter: {type: 'meta', trackers: [{kind: 'github', ref: 'o/r', role: 'secondary'}]}
   };
   const lead = {path: 'projects/p/queue/_lead.md', frontmatter: {type: 'meta'}};
-  const item = {path: 'projects/p/queue/one.md', frontmatter: {title: 'One'}};
   const asked = [];
   const call = async (method, url, {json} = {}) => {
     asked.push({url, match: json.match});
-    return Response.json({items: json.match ? [about, lead] : [about, lead, item]});
+    return Response.json({items: [about, lead]});
   };
-  const {notes, trackers} = await queueOf(call, 'p');
-  assert.deepEqual(notes, [item], 'the folder notes are not items');
-  assert.equal(trackers.primary.kind, 'vault', 'no primary declared: the vault is');
-  assert.equal(trackers.trackers.find(t => t.kind === 'github').ref, 'o/r');
-  assert.equal(asked.length, 1);
-
-  assert.equal((await trackersOf('p', call)).declared, true);
-  assert.deepEqual(asked[1], {url: '/notes/query', match: {type: 'meta'}});
-
-  const none = async () => Response.json({items: []});
-  assert.equal((await trackersOf('p', none)).declared, false, 'no queue reads as the default');
+  const view = await trackersOf('p', call);
+  assert.equal(view.declared, true);
+  assert.equal(view.trackers.find(t => t.kind === 'github').ref, 'o/r');
+  assert.deepEqual(asked, [{url: '/notes/query', match: {type: 'meta'}}]);
 });
