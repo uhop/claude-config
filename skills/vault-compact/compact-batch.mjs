@@ -63,13 +63,26 @@ const opts = {
   related: [],
   dryRun: false
 };
+// A valued option given bare is refused, never read as empty: a bare --before archived the oldest half.
+const VALUED = new Set([
+  '--keep',
+  '--before',
+  '--holder',
+  '--out',
+  '--plan',
+  '--summary',
+  '--related'
+]);
 for (const arg of rest) {
   const [flag, value] = arg.includes('=')
     ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)]
     : [arg, null];
+  if (VALUED.has(flag) && !value) fail(2, `${flag} needs a value\n${usage}`);
   switch (flag) {
     case '--keep':
       opts.keep = +value;
+      if (!Number.isInteger(opts.keep) || opts.keep < 0)
+        fail(2, '--keep must be a whole number, 0 or more');
       break;
     case '--before':
       opts.before = value;
@@ -234,92 +247,98 @@ const plan = async () => {
 
   const claim = await claimSelection(selected.map(p => p.file_path));
 
-  const selectedIds = new Set(selected.map(p => p.record_id));
-  const candidates = [];
-  await pool(
-    selected.map(piece => async () => {
-      const doc = await api('GET', `/vault/${piece.file_path}`);
-      const start =
-        typeof doc === 'string' && doc.startsWith('---\n') ? doc.indexOf('\n---\n', 4) + 5 : 0;
-      piece.body = String(doc).slice(start);
-      try {
-        for (let offset = 0; ;) {
-          const back = await api(
-            'GET',
-            `/sections/${piece.record_id}/backlinks?limit=100&offset=${offset}`
-          );
-          const items = back.items ?? [];
-          for (const row of items)
-            if (row.from_record && !selectedIds.has(row.from_record.record_id))
-              candidates.push({
-                archived: piece.file_path,
-                from: row.from_record.file_path,
-                title: row.from_record.title,
-                edge_type: row.edge?.type
-              });
-          offset += items.length;
-          if (items.length === 0 || offset >= (back.total ?? offset)) break;
-        }
-      } catch {}
-    })
-  );
-  // A related-to or contradicts row can be the server's mirror of the piece's own link, which
-  // moves with the record: only a note whose text names the piece breaks (2026-10-02, 52 of 62).
-  const linkerText = new Map();
-  await pool(
-    [...new Set(candidates.map(b => b.from))].map(from => async () => {
-      try {
-        linkerText.set(from, String(await api('GET', `/vault/${from}`)));
-      } catch {
-        linkerText.set(from, null);
-      }
-    })
-  );
-  const namesPiece = (text, path) => {
-    if (text === null) return true;
-    const stem = path.replace(/\.md$/, '');
-    const base = RegExp.escape(stem.split('/').pop());
-    return new RegExp(`${RegExp.escape(stem)}(?![\\w-])|\\[\\[${base}(?:\\]\\]|[|#])`).test(text);
-  };
-  const backlinks = candidates.filter(b => namesPiece(linkerText.get(b.from), b.archived));
-
-  // group by month; widen to quarter/year until sections hold ~5-10 pieces
-  const monthOf = p => String(p.created).slice(0, 7);
-  const quarterOf = p =>
-    `${String(p.created).slice(0, 4)}-Q${Math.ceil(+String(p.created).slice(5, 7) / 3)}`;
-  const yearOf = p => String(p.created).slice(0, 4);
-  let keyFn = monthOf;
-  if (new Set(selected.map(monthOf)).size > Math.ceil(selected.length / 5)) keyFn = quarterOf;
-  if (new Set(selected.map(keyFn)).size > Math.ceil(selected.length / 5)) keyFn = yearOf;
-  const groups = {};
-  for (const piece of selected) (groups[keyFn(piece)] ??= []).push(piece.file_path);
-
-  const range = `${String(selected[0].created).slice(0, 10)}-to-${String(selected[selected.length - 1].created).slice(0, 10)}`;
-  const worksheet = {
-    folder: opts.folder,
-    mode: opts.before
-      ? `before ${opts.before}`
-      : opts.keep !== null
-        ? `keep ${opts.keep}`
-        : 'oldest half',
-    generated_at: new Date().toISOString(),
-    total_pieces: pieces.length,
-    selected_count: selected.length,
-    remaining_after: pieces.length - selected.length,
-    truncated_to_cap: truncated,
-    summary_path: `${opts.folder}/_summary-${range}.md`,
-    suggested_groups: groups,
-    inbound_backlinks: backlinks,
-    claim,
-    selected
-  };
-  const output = JSON.stringify(worksheet, null, 2);
-  if (opts.out) {
-    writeFileSync(opts.out, output + '\n');
-    console.log(
-      `plan: ${opts.out} — archive ${selected.length} of ${pieces.length} pieces (${range})${truncated ? ' [capped at 20 — re-run after this pass]' : ''}, ${backlinks.length} external inbound link(s)${claim ? `; claimed as ${claim.holder}` : ''}`
+  try {
+    const selectedIds = new Set(selected.map(p => p.record_id));
+    const candidates = [];
+    await pool(
+      selected.map(piece => async () => {
+        const doc = await api('GET', `/vault/${piece.file_path}`);
+        const start =
+          typeof doc === 'string' && doc.startsWith('---\n') ? doc.indexOf('\n---\n', 4) + 5 : 0;
+        piece.body = String(doc).slice(start);
+        try {
+          for (let offset = 0; ;) {
+            const back = await api(
+              'GET',
+              `/sections/${piece.record_id}/backlinks?limit=100&offset=${offset}`
+            );
+            const items = back.items ?? [];
+            for (const row of items)
+              if (row.from_record && !selectedIds.has(row.from_record.record_id))
+                candidates.push({
+                  archived: piece.file_path,
+                  from: row.from_record.file_path,
+                  title: row.from_record.title,
+                  edge_type: row.edge?.type
+                });
+            offset += items.length;
+            if (items.length === 0 || offset >= (back.total ?? offset)) break;
+          }
+        } catch {}
+      })
     );
-  } else console.log(output);
+    // A related-to or contradicts row can be the server's mirror of the piece's own link, which
+    // moves with the record: only a note whose text names the piece breaks (2026-10-02, 52 of 62).
+    const linkerText = new Map();
+    await pool(
+      [...new Set(candidates.map(b => b.from))].map(from => async () => {
+        try {
+          linkerText.set(from, String(await api('GET', `/vault/${from}`)));
+        } catch {
+          linkerText.set(from, null);
+        }
+      })
+    );
+    const namesPiece = (text, path) => {
+      if (text === null) return true;
+      const stem = path.replace(/\.md$/, '');
+      const base = RegExp.escape(stem.split('/').pop());
+      return new RegExp(`${RegExp.escape(stem)}(?![\\w-])|\\[\\[${base}(?:\\]\\]|[|#])`).test(text);
+    };
+    const backlinks = candidates.filter(b => namesPiece(linkerText.get(b.from), b.archived));
+
+    // group by month; widen to quarter/year until sections hold ~5-10 pieces
+    const monthOf = p => String(p.created).slice(0, 7);
+    const quarterOf = p =>
+      `${String(p.created).slice(0, 4)}-Q${Math.ceil(+String(p.created).slice(5, 7) / 3)}`;
+    const yearOf = p => String(p.created).slice(0, 4);
+    let keyFn = monthOf;
+    if (new Set(selected.map(monthOf)).size > Math.ceil(selected.length / 5)) keyFn = quarterOf;
+    if (new Set(selected.map(keyFn)).size > Math.ceil(selected.length / 5)) keyFn = yearOf;
+    const groups = {};
+    for (const piece of selected) (groups[keyFn(piece)] ??= []).push(piece.file_path);
+
+    const range = `${String(selected[0].created).slice(0, 10)}-to-${String(selected[selected.length - 1].created).slice(0, 10)}`;
+    const worksheet = {
+      folder: opts.folder,
+      mode: opts.before
+        ? `before ${opts.before}`
+        : opts.keep !== null
+          ? `keep ${opts.keep}`
+          : 'oldest half',
+      generated_at: new Date().toISOString(),
+      total_pieces: pieces.length,
+      selected_count: selected.length,
+      remaining_after: pieces.length - selected.length,
+      truncated_to_cap: truncated,
+      summary_path: `${opts.folder}/_summary-${range}.md`,
+      suggested_groups: groups,
+      inbound_backlinks: backlinks,
+      claim,
+      selected
+    };
+    const output = JSON.stringify(worksheet, null, 2);
+    if (opts.out) {
+      writeFileSync(opts.out, output + '\n');
+      console.log(
+        `plan: ${opts.out} — archive ${selected.length} of ${pieces.length} pieces (${range})${truncated ? ' [capped at 20 — re-run after this pass]' : ''}, ${backlinks.length} external inbound link(s)${claim ? `; claimed as ${claim.holder}` : ''}`
+      );
+    } else console.log(output);
+  } catch (err) {
+    // No file holds the batch's token yet, so it would stay held until it lapses.
+    if (claim) await releaseWork(claim).catch(() => null);
+    throw err;
+  }
 };
 
 // --- execute -------------------------------------------------------------------

@@ -102,7 +102,7 @@ const {base, token, problem} = vaultSettings();
 if (problem && command !== 'show') fail(2, problem);
 
 const opts = {
-  limit: 30,
+  limit: null,
   stale: false,
   refresh: false,
   outline: false,
@@ -168,9 +168,22 @@ for (const arg of rest) {
       fail(2, `unknown option: ${arg}\n${usage}`);
   }
 }
-if (!Number.isInteger(opts.limit) || opts.limit < 1 || opts.limit > 200)
+if (opts.limit !== null && (!Number.isInteger(opts.limit) || opts.limit < 1 || opts.limit > 200))
   fail(2, '--limit must be 1..200');
 if (!(opts.fullThreshold >= 0 && opts.fullThreshold <= 1)) fail(2, '--full-threshold must be 0..1');
+
+const wanted =
+  command === 'prepare' && opts.records
+    ? new Set(
+        readFileSync(opts.records, 'utf8')
+          .split(/\r?\n/)
+          .map(l => l.trim())
+          .filter(Boolean)
+      )
+    : null;
+// A records list is its own limit: a sweep's shard is prepared whole, not cut to the default.
+const limit = opts.limit ?? wanted?.size ?? 30;
+if (limit > 200) fail(2, '--limit must be 1..200');
 
 class ApiError extends Error {
   constructor(status, code, message) {
@@ -395,14 +408,6 @@ const prepare = async () => {
       'server has no coverage.enrichment — pre-2026-07-09 vault-storage; use the SKILL.md fallback enumeration'
     );
 
-  const wanted = opts.records
-    ? new Set(
-        readFileSync(opts.records, 'utf8')
-          .split(/\r?\n/)
-          .map(l => l.trim())
-          .filter(Boolean)
-      )
-    : null;
   const listed = r =>
     wanted.has(r.file_path) || wanted.has(r.record_id) || (r.folder && wanted.has(r.folder));
   const folders = new Map((coverage.folders ?? []).map(f => [f.record_id, f]));
@@ -440,7 +445,7 @@ const prepare = async () => {
   } else if (opts.stale) {
     candidates = [];
     let offset = 0;
-    while (candidates.length < opts.limit) {
+    while (candidates.length < limit) {
       const {data: page} = await api(
         'GET',
         `/suggestions?kind=agent_enrichment_stale&status=pending&limit=100&offset=${offset}`
@@ -466,7 +471,7 @@ const prepare = async () => {
     if (opts.type) candidates = candidates.filter(r => r.type === opts.type);
     if (!opts.type || opts.type === 'meta') candidates.push(...folderCandidates(f => !f.summary));
   }
-  candidates = candidates.slice(0, opts.limit);
+  candidates = candidates.slice(0, limit);
 
   // Claim each note's current path: a payload's path predates a rename made on disk.
   const records = new Map();
@@ -710,8 +715,21 @@ const apply = async () => {
 
   const writeOne = async ({item, enrichment, confirmed = false}) => {
     // resolve the CURRENT path first — writing to a stale worksheet path
-    // resurrects ghost records (2026-07-12)
-    const {data: record} = await api('GET', `/sections/${item.record_id}`);
+    // resurrects ghost records (2026-07-12); a note gone since `prepare` is
+    // one failure, never the end of the run
+    let record;
+    try {
+      ({data: record} = await api('GET', `/sections/${item.record_id}`));
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      report.failures.push({
+        file_path: item.file_path,
+        status: err.status,
+        code: err.code,
+        message: err.message
+      });
+      return;
+    }
     const put = async () => {
       const doc = await api('GET', `/vault/${record.file_path}`);
       if (doc.composed || doc.etag?.startsWith('W/'))
