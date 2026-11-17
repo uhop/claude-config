@@ -3,18 +3,19 @@
 //
 // - A 429 that names its `Retry-After` (vault-storage 7z-2, question 383): sent again after it, for
 //   five minutes in all.
-// - An outage (vault-storage 7as-2, D751, D752, question 430, on D457 and D459's rules for the
-//   retired adapter): a connection never made, or a 503 that says nothing was applied, is sent
+// - An outage (vault-storage 7as-2, D751, D752, questions 430 and 431, on D457 and D459's rules for
+//   the retired adapter): a connection never made, or a 503 that says nothing was applied, is sent
 //   again whatever the method; a read also after any other network failure, a 502, a 503, or a 504.
 //   The waits grow from 250 ms to 16 s, each at least the answer's `Retry-After`, for 90 s from the
-//   first failure, under an agent's 120 s command limit, or `VAULT_FETCH_OUTAGE_S` seconds, which a
-//   hook that runs a script sets to its own few seconds. The first failure marks the outage in a
-//   file, so a call that starts while it is marked, in this process or another, tries once until an
-//   answer clears it, and only an outage's first call waits.
+//   outage's first failure, under an agent's 120 s command limit, or `VAULT_FETCH_OUTAGE_S`
+//   seconds, which a hook that runs a script sets to its own few seconds. The first failure writes
+//   its time to a file, and every call that meets the outage, in this process or another, waits
+//   until that time plus the window, so the calls in a short restart all recover; past it, a call
+//   tries once until an answer clears the mark.
 //
 // Any other answer or failure, or one past its wait, is the caller's.
 
-import {existsSync, rmSync, writeFileSync} from 'node:fs';
+import {readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -45,19 +46,26 @@ const APPLIED_NOTHING = new Set([
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-/** The outage's mark, a file every process of the user reads. */
+/** The outage's mark, a file every process of the user reads, holding its first failure's time. */
 const fileOutage = () => {
   const file = join(
     process.env.XDG_RUNTIME_DIR || tmpdir(),
     `vault-fetch-outage-${process.getuid?.() ?? 'user'}`
   );
   return {
-    active: () => existsSync(file),
-    mark: () => {
+    /** The outage's first failure: the mark's time, or `at`, marked now when none stands. */
+    start: at => {
       try {
-        writeFileSync(file, `${new Date().toISOString()}\n`);
+        writeFileSync(file, `${new Date(at).toISOString()}\n`, {flag: 'wx'});
+        return at;
       } catch {
-        // A mark that cannot be written leaves the next call to wait its own window.
+        // One stands already, or none can be written: read it, or wait this call's own window.
+      }
+      try {
+        const since = Date.parse(readFileSync(file, 'utf8').trim());
+        return Number.isNaN(since) ? at : since;
+      } catch {
+        return at;
       }
     },
     clear: () => rmSync(file, {force: true})
@@ -101,7 +109,7 @@ export const vaultFetch = async (
   const window = Number(process.env.VAULT_FETCH_OUTAGE_S) * 1000;
   const outageMs = window > 0 ? window : OUTAGE_WAIT_MS;
   let rateWaited = 0;
-  let firstFailure = null;
+  let deadline = null;
   for (let step = 0; ;) {
     let response = null;
     let failure = null;
@@ -125,20 +133,12 @@ export const vaultFetch = async (
       ? repeatableFailure(failure, read, init.signal)
       : await repeatableAnswer(response, read);
     if (!repeatable) {
-      if (response && outage.active()) outage.clear();
+      if (response) outage.clear();
       if (failure) throw failure;
       return response;
     }
-    // A marked outage: this call tries once.
-    if (firstFailure === null && outage.active()) {
-      if (failure) throw failure;
-      return response;
-    }
-    if (firstFailure === null) {
-      firstFailure = now();
-      outage.mark();
-    }
-    const left = outageMs - (now() - firstFailure);
+    deadline ??= outage.start(now()) + outageMs;
+    const left = deadline - now();
     if (left <= 0) {
       if (failure) throw failure;
       return response;
