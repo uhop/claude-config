@@ -1486,7 +1486,7 @@ const renderRepo = entry => {
   const advisories = Object.entries(s.advisories).sort(byDesc(([, a]) => a.published_at));
   const lines = [];
   lines.push(
-    `${entry.repo} — ${plural(m.stars, 'star')}, ${plural(m.forks, 'fork')}, ${plural(m.watchers, 'watcher')}; ${plural(openIssues.length, 'open issue')}, ${plural(openPrs.length, 'open PR')}${m.has_discussions ? `, ${plural(openDiscussions.length, 'open discussion')}` : ''}; CI ${s.ci ? `${s.ci.conclusion ?? s.ci.status} (${s.ci.name}, ${short(s.ci.updated_at)})` : 'none'}`
+    `${entry.repo} — ${plural(m.stars, 'star')}, ${plural(m.forks, 'fork')}, ${plural(m.watchers, 'watcher')}; ${plural(openIssues.length, 'open issue')}, ${plural(openPrs.length, 'open PR')}${m.has_discussions ? `, ${plural(openDiscussions.length, 'open discussion')}` : ''}; CI ${s.ci ? `${s.ci.conclusion ?? s.ci.status} (${s.ci.name}${s.ci.pull_request ? `, PR #${s.ci.pull_request.number}` : ''}, ${short(s.ci.updated_at)})` : 'none'}`
   );
   const alertText = kind => {
     const a = s.alerts?.[kind];
@@ -1735,7 +1735,9 @@ const renderTable = async () => {
       published.length ? `${published.length}${noCve ? ` (${noCve} no CVE)` : ''}` : '0',
       alert('dependabot'),
       alert('code_scanning'),
-      b.ci ? (b.ci.conclusion ?? b.ci.status) : 'none',
+      b.ci
+        ? `${b.ci.conclusion ?? b.ci.status}${b.ci.pull_request ? ` (PR #${b.ci.pull_request.number})` : ''}`
+        : 'none',
       short(b.collected_at)
     ]);
   }

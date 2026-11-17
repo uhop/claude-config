@@ -43,9 +43,14 @@ Per repository, all read-only through `gh api`:
 - **Releases** — the GitHub release object (new, draft published), not tags: tags and npm
   publishes are the drift check's.
 - **Alerts and checks** — open Dependabot and code-scanning alert counts by severity, and the
-  conclusion of the default branch's newest workflow run that isn't Dependabot's updater (those
-  run as `event: dynamic` and are often the newest run). A repository with the feature turned
-  off reports `unavailable`, not an error.
+  conclusion of the default branch's newest commit with a workflow run that isn't Dependabot's
+  updater (those run as `event: dynamic` and are often the newest run) or a fork's pull request
+  from a branch of the same name. A pull request merged into the default branch after that run
+  stands in with its runs on its final commit, and `ci.pull_request` names it (`number`,
+  `merged_at`): a repository that tests pull requests alone (vault-storage since its D169) has no
+  run of its own on the branch. A commit's runs read as one: each workflow's newest run counts,
+  and one that did not succeed wins, so a passing style check never hides failing tests. A
+  repository with the feature turned off reports `unavailable`, not an error.
 
 - **Packages** (approved 2026-09-14) — every package the npm account publishes, found with the
   registry's maintainer search and mapped to a project through its `repository` URL (a
@@ -345,7 +350,7 @@ record, which the stored views leave out of the fleet size. Event kinds:
 | `stars.count`, `star.new`, `star.removed` | Count deltas; per-login events only with `--star-logins` |
 | `release.new`, `release.published` | A release object appeared or left draft |
 | `alerts.dependabot`, `alerts.code_scanning` | The open alert count moved |
-| `ci.conclusion` | The default branch's last run conclusion changed |
+| `ci.conclusion` | The default branch's last run conclusion changed, a merged pull request's run counting as the branch's |
 | `package.dependents` | A package's deps.dev direct dependents count moved (`package`, `from`, `to`, `delta`); downloads raise no event, since small counts are mirror traffic and large ones move with the registry |
 
 Every event carries `kind` and `repo`; item events carry `number`, `title`, `author`, `bot`, and
