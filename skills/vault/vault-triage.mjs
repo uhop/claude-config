@@ -555,6 +555,7 @@ const resolve = async () => {
       contradictions: []
     }
   };
+  const relatedOf = new Map();
 
   const skipItem = item => {
     ++plan.report.skipped;
@@ -652,7 +653,9 @@ const resolve = async () => {
           id
         });
         plan.batch.push({id, decision: 'accept'});
-        plan.report.related_added.push({a: item.a.file_path, b: item.b.file_path});
+        const pair = {a: item.a.file_path, b: item.b.file_path};
+        relatedOf.set(id, pair);
+        plan.report.related_added.push(pair);
       } else if (decision?.action === 'contradiction') {
         plan.batch.push({id, decision: 'reject'});
         plan.report.contradictions.push({
@@ -726,6 +729,7 @@ const resolve = async () => {
     }
   }
 
+  const unlinked = new Set();
   for (const patch of plan.fmPatches) {
     try {
       await api('PATCH', `/sections/${patch.record}/fm`, {
@@ -734,9 +738,16 @@ const resolve = async () => {
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;
       failure(`related:${patch.id}`, err);
-      plan.batch = plan.batch.filter(entry => entry.id !== patch.id);
-      ++plan.report.skipped;
+      unlinked.add(patch.id);
     }
+  }
+  // An item whose link failed on either note is skipped once and released for a later pass,
+  // never left claimed until its claim lapses.
+  for (const id of unlinked) {
+    plan.batch = plan.batch.filter(entry => entry.id !== id);
+    plan.report.related_added = plan.report.related_added.filter(p => p !== relatedOf.get(id));
+    ++plan.report.skipped;
+    if (worksheet.claimed) plan.reopen.push(id);
   }
 
   for (let i = 0; i < plan.batch.length; i += 100) {
