@@ -11,8 +11,8 @@
 //   --all also reads corpus/, research/, archives and queue-archive.md, which
 //   describe other codebases or history and are skipped by default.
 //
-// Project resolves as check-drift does: the argument, else .claude/vault-project,
-// else the main checkout's directory name. Notes come from /sections under
+// Project resolves as check-drift does: the argument, else .claude/pc-project (or the
+// older .claude/vault-project), else the main checkout's directory name. Notes come from /sections under
 // projects/<name>/, archives and state.md excluded unless --all. Exit 1 on
 // findings, 0 clean, 2 on a git or API error. Exits non-zero — run it solo or
 // guard with `|| true` in a parallel Bash batch.

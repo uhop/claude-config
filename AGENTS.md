@@ -59,11 +59,11 @@ node --test $(git ls-files --cached --others --exclude-standard '*.test.mjs')
 for t in hooks/test/*.test.sh; do bash "$t" || echo "FAILED: $t"; done
 ```
 
-The hook tests are plain Bash with no framework. `vault-resume-brief.test.sh` reads the scripts
-installed under `~/.claude/`, and `vault-session-record.test.sh` makes commits, so a clean machine
-needs the installer's `--apply` and a git identity first; `.github/workflows/tests.yml` sets up
-both. Several tests have a live half that reaches the real vault when `PROGRAM_CLERK_URL` and
-`PROGRAM_CLERK_KEY` are set; unset those to run the offline half alone.
+The hook tests are plain Bash with no framework. Some read the scripts installed under `~/.claude/`
+or make commits, so a clean machine needs the installer's `--apply` and a git identity first;
+`.github/workflows/tests.yml` sets up both. Several tests have a live half that reaches the real
+vault when `PROGRAM_CLERK_URL` and `PROGRAM_CLERK_KEY` are set; unset those to run the offline half
+alone.
 
 ## Code style
 

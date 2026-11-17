@@ -1,4 +1,5 @@
 {
+  "cleanupPeriodDays": 90,
   "permissions": {
     "allow": [
       "Bash(pc-curl:*)",
@@ -50,28 +51,7 @@
           },
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/vault-lease-gate.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
             "command": "$HOME/.claude/hooks/code-rules-gate.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/vault-lease-gate.sh --touch",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/vault-notices.sh",
             "timeout": 5
           }
         ]
@@ -82,18 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/vault-resume-brief.sh",
-            "timeout": 5,
-            "statusMessage": "Fetching vault brief"
-          },
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/vault-notices.sh --session-start",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/vault-feedback-rules.sh",
+            "command": "$HOME/.claude/hooks/fleet-brief.sh",
             "timeout": 5
           }
         ]
@@ -118,16 +87,6 @@
         ]
       },
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/vault-lease-claim.sh",
-            "timeout": 5,
-            "statusMessage": "Claiming repo lease"
-          }
-        ]
-      },
-      {
         "matcher": "startup",
         "hooks": [
           {
@@ -135,22 +94,6 @@
             "command": "$HOME/.claude/hooks/vault-resume-prepare.sh",
             "timeout": 60,
             "async": true
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/vault-lease-release.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "$HOME/.claude/hooks/vault-session-record.sh",
-            "timeout": 5
           }
         ]
       }
@@ -193,7 +136,8 @@
     "typescript-lsp@claude-plugins-official": false,
     "clangd-lsp@claude-plugins-official": true,
     "cc-plugin-you-should-know@builtin": true,
-    "typescript-native-lsp@uhop-pinned": true
+    "typescript-native-lsp@uhop-pinned": true,
+    "program-clerk@program-clerk": true
   },
   "extraKnownMarketplaces": {
     "uhop-pinned": {
@@ -212,9 +156,14 @@
           }
         ]
       }
+    },
+    "program-clerk": {
+      "source": {
+        "source": "directory",
+        "path": "/home/eugene/Open/program-clerk"
+      }
     }
   },
-  "cleanupPeriodDays": 90,
   "effortLevel": "xhigh",
   "modelSettings": {
     "claude-opus-5-5": {

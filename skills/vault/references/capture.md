@@ -50,8 +50,8 @@ lists the line among the logs with the body's path as `data_path`.
    the SessionEnd hook stamps `ended` with, since the server pairs a wrap's
    line with its holder's first end at or after `at`, and a guessed time past
    the end pairs with none, so the session reads as unlogged and the next
-   resume writes its log again. `holder` is this session's own as the session-start `[vault] lease:` line
-   names it, `<hostname -s>/<session-prefix>`, the expression the SessionEnd
+   resume writes its log again. `holder` is this session's own as the session-start `[pc] lease:` line
+   names it, `<hostname -s>/<session-prefix>`, the expression the plugin's SessionEnd
    hook builds its `end` line's holder with; a different one pairs with no
    session, and the session reads as unlogged. The line names no `ended`: the
    server pairs it with its holder's first `end` after it, so a session resumed

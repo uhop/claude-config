@@ -159,30 +159,35 @@ reconstructs your holder id as
 block your own edits**; the message prints both sides when that happens.
 
 **Your own repo is claimed for you — mechanically (ruled 2026-08-18).**
-`hooks/vault-lease-claim.sh` (SessionStart) claims the cwd repo with rank 10
-and `takeover_after` 3600, what the hooks call `cwd` (the server knows only the
-numbers, vault-storage D606), under the holder id below; `hooks/vault-lease-gate.sh`
-renews it on activity — every edit through the PreToolUse gate, and every
-tool call through the same script's `--touch` mode on PostToolUse
-(2026-09-05, so a Bash-only or MCP-only session stays live) — and re-claims
-after a TTL lapse when the repo is your own; `hooks/vault-lease-release.sh` (SessionEnd)
-releases every lease this holder has whose claim token the hooks kept (the
-cwd lease; since D67); TTL (4 h) covers a crash. Three
+The Program Clerk plugin's hooks do it since vault-storage D761: at
+SessionStart they claim the checkout the session starts in with rank 10 and
+`takeover_after` 3600, what the hooks call `cwd` (the server knows only the
+numbers, vault-storage D606), under the holder id below; after a tool call they
+renew it once every 15 minutes, so a Bash-only or MCP-only session stays live,
+and re-claim it after a TTL lapse; an edit through the Edit, Write, MultiEdit,
+or NotebookEdit tool is gated and re-claims an unheld own checkout too; and at
+SessionEnd they release every lease this holder has whose claim token they
+kept (the cwd lease; since D67); TTL (3 h) covers a crash. claude-config's
+`hooks/vault-lease-gate.sh` adds one check for this fleet, a write-shaped Bash
+command into another holder's checkout, and only reads the lease (D759).
+The key is the repository's remote under the account's `repository` mode, which
+`program-clerk/settings.md` sets for this account (D760); the session-start
+line names the mode and the key. Three
 guards against a dead session's lease (vault-storage D63, 2026-09-19): the
 server lets a cwd claim take a cwd lease unrenewed for an hour; the release
 hook leaves a marker when it cannot finish, and the next session start on
 the host releases what that holder still holds before claiming; and when the
-gate's periodic check finds your own repo held by someone else, it tells you
+plugin's periodic check finds your own repo held by someone else, it tells you
 once, in the context after a tool call, that you are subordinate now. An
 idle session can lose its lease this way, so read that notice before any
 direct edit, and treat a blocked edit the same way. Sub-agents
 never claim — the parent owns the repo. All fail-open. The result arrives
-as a `[vault] lease: …` line at session start, which is how you know your
-standing: **held by you** (edit freely), **unclaimed** (the vault was
-unreachable or the hook is not installed — behave as held-by-you, nothing
+as a `[pc] lease: …` line at session start, which is how you know your
+standing: **held by you** (edit freely), **unclaimed** (Program Clerk was
+unreachable or the plugin is not installed — behave as held-by-you, nothing
 else changes), **not claimed** (the server answered the claim with another
 status, which the line names, such as 401 for an expired key; the same, and
-the gate says it again once per 15 minutes), or **held by another cwd session** — then you are
+the plugin says it again once per 15 minutes), or **held by another cwd session** — then you are
 **subordinate**: read and analyze freely, route every edit through a
 worktree + a handoff to `repo:X` (below), and ping the holder with
 `SendMessage` when `ListAgents` shows it reachable. **Address the doorbell

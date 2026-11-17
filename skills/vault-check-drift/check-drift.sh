@@ -13,8 +13,8 @@
 #   check-drift.sh [project-name]       # report-only; exit 1 on drift
 #   check-drift.sh [project-name] --update   # report AND refresh the baseline
 #
-# Project name resolves as: explicit arg, else a `.claude/vault-project` file
-# at the repo root, else its main checkout's folder. State is
+# Project name resolves as: explicit arg, else a `.claude/pc-project` file (or
+# the older `.claude/vault-project`) at the repo root, else its main checkout's folder. State is
 # read/written via the vault REST API through `pc-curl`.
 
 set -euo pipefail

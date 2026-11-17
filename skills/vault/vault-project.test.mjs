@@ -64,6 +64,8 @@ test('the marker names the project, in a worktree too', () => {
   writeFileSync(join(linked, '.claude/vault-project'), 'named\n');
   try {
     assert.equal(projectOf(linked), 'named');
+    writeFileSync(join(linked, '.claude/pc-project'), 'renamed\n');
+    assert.equal(projectOf(linked), 'renamed', "the plugin's name wins over the old one");
   } finally {
     rmSync(join(linked, '.claude'), {recursive: true});
   }

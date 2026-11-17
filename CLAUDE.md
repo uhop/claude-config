@@ -779,15 +779,16 @@ repository on the side-claim path, and file only what he defers (apodict 2026-10
 `/vault sweep` ignored was filed twice before _"fix the sweep now in claude-config"_; the 2026-10-30
 report, P4).
 
-My own session's repo is claimed for me at start (`hooks/vault-lease-claim.sh`, renewed on activity
-by the lease gate, released at session end) — the `[vault] lease:` line at session start says
-whether I hold it or am **subordinate** to another cwd session; subordinate means read freely, edits
-go worktree + handoff, and taking the lease is _his_ act, in the UI only (`/ui/agents.html`, ruled
-2026-09-19): on `"take the lease"`, point him there, never `force` a release yourself. A cwd lease
-unrenewed for an hour passes to the next session that starts in the repo, and the gate says so once
-when it happens to an idle session of mine. Committing in his main checkouts and pushing stay his;
-work in a local linked worktree is unrestricted ([[projects/claude-config/decisions]] D43). **Inside
-a Herdr session (`HERDR_ENV=1`), open the finished worktree for his review yourself** —
+My own session's repo is claimed for me at start (the Program Clerk plugin's hooks since
+vault-storage D761, renewed after each tool call, released at session end) — the `[pc] lease:` line
+at session start says whether I hold it or am **subordinate** to another cwd session; subordinate
+means read freely, edits go worktree + handoff, and taking the lease is _his_ act, in the UI only
+(`/ui/agents.html`, ruled 2026-09-19): on `"take the lease"`, point him there, never `force` a
+release yourself. A cwd lease unrenewed for an hour passes to the next session that starts in the
+repo, and the plugin says so once when it happens to an idle session of mine. Committing in his main
+checkouts and pushing stay his; work in a local linked worktree is unrestricted
+([[projects/claude-config/decisions]] D43). **Inside a Herdr session (`HERDR_ENV=1`), open the
+finished worktree for his review yourself** —
 `herdr worktree open --cwd <repo-root> --branch <topic> --label <topic> --no-focus` — instead of
 handing him the command; `--cwd` must name the _sibling repo_, since herdr resolves worktrees
 against the caller-pane's repo otherwise (hit 2026-08-09: `worktree_not_found` from a blog-hugo

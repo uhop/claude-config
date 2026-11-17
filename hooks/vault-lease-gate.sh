@@ -1,160 +1,64 @@
 #!/usr/bin/env bash
-# vault-lease-gate.sh — the repo-lease gate: PreToolUse for Edit / Write /
-# NotebookEdit and for Bash; PostToolUse (`--touch`) for every tool.
+# vault-lease-gate.sh — PreToolUse for Bash: block a write-shaped command into a checkout whose
+# lease another holder has, and point at the worktree and the handoff instead.
 #
-# Leg 4 of the agent-coordination protocol: makes the repo lease enforced
-# rather than advisory. Blocks a direct working-tree edit when *another*
-# holder owns that repo's lease, and points at the sanctioned path instead
-# (disposable worktree + a handoff addressed to the repo's role).
+# The Program Clerk plugin owns the leases since vault-storage 7as-4a (D761): it claims the
+# session's checkout at start, renews it after each tool call, releases it at the end, and gates
+# the edit tools. This hook is the fleet's one addition, kept until the question of gating shell
+# writes at all is settled (vault-storage D759): it reads the lease and never claims, renews, or
+# releases one, so the plugin's claim tokens stay the only ones. It keys a lease by the remote
+# alone, the repository mode, which is the setting of Eugene's account (D760); an account in
+# checkout mode would need the checkout's key here.
 #
-# Design: vault projects/vault-storage/design/agent-coordination § Enforcement.
-# Protocol + holder-id convention: ~/.claude/skills/vault/references/coordination.md
-# § Agent coordination.
+# FAILS OPEN, always: no settings, no curl or jq or python3, an unreachable or refusing server, a
+# path outside a checkout, or an unheld lease allows the command. A block is always a real,
+# current, someone else's lease.
 #
-# FAILS OPEN, always. Every unknown is an allow: no vault env, no curl/jq,
-# unreachable or slow server, non-repo path, unclaimed repo. The worktree
-# discipline was already collision-safe before this hook existed, so the
-# check may only *redirect* work, never deny it on infrastructure trouble.
-# A blocked edit is therefore always a real, current, someone-else lease.
-# A lookup refused with a 429 (the account past its rate on the pool) is
-# allowed the same way, and said at that tool call's PostToolUse, once per
-# RENEW_EVERY a repository (vault-storage question 385); an unreachable server,
-# or a restart's 502, 503, or 504, stays silent.
+# The extractor (`write_targets` in hooks/lib/shell_segments.py) strips heredoc bodies, splits the
+# command on unquoted `;`, `|`, `&&`, `||` and newlines, tracks `cd`, follows a variable the command
+# assigns, and collects the write targets it understands: redirections, `sed -i`, `tee`, the
+# destinations of `cp`/`mv`/`rsync`/`ln`, `rm`, `mkdir`, `touch`, `chmod`, `truncate`,
+# `prettier --write`, `npm install`, git's verbs that change the working tree, the writes inside a
+# substitution or a shell's string, and a path-like value of `--store`, `--out`, `--output`, or
+# `-o`. What it does not understand is allowed, so the gate narrows the gap and does not close it.
+# A cheap pre-filter skips the extractor for a command with no write indicator.
 #
-# Liveness rides here too (2026-08-18): when the lease is ours, an edit
-# renews it (throttled to once per RENEW_EVERY seconds), and when the edited
-# repo is the session's own cwd repo and nobody holds it — the TTL lapsed, or
-# the server restarted — the edit re-claims it (rank 10). Both are
-# best-effort and never block; they exist so `renewed_at` means "still
-# active" and a lapsed own-repo lease heals on the next touch instead of
-# leaving the next session unable to tell a live neighbour from a ghost.
+# A linked worktree is never blocked: the protocol sends a non-holder to a worktree of the leased
+# repository, which shares its key. A submodule is its own repository with its own remote.
 #
-# `--touch` (2026-09-05): the same liveness half, keyed to the session's cwd
-# repo instead of an edited file, run from PostToolUse on every tool. A
-# session that edits through Bash, or works through MCP tools alone, never
-# trips the Edit/Write matcher, so its lease used to expire mid-session and
-# the next agent read a live neighbour as a ghost (found 2026-08-20). Touch
-# mode never blocks, and prints only once, when a session's own repo turns
-# out held by someone else (2026-09-19): a fresh renew stamp costs a stat, a
-# stale one costs one lookup per RENEW_EVERY. Sub-agent payloads (agent_id)
-# exit at once — sub-agents never claim, and a re-claim under a different
-# session prefix would lock the parent out of its own repo.
-#
-# Bash (2026-09-06, option 1 of the three put to the operator): a write-shaped
-# Bash command is gated on the repositories its targets name. The extractor
-# (`write_targets` in the shared hooks/lib/shell_segments.py) strips heredoc bodies, splits the command on unquoted `;`,
-# `|`, `&&`, `||` and newlines, tokenizes each segment with shlex, tracks `cd`
-# for the effective directory, and collects the write targets it understands:
-# redirections, `sed -i`, `tee`, `cp`/`mv`/`rsync`/`ln` destinations, `rm`,
-# `mkdir`, `touch`, `chmod`, `truncate`, `prettier --write`, `npm install`,
-# the working-tree-mutating `git` verbs (never `worktree`, never
-# `apply --check`, never `stash list`, `show`, or `create`), the writes inside a
-# substitution or a shell's string (8q), and a path-like value of `--store`, `--out`, `--output`
-# or `-o` after any command (2026-09-25: `node ~/Open/apodict/bin/ledger.js
-# record --store <apodict path>` wrote into a held apodict twice in one day;
-# 30 days held 2,934 such flags, 6 naming another repo, all `--store`).
-# Each target resolves to the main checkout that contains
-# it; a checkout whose lease someone else holds blocks the call. Measured
-# 2026-09-05: 80 such commands in 21 sessions over 30 days, claude-config the
-# top target. It follows a variable the command assigns. Whatever the extractor
-# does not understand is allowed — a write inside `python - <<EOF`, a path in a
-# variable the command does not assign, a relative path after a `cd` it could
-# not read — so the gate narrows the gap; it does not close it.
-# A cheap pre-filter skips the extractor for commands with no write indicator.
-#
-# Linked worktrees are never blocked (2026-09-06): the protocol sends a
-# non-holder to a disposable worktree of the held repo, whose remote — and so
-# whose lease key — is the main checkout's. A root whose `.git` is a file
-# pointing under `worktrees/` is allowed in every mode; the lease protects
-# the main working tree. Before this the Edit gate blocked the very path it
-# prescribed. A submodule's `.git` file points under `modules/` and is its own
-# repo with its own remote, so it is checked as its own resource.
-#
-# Hook contract:
-#   - stdin: JSON {tool_name, tool_input: {file_path|notebook_path|command}, session_id, cwd}
-#     (--touch: {session_id, cwd, agent_id?}; the tool fields are ignored)
-#   - exit 0: allow. exit 2: block, stderr shown to the agent (never in --touch).
+# Hook contract: stdin JSON {tool_name, tool_input: {command}, session_id, cwd}; exit 0 allows,
+# exit 2 blocks with stderr shown to the agent.
 
 set -u
 
 payload=$(cat)
-mode=edit
-[[ "${1:-}" == "--touch" ]] && mode=touch
 
 command -v jq >/dev/null 2>&1 || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
+[[ -x /usr/bin/python3 ]] || exit 0
 # shellcheck source=lib/vault-retry.sh source-path=SCRIPTDIR
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-retry.sh" || exit 0
-# The product's names first, the old ones until the switch (vault-storage D141).
-PROGRAM_CLERK_URL=${PROGRAM_CLERK_URL:-${VAULT_API_URL:-}}
-PROGRAM_CLERK_KEY=${PROGRAM_CLERK_KEY:-${VAULT_API_TOKEN:-}}
-[[ -n $PROGRAM_CLERK_URL && -n $PROGRAM_CLERK_KEY ]] || exit 0
+[[ -n ${PROGRAM_CLERK_URL:-} && -n ${PROGRAM_CLERK_KEY:-} ]] || exit 0
 
-if [[ $mode == edit ]]; then
-  tool=$(jq -r '.tool_name // ""' <<<"$payload" 2>/dev/null) || exit 0
-  case "$tool" in
-    Edit | Write | NotebookEdit | MultiEdit) ;;
-    Bash)
-      mode=bash
-      # Cheap pre-filter before anything else runs: a command with no write
-      # indicator costs one jq and exits — this path runs on every Bash call.
-      # It reads the text without quotes and backslashes, and a `$'...'` string
-      # always passes, so `c''p` and `$'\x63p'` are read (8n).
-      cmd=$(jq -r '.tool_input.command // ""' <<<"$payload" 2>/dev/null)
-      [[ -n "$cmd" ]] || exit 0
-      [[ "$cmd" == *"\$'"* || "${cmd//[\'\"\\]/}" =~ (sed[[:space:]]+-|>|tee|cp[[:space:]]|mv[[:space:]]|rm[[:space:]]|rmdir|mkdir|touch|chmod|chown|truncate|ln[[:space:]]|rsync|install|prettier|npm[[:space:]]|pnpm[[:space:]]|yarn[[:space:]]|git[[:space:]]|--store|--out|[[:space:]]-o[[:space:]=]) ]] || exit 0
-      [[ -x /usr/bin/python3 ]] || exit 0
-      ;;
-    *) exit 0 ;;
-  esac
-fi
+[[ $(jq -r '.tool_name // ""' <<<"$payload" 2>/dev/null) == Bash ]] || exit 0
+# Before anything else runs: a command with no write indicator costs one jq and exits. It reads
+# the text without quotes and backslashes, and a `$'...'` string always passes, so `c''p` and
+# `$'\x63p'` are read (8n).
+cmd=$(jq -r '.tool_input.command // ""' <<<"$payload" 2>/dev/null)
+[[ -n "$cmd" ]] || exit 0
+[[ "$cmd" == *"\$'"* || "${cmd//[\'\"\\]/}" =~ (sed[[:space:]]+-|>|tee|cp[[:space:]]|mv[[:space:]]|rm[[:space:]]|rmdir|mkdir|touch|chmod|chown|truncate|ln[[:space:]]|rsync|install|prettier|npm[[:space:]]|pnpm[[:space:]]|yarn[[:space:]]|git[[:space:]]|--store|--out|[[:space:]]-o[[:space:]=]) ]] || exit 0
 
-# The holder id this session would have claimed under (skill convention:
-# <hostname>/<session-prefix>). A mismatch reads as "someone else holds it",
-# which is why the block message prints both sides — that makes a convention
-# slip diagnosable instead of just baffling.
 session_id=$(jq -r '.session_id // ""' <<<"$payload" 2>/dev/null)
-agent_id=$(jq -r '.agent_id // ""' <<<"$payload" 2>/dev/null)
+# The plugin's holder id: <short host>/<session prefix>.
 me="$(hostname -s)/${session_id:0:8}"
 cwd=$(jq -r '.cwd // ""' <<<"$payload" 2>/dev/null)
 [[ -n "$cwd" && -d "$cwd" ]] || cwd=$PWD
-cwd_root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || true)
 
 TTL=10
-RENEW_EVERY=900
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-vault-lease"
 now=$(date +%s)
-auth=(-H "Authorization: Bearer $PROGRAM_CLERK_KEY" -H 'Content-Type: application/json')
-holder=""
-kind=""
-refused=""
-refused_code=""
-refused_why=""
 
-# Renew and re-claim present the claim's token (vault-storage D67). Without
-# the library they send none, and the server refuses the renew: the lease
-# then lapses at its TTL, which is the fail-open direction.
-# shellcheck source=lib/vault-lease-token.sh source-path=SCRIPTDIR
-. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/vault-lease-token.sh" 2>/dev/null ||
-  lease_token_of() { :; }
-declare -F lease_token_save >/dev/null || lease_token_save() { :; }
-
-# ── helpers ──────────────────────────────────────────────────────────────
-
-# Repo root containing a path. A Write may be creating a file that does not
-# exist yet, so resolve from the deepest existing ancestor.
-root_of() {
-  local dir=$1
-  [[ -d "$dir" ]] || dir=$(dirname "$dir")
-  while [[ -n "$dir" && "$dir" != "/" && ! -d "$dir" ]]; do dir=$(dirname "$dir"); done
-  git -C "$dir" rev-parse --show-toplevel 2>/dev/null
-}
-
-is_linked_worktree() { [[ -f "$1/.git" ]] && grep -q '/worktrees/' "$1/.git" 2>/dev/null; }
-
-# The resource key must match what claimants use: the normalized remote URL,
-# so every clone and worktree of a repo is one resource. A repo with no remote
-# cannot be shared, so it keys by host:path — the one place host belongs.
+# The same rewrite as the plugin's normalizeRemote, so both compute one key for one repository.
 resource_of() {
   local remote normalized
   remote=$(git -C "$1" remote get-url origin 2>/dev/null || true)
@@ -167,18 +71,13 @@ resource_of() {
   printf 'repo:%s' "$normalized"
 }
 
-cache_file_of() { printf '%s/%s' "$cache_dir" "$(printf '%s' "$1" | cksum | tr -d ' ')"; }
-
-# Sets holder/kind for a resource (empty holder = not held). Short-TTL cache
-# so an edit burst costs one request, not one per edit — stale by at most TTL
-# seconds, which matches the protocol's own model: a holder discovers
-# demotion at its next touch, not instantly. Returns 1 on infrastructure
-# trouble, and the caller allows; a 429 sets refused_code and refused_why.
+# Sets holder and kind; an empty holder is "not held". A short-lived cache makes a burst of
+# commands cost one request. Returns 1 on any trouble, and the caller allows.
 lookup() {
   local resource=$1 cf stamp=0 raw code resp parsed
   holder=""
   kind=""
-  cf=$(cache_file_of "$resource")
+  cf="$cache_dir/$(printf '%s' "$resource" | cksum | tr -d ' ')"
   if [[ -f "$cf" ]]; then
     { read -r stamp; read -r holder; read -r kind; } <"$cf" 2>/dev/null || true
     if [[ ${stamp:-0} =~ ^[0-9]+$ ]] && ((now - stamp < TTL)); then return 0; fi
@@ -190,14 +89,7 @@ lookup() {
     return 1
   code=${raw##*$'\n'}
   resp=${raw%$'\n'*}
-  # A gateway's 502 or 504, or the front's 503, is a restart in progress and stays as silent as
-  # an unreachable server; only the account's rate (429) is said.
-  if [[ $code == 429 ]]; then
-    refused_code=$code
-    refused_why=$(jq -r 'if type == "object" then .code // empty else empty end' <<<"$resp" 2>/dev/null)
-  fi
   [[ $code == 200 ]] || return 1
-  # Empty `items` means "not held" — an answer, not an error.
   parsed=$(jq -r '(.items[0] // {}) | "\(.holder // "")\n\(.holder_kind // "")"' \
     <<<"$resp" 2>/dev/null) || return 1
   holder=$(head -n1 <<<"$parsed")
@@ -208,85 +100,16 @@ lookup() {
   return 0
 }
 
-# Nobody holds our own repo — the SessionStart claim lapsed (TTL, server
-# restart) or never ran. Re-claim; a 409 means someone took it in the gap,
-# which is exactly the case the block path is for. Sets holder/kind.
-claim_cwd() {
-  local resource=$1 cf body raw code resp parsed
-  cf=$(cache_file_of "$resource")
-  body=$(lease_cwd_claim_body "$resource" "$me" "$(lease_token_of "$me" "$resource")") || return 1
-  raw=$(vault_retry -s --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
-    -w $'\n%{http_code}' "$PROGRAM_CLERK_URL/leases/claim") || return 1
-  code=${raw##*$'\n'}
-  resp=${raw%$'\n'*}
-  case "$code" in
-    200)
-      holder=$me
-      kind=agent
-      lease_token_save "$me" "$resource" "$(jq -r '.claim_token // ""' <<<"$resp" 2>/dev/null)"
-      printf '%s\n%s\n%s\n' "$now" "$me" "agent" >"$cf" 2>/dev/null || true
-      printf '%s\n' "$now" >"$cf.renew" 2>/dev/null || true
-      ;;
-    409)
-      parsed=$(jq -r '(.details.current // {}) | "\(.holder // "")\n\(.holder_kind // "")"' \
-        <<<"$resp" 2>/dev/null) || return 1
-      holder=$(head -n1 <<<"$parsed")
-      kind=$(tail -n1 <<<"$parsed")
-      [[ -n "$holder" ]] && printf '%s\n%s\n%s\n' "$now" "$holder" "$kind" >"$cf" 2>/dev/null
-      ;;
-    *)
-      refused=$(lease_refused_line "$resource" "$code" "$resp")
-      return 1
-      ;;
-  esac
-  return 0
-}
-
-# Renew our own lease, throttled to once per RENEW_EVERY.
-renew_if_due() {
-  local resource=$1 stamp last=0 body
-  stamp="$(cache_file_of "$resource").renew"
-  [[ -f "$stamp" ]] && read -r last <"$stamp" 2>/dev/null
-  [[ ${last:-0} =~ ^[0-9]+$ ]] || last=0
-  ((now - last >= RENEW_EVERY)) || return 0
-  body=$(jq -cn --arg r "$resource" --arg h "$me" --arg t "$(lease_token_of "$me" "$resource")" \
-    '{resource: $r, holder: $h} + (if $t == "" then {} else {claim_token: $t} end)') || return 0
-  vault_retry -s -o /dev/null --connect-timeout 1 --max-time 2 "${auth[@]}" --data-binary "$body" \
-    "$PROGRAM_CLERK_URL/leases/renew" || true
-  printf '%s\n' "$now" >"$stamp" 2>/dev/null || true
-}
-
-# This session's (or sub-agent's) notes for its next PostToolUse.
-pending_of() { printf '%s/pending-%s' "$cache_dir" "$(printf '%s\t%s' "$session_id" "$agent_id" | cksum | tr -d ' ')"; }
-
-# A lookup the server refused, noted for this tool call's PostToolUse to say, once per RENEW_EVERY
-# a repository and session (question 385).
-note_refused_lookup() {
-  local resource=$1 what=$2 stamp last=0
-  [[ -n "$refused_code" ]] || return 0
-  stamp="$(cache_file_of "$me"$'\t'"$resource").refused"
-  [[ -f "$stamp" ]] && read -r last <"$stamp" 2>/dev/null
-  [[ ${last:-0} =~ ^[0-9]+$ ]] || last=0
-  ((now - last >= RENEW_EVERY)) || return 0
-  mkdir -p "$cache_dir" 2>/dev/null || return 0
-  printf '%s\n' "$now" >"$stamp" 2>/dev/null || return 0
-  printf '[vault] lease: the check of %s was refused (HTTP %s%s), so this %s went through unchecked, as when the vault is unreachable. If another session holds %s, move the change to a worktree and a handoff addressed to it. Said once per %d minutes a repository.\n' \
-    "$resource" "$refused_code" "${refused_why:+, $refused_why}" "$what" "$resource" \
-    $((RENEW_EVERY / 60)) >>"$(pending_of)" 2>/dev/null || true
-}
-
-# The block messages. `what` names the call: "Edit", or "Bash write (`…`)".
 block() {
   local what=$1 resource=$2 root=$3
   if [[ "$kind" == "human" ]]; then
     cat >&2 <<EOF
-$what blocked: $resource is held by $holder (human).
+$what blocked: $resource is held by $holder (a person).
 
-The operator holds this repo. A human lease is never preempted and never
-expires — taking work from it is ask-first, by design.
+A person's lease is never preempted and never expires, so taking work from it is ask-first.
 
-Ask before touching this working tree. If you have work for it, put it in a
-disposable worktree and file a handoff addressed to the role:
+Ask before touching this working tree. If you have work for it, put it in a disposable worktree
+and file a handoff addressed to the repository:
 
   handoff_create({idempotency_key, project, to: "$resource", kind, ref, from, body})
 EOF
@@ -295,111 +118,27 @@ EOF
   cat >&2 <<EOF
 $what blocked: $resource is held by $holder.
 
-This session is $me, so that lease is not yours — editing the working tree
-directly would mix your changes into whatever that agent has in flight.
+This session is $me, so that lease is not yours: writing into the working tree directly would mix
+your changes into whatever that agent has in flight.
 
 Do this instead:
   1. git -C "$root" worktree add <scratch> -b <topic>
-  2. work there, and run that repo's gates there
+  2. work there, and run the repository's checks there
   3. git format-patch --base=\$(git merge-base main HEAD) main..HEAD --stdout
   4. handoff_create({... to: "$resource" ...}), then handoff_put_artifact
 
-If this repo IS your session's working directory: a cwd claim preempts an
-agent-held SIDE lease, so try
-
-  lease_claim({resource: "$resource", holder: "$me", priority: "cwd"})
-
-— but if that returns 409, the holder is another cwd session and you are
-SUBORDINATE (ruled 2026-08-18): read freely, route edits through the worktree
-+ handoff above, SendMessage the holder if ListAgents shows it. Taking the
-lease is the operator's call — only on an explicit "take the lease".
+If that agent is another session working here, you are subordinate: read freely, send edits
+through the worktree and handoff above, and SendMessage the holder if ListAgents shows it. Taking
+the lease is a person's act, on the account's Agents page.
 EOF
   exit 2
 }
 
-# One root, one verdict: allow (linked worktree, unheld, ours and renewed, our
-# own repo re-claimed, infrastructure trouble) or block.
-check_root() {
-  local root=$1 what=$2 resource
-  is_linked_worktree "$root" && return 0
-  resource=$(resource_of "$root")
-  if ! lookup "$resource"; then
-    note_refused_lookup "$resource" "$what"
-    return 0
-  fi
-  if [[ -z "$holder" ]]; then
-    [[ "$root" == "$cwd_root" ]] || return 0
-    claim_cwd "$resource" || return 0
-  fi
-  if [[ "$holder" == "$me" ]]; then
-    renew_if_due "$resource"
-    return 0
-  fi
-  [[ -n "$holder" ]] || return 0
-  block "$what" "$resource" "$root"
-}
+lib="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib"
 
-# ── --touch: liveness for the session's own repo, from every tool call ───
-
-if [[ $mode == touch ]]; then
-  pending=$(pending_of)
-  if [[ -s "$pending" ]]; then
-    msg=$(<"$pending")
-    rm -f "$pending"
-    jq -cn --arg m "$msg" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}'
-    exit 0
-  fi
-  [[ -z "$agent_id" ]] || exit 0
-  [[ -n "$cwd_root" ]] || exit 0
-  resource=$(resource_of "$cwd_root")
-  stamp="$(cache_file_of "$resource").renew"
-  last=0
-  [[ -f "$stamp" ]] && read -r last <"$stamp" 2>/dev/null
-  [[ ${last:-0} =~ ^[0-9]+$ ]] || last=0
-  ((now - last < RENEW_EVERY)) && exit 0
-  prev_holder=$(sed -n 2p "$(cache_file_of "$resource")" 2>/dev/null)
-  lookup "$resource" || exit 0
-  if [[ -z "$holder" ]] && ! claim_cwd "$resource"; then
-    [[ -n "$refused" ]] || exit 0
-    # Stamped, so a refused claim is retried and said once per RENEW_EVERY, not on every tool call.
-    printf '%s\n' "$now" >"$stamp" 2>/dev/null || true
-    jq -cn --arg m "$refused" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}'
-    exit 0
-  fi
-  if [[ "$holder" == "$me" ]]; then
-    renew_if_due "$resource"
-  else
-    # Stamp the check so a subordinate session asks once per RENEW_EVERY, not
-    # once per cache expiry.
-    printf '%s\n' "$now" >"$stamp" 2>/dev/null || true
-    # The last check saw this session holding it: say so once, before the agent
-    # plans direct work (2026-09-19; a cwd lease unrenewed for an hour yields).
-    if [[ "$prev_holder" == "$me" ]]; then
-      if [[ "$kind" == "human" ]]; then
-        msg="[vault] lease: $resource is now held by $holder (human, operator-held); this session ($me) no longer holds it. Ask before editing this working tree; work goes in a worktree + a handoff to \"$resource\"."
-      else
-        msg="[vault] lease: $resource is now held by $holder; this session ($me) no longer holds it (a cwd lease left unrenewed for an hour passes to the next session that starts in the repo). You are SUBORDINATE now: read freely; every edit goes worktree + handoff to \"$resource\" (SendMessage the holder if ListAgents shows it). Taking it back is the operator's: the force release in /ui/agents.html."
-      fi
-      jq -cn --arg m "$msg" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}'
-    fi
-  fi
-  exit 0
-fi
-
-# ── Edit / Write / NotebookEdit: one target, one root ────────────────────
-
-if [[ $mode == edit ]]; then
-  target=$(jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' <<<"$payload" 2>/dev/null)
-  [[ -n "$target" ]] || exit 0
-  root=$(root_of "$target") || exit 0
-  [[ -n "$root" ]] || exit 0
-  check_root "$root" "Edit"
-  exit 0
-fi
-
-# ── Bash: the write targets the command names, each to its main checkout ──
-
-roots=$(CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$cwd" "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib" <<'PY' 2>/dev/null
+# A function, since Bash 3.2 can fail to parse a heredoc inside `$( … )` (hook-syntax.test.mjs).
+write_roots() {
+  CMD="$cmd" PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 - "$cwd" "$lib" <<'PY' 2>/dev/null
 import os, sys
 sys.path.insert(0, sys.argv[2])
 from shell_segments import write_targets, checkout_of
@@ -407,8 +146,7 @@ from shell_segments import write_targets, checkout_of
 base = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
 targets = [path for _, path in write_targets(os.environ.get('CMD', ''), base)]
 
-# 3. Targets → main checkouts. A linked worktree is allowed by protocol; a
-#    submodule, a repo with its own remote, is checked as its own root.
+# Targets to main checkouts: a linked worktree is allowed by protocol, a submodule is its own root.
 seen = []
 for t in targets:
     if not t:
@@ -418,12 +156,16 @@ for t in targets:
         seen.append(r)
 print('\n'.join(seen))
 PY
-) || exit 0
+}
+roots=$(write_roots) || exit 0
 [[ -n "$roots" ]] || exit 0
 
 excerpt=$(head -c 80 <<<"${cmd//$'\n'/ }")
-while IFS= read -r root; do
+while IFS= read -r root || [[ -n "$root" ]]; do
   [[ -n "$root" ]] || continue
-  check_root "$root" "Bash write (\`$excerpt\`)"
+  resource=$(resource_of "$root")
+  lookup "$resource" || continue
+  [[ -n "$holder" && "$holder" != "$me" ]] || continue
+  block "Bash write (\`$excerpt\`)" "$resource" "$root"
 done <<<"$roots"
 exit 0

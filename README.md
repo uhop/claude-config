@@ -86,34 +86,21 @@ ignored. Anything else in `~/.claude/` (per-host `settings.local.json`, runtime 
 - `unchecked-claim-check.sh` — a `Stop` hook: a closing message that calls a fact unchecked ("I
   haven't checked", "from memory", "as I recall") sends the agent back once to run the check or say
   why it cannot, with its matcher in `lib/unchecked_claims.py` (D85).
-- `vault-lease-gate.sh` — enforces the agent-coordination repo lease on
-  `Edit`/`Write`/`NotebookEdit` and on write-shaped `Bash`: resolves the edited file's repo (or, for
-  Bash, every repository the command's write targets name: redirections, `sed -i`, `tee`, `cp`/`mv`
-  destinations, `rm`, `mkdir`, mutating `git` verbs, `prettier --write`, `npm install`, with `cd`
-  tracked and heredoc bodies ignored) to its normalized remote URL, asks vault-storage who holds
-  that lease, and blocks the call when the holder is someone other than this session, pointing at
-  the worktree + handoff path instead. Linked worktrees are never blocked, since they are that path.
-  **Fails open on every unknown** — no vault env, no `jq`/`curl`, unreachable or slow server,
-  non-repo path, unclaimed repo — because the worktree discipline was already collision-safe, so the
-  hook may only redirect work, never deny it on infrastructure trouble. A lookup refused with a 429
-  (the account past its rate on the pool) is allowed too, and said in the agent's context after that
-  tool call, once per 15 minutes a repository; an unreachable server stays silent. A 10-second
-  per-repo cache keeps an edit burst to one request. Solo sessions with an empty lease registry
-  never notice it. The same script runs as `vault-lease-gate.sh --touch` from `hooks.PostToolUse` on
-  every tool call: it renews the session's own cwd lease (and re-claims it after a lapse) so a
-  session that edits through Bash or works through MCP tools alone stays live; a fresh renew stamp
-  costs a `stat`. Touch mode never blocks, and speaks only to say a refused lookup or claim, or that
-  another session took the cwd lease. The command reader is `hooks/lib/shell_segments.py`, shared
-  with the commit gate (2026-09-06).
-- `vault-notices.sh` — the hosted vault's notices (vault-storage 7q-4): what still interrupts the
-  service, from `GET /system/notices`, which the front answers. As
-  `vault-notices.sh --session-start` in `hooks.SessionStart` it lists every notice as
-  `[vault] notice:` lines beside the brief; from `hooks.PostToolUse` it asks at most once a minute
-  and puts each notice the session has not seen into the agent's context once, with a reminder to
-  tell the user and start no sweep or long batch inside its window. The ids seen are kept per
-  session under `~/.cache/claude-vault-notices/`, a week long. Sub-agents are skipped. **Fails
-  open**, like the other vault hooks: no env, no `jq`/`curl`, an unreachable server, or one without
-  the route is silence.
+- `vault-lease-gate.sh` — a `PreToolUse` hook on `Bash`: resolves every repository a write-shaped
+  command names (redirections, `sed -i`, `tee`, `cp`/`mv` destinations, `rm`, `mkdir`, mutating
+  `git` verbs, `prettier --write`, `npm install`, with `cd` tracked and heredoc bodies ignored, read
+  by `hooks/lib/shell_segments.py`, shared with the commit gate) to its normalized remote URL, asks
+  Program Clerk who holds that lease, and blocks the call when the holder is someone other than this
+  session, pointing at the worktree and handoff path instead. Linked worktrees are never blocked,
+  since they are that path. It only reads: the Program Clerk plugin claims, renews, and releases the
+  leases and gates the edit tools (vault-storage D761), and this hook stays until the question of
+  gating shell writes at all is settled (D759). It keys a lease by the remote alone, the repository
+  mode of Eugene's account (D760). **Fails open on every unknown**, a refused lookup included. A
+  10-second per-repository cache keeps a burst of commands to one request.
+- `fleet-brief.sh` — a `SessionStart` hook for the brief's lines that only this fleet needs, which
+  the plugin leaves out (vault-storage D761): agent-workflow's Active items, the count waiting for
+  `/clarify`, and the queue's finished titles (`skills/vault-lint/queue-lint.mjs`), as one
+  `[pc] fleet:` line when one of them has something to say. Fails open.
 - `vault-resume-prepare.sh` and `vault-resume-digest.sh` — make `/vault resume` a digest on the
   screen and a line or two of reply, with no call (vault-storage 12d, D594). The first, an async
   `hooks.SessionStart` entry with the `startup` matcher, collects GitHub in the background into

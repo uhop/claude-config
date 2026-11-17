@@ -32,21 +32,18 @@ the root documents (`AGENTS.md`, this file, `README.md`) stay out of it.
 `settings.json` wires them to these events:
 
 - **PreToolUse:** `destructive-op-gate.sh` and `git-commit-gate.sh` gate commands;
-  `vault-lease-gate.sh` blocks an edit in a repository another session holds.
-- **PostToolUse:** `vault-lease-gate.sh --touch` renews the session's lease; `vault-notices.sh`
-  relays the hosted vault's notices.
-- **SessionStart:** `vault-lease-claim.sh` claims the repository; `vault-resume-brief.sh`,
-  `vault-feedback-rules.sh`, and `vault-notices.sh` print the vault's digest;
-  `vault-resume-prepare.sh` collects GitHub in the background for a later `/vault resume`; the
-  `herdr-*` hooks label the terminal multiplexer's pane.
+  `vault-lease-gate.sh` blocks a Bash write into a repository another session holds.
+- **SessionStart:** `fleet-brief.sh` prints the brief's fleet-only lines; `vault-resume-prepare.sh`
+  collects GitHub in the background for a later `/vault resume`; the `herdr-*` hooks label the
+  terminal multiplexer's pane.
 - **UserPromptSubmit:** `vault-resume-digest.sh`, on `/vault resume`, shows the user the digest,
   styled in a terminal, and puts it in the context.
-- **SessionEnd:** `vault-lease-release.sh` releases the lease; `vault-session-record.sh` appends the
-  session's record.
 - **Stop:** `bg-shells-open.sh` names a background shell still running.
 
-A vault hook fails open: without settings or a server it stays silent and allows the call.
-`lib/shell_segments.py` is the parser the gates share.
+The Program Clerk plugin (`apodictum/program-clerk`) runs the session's lease, brief, notices,
+feedback rules, and session record since vault-storage D761. A vault hook fails open: without
+settings or a server it stays silent and allows the call. `lib/shell_segments.py` is the parser the
+gates share.
 
 ## Skills
 

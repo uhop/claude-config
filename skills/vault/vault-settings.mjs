@@ -17,7 +17,6 @@ export const vaultSettings = (env = process.env) => {
 };
 
 // A session keeps the environment it started with, so a key saved to ~/.env later goes unseen (8d).
-// hooks/vault-resume-brief.sh carries this text verbatim, as its test checks.
 export const KEY_RENEWAL =
   'make a new key on /ui/keys.html (a fresh sign-in), save it in ~/.env, and start a new session from a new shell or after `. ~/.env`, since a running session keeps the key it started with';
 

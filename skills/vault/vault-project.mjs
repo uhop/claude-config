@@ -22,8 +22,14 @@ export const checkoutOf = top => {
   }
 };
 
-/** The project: `.claude/vault-project` at `top`, else its main checkout's folder. */
+/**
+ * The project: `.claude/pc-project` at `top`, the plugin's name, else the older
+ * `.claude/vault-project` until every checkout is renamed, else its main checkout's folder.
+ */
 export const projectOf = top => {
-  const marker = join(top, '.claude/vault-project');
-  return existsSync(marker) ? readFileSync(marker, 'utf8').trim() : basename(checkoutOf(top));
+  for (const name of ['.claude/pc-project', '.claude/vault-project']) {
+    const marker = join(top, name);
+    if (existsSync(marker)) return readFileSync(marker, 'utf8').trim();
+  }
+  return basename(checkoutOf(top));
 };
