@@ -454,7 +454,8 @@ for (const t of transcripts) {
         ? (/^Stop hook feedback:\s*\[([\w-]+)\]/.exec(f.userText)?.[1] ?? null)
         : null;
     const hookLine = hook ? firstLine(f.userText.replace(/^Stop hook feedback:\s*/, '')) : null;
-    if (row.isMeta === true) f.userText = '';
+    // A compaction summary is the harness's too; a preface defeats the text strip (reports/2026-11-16 P2).
+    if (row.isMeta === true || row.isCompactSummary === true) f.userText = '';
     const answer = answerOf(row);
     if (answer) f.userText = answer.own;
     // Register tool_use ids → names for later tool_result name lookup

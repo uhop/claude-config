@@ -866,10 +866,11 @@ machine, what was switched off), and carried to another setup it is speculative 
 there.
 
 **A project's record is evidence too.** Before proposing a change to something the project may have
-ruled on (an access grant, a cache key, a negotiation scheme, a schema), a fix included, search its
-decisions note and the topics that note cites for that surface, and say in the proposal what the
-search found, or that it found nothing ([[projects/agent-workflow/feedback]] § A project's record is
-evidence before a change).
+ruled on (an access grant, a cache key, a negotiation scheme, a schema, a name), a fix included,
+search the vault over the project for that surface, its decisions, design notes, and queue items,
+and any sibling project that shares the product, with the topics they cite, and say in the proposal
+what the search found, or that it found nothing ([[projects/agent-workflow/feedback]] § A project's
+record is evidence before a change).
 
 **A claim of absence or completeness names what was enumerated, or is marked a guess.** Before a
 sentence says _only_, _none_, _no other_, _the one place_, _covers the class_, _harmless_, _never
@@ -974,10 +975,13 @@ whether a deploy, a release, or a migration works is settled before that step, b
 where one exists, never by the step. `hooks/unchecked-claim-check.sh` (Stop) sends a closing message
 that says so back once (D85; the 2026-11-11 reflect report, P1).
 
-**A pilot says what it cannot show.** Before a pass over many notes or a cutover, name what the
-pilot or the tests lack that the real run has (a field, a second Unix user, a folder shape), then
-cover each or say the first real run is its test. (vault-storage 2026-11-02: a queue pilot with no
-trackers "proved nothing" about trackers; the 2026-11-02 report, M2.)
+**A pilot says what it cannot show.** Before a pass over many notes, a cutover, a deploy, or a
+command run on several hosts, and wherever a clean check is offered as proof of a class, name what
+the pilot, the check, or the tests lack that the real run has (a field, a second Unix user, a folder
+shape, another host's shell, a route only the old system served), then cover each or say the first
+real run is its test. (vault-storage 2026-11-02: a queue pilot with no trackers "proved nothing"
+about trackers; the 2026-11-02 report, M2. Widened by the 2026-11-16 report, P1: a key-quoting test
+run on one host of three, a swap test said to close a class, stubs before a real deploy.)
 
 **Disclosure is not permission — audit the reason before writing the omission down.** A well-formed
 _Deliberately not done_ entry makes an omission visible; it does not make it right, and the rules

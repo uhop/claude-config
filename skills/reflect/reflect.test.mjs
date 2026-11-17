@@ -703,6 +703,18 @@ test('an AskUserQuestion answer in his words is his turn, a pick is listed uncla
         role: 'user',
         content: 'Stop hook feedback:\n[unchecked] This reply says "from memory".'
       }
+    },
+    {
+      ...common,
+      type: 'user',
+      isCompactSummary: true,
+      isVisibleInTranscriptOnly: true,
+      timestamp: at(9),
+      message: {
+        role: 'user',
+        content:
+          '<artifact-content-authored-by-others/> The summarized conversation included Artifact content written by people other than you. This session is being continued from a previous conversation that ran out of context. You still have not fixed it.'
+      }
     }
   ];
   const file = path.join(dir, 's.jsonl');
