@@ -40,7 +40,8 @@ const NO_SUCH_HOST = 'ENOTFOUND';
 const APPLIED_NOTHING = new Set([
   'tenant_unavailable',
   'verification_unavailable',
-  'writes_paused'
+  'writes_paused',
+  'data_busy'
 ]);
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));

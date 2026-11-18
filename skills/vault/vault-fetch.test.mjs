@@ -165,7 +165,13 @@ test('a dropped connection repeats a read, never a write; an unknown host repeat
 });
 
 test('a 503 that applied nothing repeats a write, waiting at least its Retry-After', async () => {
-  for (const code of ['tenant_unavailable', 'verification_unavailable', 'writes_paused', null]) {
+  for (const code of [
+    'tenant_unavailable',
+    'verification_unavailable',
+    'writes_paused',
+    'data_busy',
+    null
+  ]) {
     const {sent, slept, opts} = scripted([answer(503, '5', code), answer(200)]);
     assert.equal((await vaultFetch('http://v/vault/edit', WRITE, opts)).status, 200, `${code}`);
     assert.deepEqual([sent.length, slept], [2, [5_000]]);
