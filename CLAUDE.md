@@ -220,6 +220,17 @@ is the step that gets skipped, and the narration reads identical either way. Con
 [[topics/empirical-on-disk-vs-reported-count-validation]] verifies a _tool's_ reported counts; this
 one verifies your own narration.
 
+**What a run keeps outside the scratchpad goes when nothing needs it.** An arc's working data under
+`~/.cache/<project>/` (kept harvests, census runs, probe outputs, logs, a parked patch a ruling made
+moot) is removed in the turn the arc ships and its numbers are recorded; what an open queue item or
+plan cites stays until that item closes, and closing it removes the data. Before removing, list each
+entry against the code that reads the folder and the open notes that cite it, and remove only what
+neither needs. Eugene, apodict 2026-11-17, after a full disk truncated a store mid-write (869 GB of
+leaked Docker volumes, beside 117 GB of finished arcs' data under `~/.cache/apodict`): _"make sure
+we clean up properly when we don't need anything created temporarily."_
+([[projects/agent-workflow/feedback]] § What a run keeps outside the scratchpad goes when nothing
+needs it.)
+
 ## Code
 
 Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
