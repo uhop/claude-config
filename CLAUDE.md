@@ -282,6 +282,14 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
   pick a duration alone, since an unmeasured "N minutes" is a question for him (tape-six 2026-10-22;
   reflect 2026-10-22 M2; the stall clause: [[projects/vault-storage/feedback]] § A stall is a
   regular occurrence, reflect 2026-10-27).
+- **No call outside the database runs inside a database transaction.** An object store's request, a
+  fetch, or another process's answer comes before the transaction or after it, never while it holds
+  a connection or a lock. A write that must agree with the database coordinates through short
+  transactions around its outside call: opportunistically where it can, updating its row conditioned
+  on what it read and retrying when the row changed, or, where writers must take turns, through a
+  short claim recorded in the database. Eugene, vault-storage 2026-11-17: _"I would suggest no
+  non-DB asynchronous ops in transactions, we should use opportunistic writes/updates whenever
+  possible"_, then _"Use the short claim"_ for the data files' writes (vault-storage D772, D773).
 - **A periodic job never overlaps itself.** A tick that finds the last run unfinished skips, and an
   on-demand run of the same job takes the same claim and is refused while one runs. Eugene,
   vault-storage 2026-11-12: _"if an hourly scan was not finished, we should not start another one. I
