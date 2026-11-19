@@ -49,8 +49,10 @@ Per repository, all read-only through `gh api`:
   stands in with its runs on its final commit, and `ci.pull_request` names it (`number`,
   `merged_at`): a repository that tests pull requests alone (vault-storage since its D169) has no
   run of its own on the branch. A commit's runs read as one: each workflow's newest run counts,
-  and one that did not succeed wins, so a passing style check never hides failing tests. A
-  repository with the feature turned off reports `unavailable`, not an error.
+  and one that did not succeed wins, so a passing style check never hides failing tests. With no
+  run found, `ci` is null: a repository with no active `.github/workflows/` file has no CI, while
+  one with such a file records a partial error (`where: ci`, naming the files), since the reader
+  missed its runs. A repository with the feature turned off reports `unavailable`, not an error.
 
 - **Packages** (approved 2026-09-14) — every package the npm account publishes, found with the
   registry's maintainer search and mapped to a project through its `repository` URL (a
