@@ -32,7 +32,12 @@ import {spawnSync} from 'node:child_process';
 import {dirname, join} from 'node:path';
 import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
-import {correlateSession, releaseClusters} from '../process-review/git-correlate.mjs';
+import {
+  correlateSession,
+  projectDirForRepo,
+  releaseClusters,
+  repositoryReleases
+} from '../process-review/git-correlate.mjs';
 import {
   answerOf,
   asHumanRow,
@@ -827,6 +832,17 @@ for (const t of transcripts) {
       ...(!r.recorded && {unrecorded: true})
     });
   }
+}
+
+try {
+  for (const r of repositoryReleases(
+    sessionGit.map(g => g.repo),
+    windowStartMs,
+    scanMs
+  ))
+    windowReleases.push({...r, project: projectDirForRepo(r.repo)});
+} catch {
+  // correlation is enrichment; a broken repo must not fail the scan
 }
 
 for (const cluster of releaseClusters(windowReleases)) {

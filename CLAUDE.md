@@ -103,14 +103,15 @@ at different levels of abstraction. So the report **opens with the unit's name**
 was announced under, and one sentence of what it does; the per-file detail follows. **An opaque
 label is not a name** — "Arc 8b", "cluster 4", "D193" carry nothing on their own, so the sentence is
 what does the work and is never dropped as redundant. The report **ends with a pasteable git
-subject** in its own fenced block, one per repository when the stop spans several, each labeled with
-its repository on the line above its block, never inside it (the block is what he pastes; reflect
-2026-11-11, M2: 34 subjects carried `apodict:` in the fence, and he stripped every one): past-tense
-verb first, sentence case, a closing period, **50 characters or fewer and never past 72** (git's
-subject convention), and **no body** — _"I usually use just a title. For the rest --- read the
-diff."_ The name serves the review, the subject serves the commit, and the review is why the rule
-exists. Naming the unit is not offering to commit; the verb gate above is untouched. (Shape:
-[[topics/commit-message-cliff-notes]]; boundary: [[topics/agent-stops-at-staged-diff]].)
+subject** in its own untagged fenced block (his terminal colors an untagged fence and renders a
+`text` one plain; reflect 2026-11-19, P4), one per repository when the stop spans several, each
+labeled with its repository on the line above its block, never inside it (the block is what he
+pastes; reflect 2026-11-11, M2: 34 subjects carried `apodict:` in the fence, and he stripped every
+one): past-tense verb first, sentence case, a closing period, **50 characters or fewer and never
+past 72** (git's subject convention), and **no body** — _"I usually use just a title. For the rest
+--- read the diff."_ The name serves the review, the subject serves the commit, and the review is
+why the rule exists. Naming the unit is not offering to commit; the verb gate above is untouched.
+(Shape: [[topics/commit-message-cliff-notes]]; boundary: [[topics/agent-stops-at-staged-diff]].)
 
 Pushed history is immutable: no `--amend`, `rebase`, force-push, or moving published tags. Fix
 forward with a new commit.
@@ -390,6 +391,12 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
   compares only with runs under the same machine, cores, and load, and quoted for any other it is a
   prediction until measured there; state the distribution-free claim (dominance) when one exists,
   and a degraded run never overturns a clean one.
+- **A test asserts behavior; a resource reading is a test only where it was shown consistent.** Peak
+  memory or a timing can differ by platform, so a suite asserts one only on the platforms where it
+  was measured to agree, and elsewhere it is a measurement. Eugene, node-re2 2026-11-18: _"I suggest
+  to test correctness, not memory reading that could be different on different platforms --- unless
+  they are consistent."_ A peak-memory test measured on Linux had failed on macOS (reflect
+  2026-11-19, M2).
 - **A cost that grows faster than its input is scheduled for removal once it is measured.** "No real
   input is slow from it yet" is no reason to wait: the first real input to meet a quadratic is a
   user's session. Measure growth on generated inputs at doubling sizes, since one file shows a
@@ -657,6 +664,13 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/prefere
   playbook he runs (`playbash-daily`, `playbash-weekly`) or fires from the event that needs it; no
   cron entries, no scheduled routines ([[projects/agent-workflow/feedback]] § Collections run by
   hand or on an event, never on a schedule).
+- **A command he runs by hand gets a script for each form, found by Tab.** A flag he would have to
+  remember becomes its own short script beside the general one, as `update-pool.sh` and
+  `update-export.sh` call `update-host.sh --pool` and `--export`. Eugene, vault-storage 2026-11-18:
+  _"so I don't need to remember arguments, just hit Tab and select"_; 2026-11-17: _"In general I
+  don't like long commands … The longer text the more opportunities for typos."_
+  ([[projects/vault-storage/feedback]] § A command Eugene runs gets a script named for each form,
+  found by Tab.)
 - **No keys in repositories, public ones included.** An SSH public key, a deploy key, a token, or a
   certificate lives in a parameter or secret store (AWS Parameter Store, GitHub's settings) or on
   the machine; the code reads it from there and the repository names only where. **Never commit a
@@ -760,6 +774,10 @@ and answers no question it left out: do the step, restate the question at the ne
 both before a pass over many notes or projects. A design-change question at the top of a reply also
 goes among the numbered questions at its end ([[projects/agent-workflow/feedback]] § A reply answers
 only what it names).
+
+**A question range runs from its first number to its last.** "Q452-5" is Q452 to Q455, the second
+number shortened to the digits that change. Eugene, vault-storage 2026-11-17: _""Q739-42" means
+"from Q739 to Q742", and so on."_ (vault-storage D766; reflect 2026-11-19, M1).
 
 ## Cross-repo work
 
@@ -1005,9 +1023,15 @@ that says so back once (D85; the 2026-11-11 reflect report, P1).
 command run on several hosts, and wherever a clean check is offered as proof of a class, name what
 the pilot, the check, or the tests lack that the real run has (a field, a second Unix user, a folder
 shape, another host's shell, a route only the old system served), then cover each or say the first
-real run is its test. (vault-storage 2026-11-02: a queue pilot with no trackers "proved nothing"
-about trackers; the 2026-11-02 report, M2. Widened by the 2026-11-16 report, P1: a key-quoting test
-run on one host of three, a swap test said to close a class, stubs before a real deploy.)
+real run is its test. A platform the session's host lacks may have a host in the fleet
+(`~/.config/playbash/inventory.json` groups the hosts by OS): ask him, case by case, whether the
+check runs there, and with his yes read that checkout's state before touching it. Eugene,
+2026-11-19: _"It is better to decide on case by case basis."_ (vault-storage 2026-11-02: a queue
+pilot with no trackers "proved nothing" about trackers; the 2026-11-02 report, M2. Widened by the
+2026-11-16 report, P1: a key-quoting test run on one host of three, a swap test said to close a
+class, stubs before a real deploy. The platform: node-re2 2026-11-18, a memory test measured on
+Linux failed on macOS, and the item waited "until someone measures on a Mac" before Eugene named the
+fleet's; the 2026-11-19 report, P1.)
 
 **Disclosure is not permission — audit the reason before writing the omission down.** A well-formed
 _Deliberately not done_ entry makes an omission visible; it does not make it right, and the rules

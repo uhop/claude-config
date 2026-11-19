@@ -118,10 +118,14 @@ export const attributeCommits = (commits, turns) => {
 
 const NOT_RELEASED = /(^|\/)(node_modules|fixtures|__fixtures__|tests?)\//;
 
+// A Claude Code plugin is versioned in its manifest, never on npm, and tagged naked as
+// program-clerk does (reflect 2026-11-19, P5).
+const MANIFEST = /(^|\/)(package\.json|\.claude-plugin\/plugin\.json)$/;
+
 export const packagesOf = repo =>
-  git(repo, 'ls-files', '--', '*package.json')
+  git(repo, 'ls-files', '--', '*package.json', '*.claude-plugin/plugin.json')
     .split(/\r?\n/)
-    .filter(path => /(^|\/)package\.json$/.test(path) && !NOT_RELEASED.test(path))
+    .filter(path => MANIFEST.test(path) && !NOT_RELEASED.test(path))
     .flatMap(path => {
       let pkg;
       try {
@@ -130,8 +134,9 @@ export const packagesOf = repo =>
         return [];
       }
       if (typeof pkg?.name !== 'string') return [];
-      const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
-      return [{path, dir, name: pkg.name, private: pkg.private === true}];
+      const plugin = path.endsWith('plugin.json');
+      const dir = plugin || !path.includes('/') ? '' : path.slice(0, path.lastIndexOf('/'));
+      return [{path, dir, name: pkg.name, private: plugin || pkg.private === true}];
     });
 
 const npmCache = new Map();
@@ -259,6 +264,17 @@ export const releasesInWindow = (repo, sinceMs, untilMs, {npmTimes = npmPublishT
     .sort((a, b) => a.ts - b.ts);
   return {releases, npm};
 };
+
+// The whole window per repository: program-clerk's 0.2.0 and 0.3.0 were made from vault-storage
+// sessions, outside its own (reflect 2026-11-19, P5).
+export const repositoryReleases = (repos, sinceMs, untilMs, opts = {}) =>
+  [...new Set(repos.filter(Boolean))].flatMap(repo =>
+    (releasesInWindow(repo, sinceMs, untilMs, opts)?.releases ?? []).map(r => ({
+      ...r,
+      repo,
+      session_id: null
+    }))
+  );
 
 // More than one release of a package inside a single session. Eugene's rule:
 // possible, but it should be an exception — a second same-session release

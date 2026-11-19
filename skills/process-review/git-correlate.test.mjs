@@ -18,7 +18,8 @@ import {
   correlateSession,
   projectDirForRepo,
   isVersionBump,
-  releaseClusters
+  releaseClusters,
+  repositoryReleases
 } from './git-correlate.mjs';
 
 const T0 = Date.parse('2026-10-06T20:00:00Z');
@@ -251,6 +252,63 @@ const release = (version, ts, session_id) => ({
   session_id,
   tag: version
 });
+
+// program-clerk's shape (2026-11-17): a Claude Code plugin versioned in its manifest, tagged naked,
+// with a root package.json that carries no version.
+const PA = Date.parse('2026-11-17T07:00:00Z');
+const PB = Date.parse('2026-11-18T00:18:00Z');
+
+const plugin = repo => {
+  const dir = join(repo, 'plugins', 'fixture', '.claude-plugin');
+  mkdirSync(dir, {recursive: true});
+  writeJson(join(repo, 'package.json'), {name: 'fixture-marketplace', private: true});
+  writeJson(join(dir, 'plugin.json'), {name: 'fixture', version: '0.1.0'});
+  git(repo, D0, 'add', '.');
+  git(repo, D0, 'commit', '-q', '-m', 'Built the plugin.');
+  for (const [version, ts] of [
+    ['0.2.0', PA],
+    ['0.3.0', PB]
+  ]) {
+    writeJson(join(dir, 'plugin.json'), {name: 'fixture', version});
+    git(repo, ts, 'commit', '-q', '-am', `New version: ${version}.`);
+    git(repo, ts, 'tag', version);
+  }
+};
+
+test("a plugin's manifest releases by its version bumps, tagged naked", () =>
+  withRepo(plugin, repo => {
+    const found = correlateSession(projectDirForRepo(repo), PA - HOUR, PB + HOUR, [], {
+      npmTimes: offline
+    });
+    assert.deepEqual(
+      found.releases.map(r => [r.package, r.version, r.tag]),
+      [
+        ['fixture', '0.2.0', '0.2.0'],
+        ['fixture', '0.3.0', '0.3.0']
+      ]
+    );
+    assert.equal(found.multi_release.length, 1);
+  }));
+
+test("a release no session of its repository saw still joins the window's clusters", () =>
+  withRepo(library, repo => {
+    const seen = correlateSession(projectDirForRepo(repo), RA - HOUR, RA + HOUR, [], {
+      npmTimes: libraryRegistry
+    }).releases.map(r => ({...r, repo, session_id: 'a'}));
+    const whole = repositoryReleases([repo, repo, null], D0, RC + HOUR, {
+      npmTimes: libraryRegistry
+    });
+    assert.ok(whole.every(r => r.session_id === null && r.repo === repo));
+    const [cluster] = releaseClusters([...seen, ...whole]);
+    assert.deepEqual(
+      cluster.releases.map(r => [r.version, r.session_id]),
+      [
+        ['1.17.0', 'a'],
+        ['1.18.0', null],
+        ['1.18.1', null]
+      ]
+    );
+  }));
 
 test('a cluster needs two releases within a day, each counted once', () => {
   assert.deepEqual(
