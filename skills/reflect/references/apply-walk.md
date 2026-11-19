@@ -22,7 +22,10 @@ and go on to the next proposal without waiting. These files are live on this hos
 symlinks, so the edit takes effect before his review: when he objects, undo it, and when he wants to
 discuss it first, undo it and park it as "Hang it" does. A proposal with any vault write, a long
 form in a feedback note included, takes the question below, since that part never reaches a diff he
-reads.
+reads. So does a proposal that widens what an agent may do (a host it may use, a permission, a gate
+loosened), even when it writes only to claude-config: the edit is live before his review, as a
+handoff that loosens a gate waits for his word. (Reflect 2026-11-19: P1, applied with no question,
+let any agent run a check on his Mac; he ruled _"It is better to decide on case by case basis."_)
 
 c. **Every other proposal gets the question**, with the proposed text in the option's `preview` so
 the diff is read where the choice is made:
