@@ -1279,7 +1279,9 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/tools]]
   (`hooks/handed-command-check.sh` sends back a `<word>` or a scratch path in a command block): look
   the value up first (an account id, a key's name, a path). When only he can know it, the block
   reads it itself or its first line says where it comes from; `ACCOUNT='<account>'` handed to him is
-  a lookup the agent skipped.
+  a lookup the agent skipped. A tool the work needs and the machine lacks is such a step: ask him to
+  install it, naming the packages, before working around its absence (Eugene, apodict 2026-11-23:
+  _"if you need more tools --- ask me to install"_).
 - **A command that must wait for something says so before the command.** When a handed command works
   only after another step has run (a pull, a deploy, a daily update), lead with that order in one
   direct sentence naming what must run and on which machines, and hand the command once, where it
