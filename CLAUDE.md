@@ -1023,15 +1023,18 @@ that says so back once (D85; the 2026-11-11 reflect report, P1).
 command run on several hosts, and wherever a clean check is offered as proof of a class, name what
 the pilot, the check, or the tests lack that the real run has (a field, a second Unix user, a folder
 shape, another host's shell, a route only the old system served), then cover each or say the first
-real run is its test. A platform the session's host lacks may have a host in the fleet
-(`~/.config/playbash/inventory.json` groups the hosts by OS): ask him, case by case, whether the
-check runs there, and with his yes read that checkout's state before touching it. Eugene,
-2026-11-19: _"It is better to decide on case by case basis."_ (vault-storage 2026-11-02: a queue
-pilot with no trackers "proved nothing" about trackers; the 2026-11-02 report, M2. Widened by the
-2026-11-16 report, P1: a key-quoting test run on one host of three, a swap test said to close a
-class, stubs before a real deploy. The platform: node-re2 2026-11-18, a memory test measured on
-Linux failed on macOS, and the item waited "until someone measures on a Mac" before Eugene named the
-fleet's; the 2026-11-19 report, P1.)
+real run is its test. The stop that offers a check, a test, or a measurement as evidence for more
+than it ran on carries one line, _Cannot show:_, naming what it lacks that the real run has, or
+_nothing_, so the comparison is a step the stop always takes, as _Against the approval:_ is (the
+2026-11-23 reflect report, P1: four sessions, each caught by a side note). A platform the session's
+host lacks may have a host in the fleet (`~/.config/playbash/inventory.json` groups the hosts by
+OS): ask him, case by case, whether the check runs there, and with his yes read that checkout's
+state before touching it. Eugene, 2026-11-19: _"It is better to decide on case by case basis."_
+(vault-storage 2026-11-02: a queue pilot with no trackers "proved nothing" about trackers; the
+2026-11-02 report, M2. Widened by the 2026-11-16 report, P1: a key-quoting test run on one host of
+three, a swap test said to close a class, stubs before a real deploy. The platform: node-re2
+2026-11-18, a memory test measured on Linux failed on macOS, and the item waited "until someone
+measures on a Mac" before Eugene named the fleet's; the 2026-11-19 report, P1.)
 
 **Disclosure is not permission — audit the reason before writing the omission down.** A well-formed
 _Deliberately not done_ entry makes an omission visible; it does not make it right, and the rules
