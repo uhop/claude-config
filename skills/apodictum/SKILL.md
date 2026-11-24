@@ -14,9 +14,9 @@ description: >-
 # apodictum — fleet front end
 
 The oracle lives in the private checkout `~/Open/apodict` (repo
-`uhop/apodict`). If the checkout is missing on this machine, report it and
-stop — Eugene distributes clones; `gh repo clone uhop/apodict ~/Open/apodict`
-is the fix he can run or approve.
+`apodictum/ctf`, `uhop/apodict` until 2026-11-24). If the checkout is missing
+on this machine, report it and stop — Eugene distributes clones;
+`gh repo clone apodictum/ctf ~/Open/apodict` is the fix he can run or approve.
 
 Everything the oracle answers is advisory: the final gate for effectful code
 is the target project's test suite plus human review. Never auto-apply a
@@ -209,7 +209,8 @@ asked by hand, and file the note.
   § Cross-repo work rules apply to it. From a session that doesn't hold the
   apodict lease, record into a scratch store (`--store "$WORK/<repo>.json"`)
   so the corpus note can cite the hashes, then file a `run-check` handoff to
-  `repo:github.com/uhop/apodict` with `batch.json` attached: the owner runs
+  `repo:github.com/apodictum/ctf` (project `apodict`) with `batch.json`
+  attached: the owner runs
   the same `ledger.js record` into the real store, and the records come out
   with the same hashes. The artifact route takes only `ext: patch` or
   `bundle`, so attach the batch as `handoff_put_artifact`'s default

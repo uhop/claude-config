@@ -160,13 +160,13 @@
       "**Organization**: None configured",
       "**Primary use of Claude Code**: software development",
       "**Cloud provider(s)**: None configured",
-      "**Repository visibility**: private (uhop/apodict — confirmed via gh)",
+      "**Repository visibility**: private (apodictum/ctf, formerly uhop/apodict — confirmed via gh)",
       "**Internal sharing / snippet hosting**: None configured — treat public paste/gist services as outside the trust boundary",
       "**Secrets management**: None configured",
       "**Default / protected branches**: Default branch main; no classic branch protection listed (rulesets not queryable here — do not assume unprotected)",
       "**CI/CD deploy targets**: None configured",
       "**Network posture**: None configured",
-      "**Source control**: The trusted repo (uhop/apodict) and its origin remote (github.com:uhop/apodict.git) only — no additional orgs configured",
+      "**Source control**: The trusted repo (apodictum/ctf, formerly uhop/apodict, which GitHub redirects) and its origin remote (github.com:apodictum/ctf.git, or github.com:uhop/apodict.git in a clone not yet switched) only — no additional orgs configured",
       "**Trusted internal domains**: None configured",
       "**Trusted cloud buckets**: None configured",
       "**Key internal services**: None configured",
@@ -178,7 +178,7 @@
       "**Protected IaC scopes**: IAM, RBAC, networking, quota, and node-pool resources; anything whose name or tag carries `prod` or `production` as a whole word or name segment",
       "### User-specific",
       "**Primary use of Claude Code**: software development (apodict — deterministic reasoning oracle POC)",
-      "**Trusted repo**: /home/eugene/Open/apodict (uhop/apodict, private) and its origin remote github.com:uhop/apodict.git — confidential material is fine here given private visibility, but secrets/personal/regulated data are never cleared into it by visibility alone",
+      "**Trusted repo**: /home/eugene/Open/apodict (apodictum/ctf, formerly uhop/apodict, private) and its origin remote github.com:apodictum/ctf.git (github.com:uhop/apodict.git in a clone not yet switched) — confidential material is fine here given private visibility, but secrets/personal/regulated data are never cleared into it by visibility alone",
       "**Org-specific CLIs**: None configured — pc-curl (formerly vault-curl) and npx seen frequently in this project's transcripts but are personal tooling, not org-specific"
     ]
   }
