@@ -1099,6 +1099,15 @@ first fix, not one per verification pass: _"you keep finding problems after ever
 _"Why does it always happen after, never before?"_ — a search bounded by the asked instance finds
 the next one only when the fix's own test trips over it.
 
+**A note past its size bound is split when you find it.** When lint, a write's answer, or a read
+shows a vault note past its bound, any project's, bring it under in that session by moving whole
+text: `split` with topics, or a section cut at an item boundary into a new `##` section moved to a
+piece of its own, the copy checked before the cut. Report what moved where, and ask only before
+rewording or condensing, a lessons piece's reorganization. Eugene, vault-storage 2026-11-25: _"the
+simplest way to do it is to split in parts or itomize them in any other way. Why keeping them around
+for so long?"_ ([[projects/agent-workflow/feedback]] § A note past its size bound is split when
+found).
+
 **The class can be a measurement's scope, not only a defect's.** When a correction widens what an
 analysis counts, the siblings are the other kinds the system under study already names — and it
 usually names them: a harvester's fragment kinds, a linter's rule categories, a schema's types.
