@@ -664,6 +664,13 @@ Where these rules came from: [[projects/agent-workflow/claude-md-origins/prefere
   playbook he runs (`playbash-daily`, `playbash-weekly`) or fires from the event that needs it; no
   cron entries, no scheduled routines ([[projects/agent-workflow/feedback]] § Collections run by
   hand or on an event, never on a schedule).
+- **Routine monitoring and management happen in one place.** A new surface for an operation done
+  routinely (watching a service, an account's state, notices, incidents, suspension) goes where the
+  project's other routine operations already live, or they move together; a second place is for the
+  exceptional and says why. Eugene, vault-storage 2026-11-23: _"I don't like when we have multiple
+  different places to go for normal operations. It is OK for something exceptional, but for routine
+  monitoring and management I would prefer a single place."_ ([[projects/agent-workflow/feedback]] §
+  Routine monitoring and management happen in one place.)
 - **A command he runs by hand gets a script for each form, found by Tab.** A flag he would have to
   remember becomes its own short script beside the general one, as `update-pool.sh` and
   `update-export.sh` call `update-host.sh --pool` and `--export`. Eugene, vault-storage 2026-11-18:
