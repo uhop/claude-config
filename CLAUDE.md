@@ -44,7 +44,7 @@ makes a commit (`am`, `merge`, `cherry-pick`, `revert`, `rebase`, a `pull` that 
 dotfiles' `pre-push` hook), and `npm publish` needs interactive 2FA.
 
 **"Published" is a fact, and the registry lags it.** When he says a version is published, record it
-as published, even while `npm view`, a registry read, or `check-drift.sh` still shows the previous
+as published, even while `npm view`, a registry read, or `/pc check` still shows the previous
 version for some minutes.
 
 Read-only and local-only `git`, `gh`, and `aws` run freely; outward-facing or irrecoverable
@@ -59,7 +59,7 @@ stated once is a claim about current state: re-check it before restating it.
 
 Git is the system of record; don't keep a prose ledger of it. Run `git status` or `git log` when a
 decision needs the state, use the answer, and discard it; never carry "N ahead/behind" across turns.
-A `/vault wrap` log written once from `git log` is fine.
+A `/wrap` log written once from `git log` is fine.
 
 **Read local git before stating a unit's commit state.** At a work stop and before the next arc,
 `git status --short` and `git log --oneline -3` say whether it is committed; never wait on his word.
@@ -80,9 +80,9 @@ forward with a new commit.
 **A push is not a closure; only he ends a discussion.** Wraps and logs record open threads as open,
 and a wrap he asks for runs even when "nothing is left".
 
-**A wrap ends the session.** After `/vault wrap`, a reply is a few lines: anything that arrives
-afterward is filed to the project's queue and said in one line, no new work starts, and no reply
-ends with a question; an open question goes into the log for the next session.
+**A wrap ends the session.** After `/wrap`, a reply is a few lines: anything that arrives afterward
+is filed to the project's queue and said in one line, no new work starts, and no reply ends with a
+question; an open question goes into the log for the next session.
 
 ## Shell
 
@@ -121,8 +121,8 @@ Don't hardcode `/tmp/<name>` for scratch. Run `WORK=$(mktemp -d)` once and use `
 the printed **literal** path across Bash calls, or keep the whole read-modify-write in one call.
 Absolute paths only. **Never `cd` into `$WORK`**; use a subshell, `(cd "$WORK" && …)`. Clean up with
 `rm -rf "$WORK"` **chained with `&&`** after the last step; a failed cleanup never fails the task.
-Spell a removal under it `"${WORK:?}"/name`. Reference: `skills/vault-check-drift/check-drift.sh`.
-Full: [[topics/scratch-file-mktemp-not-hardcoded-tmp]].
+Spell a removal under it `"${WORK:?}"/name`. Reference: `hooks/test/code-rules-gate.test.sh`. Full:
+[[topics/scratch-file-mktemp-not-hardcoded-tmp]].
 
 **Every agent gets its own temp path — sub-agents included.** Concurrent agents share the session
 scratchpad. Use a fresh `mktemp -d`, or the scratchpad plus a unique subfolder
@@ -792,8 +792,8 @@ whether those reasons still hold; mark each historical claim checked or recalled
   `run_in_background: true` for long work (servers, watchers, multi-minute builds).
 - **A fallible parallel Bash sibling cancels the batch.** One parallel call that exits non-zero or
   is denied cancels its in-flight siblings. Run a command that may return non-zero or trip a gate
-  (`check-drift.sh`, `git describe`, compound `$(…)` snippets) in its own call, or guard it with
-  `|| true`. **Bare `git tag` is denied even as a read**; list tags with
+  (`git describe`, a status probe that exits 1 on a finding, compound `$(…)` snippets) in its own
+  call, or guard it with `|| true`. **Bare `git tag` is denied even as a read**; list tags with
   `git for-each-ref refs/tags --format='%(refname:short) %(creatordate:short)'`.
 - **Kill hung verifications; don't wait them out.** A check running ~10× past its last green
   duration is hung: stop it, inspect (ports, processes, partial output), re-run the failing piece

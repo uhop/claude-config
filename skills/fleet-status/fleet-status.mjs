@@ -64,15 +64,14 @@
 
 import {execFile, execFileSync} from 'node:child_process';
 import {existsSync, readFileSync, writeFileSync} from 'node:fs';
-import path from 'node:path';
 import process from 'node:process';
-import {pathToFileURL} from 'node:url';
 import {
   fileItem as fileQueueItem,
   SOURCE_HELP,
   SOURCE_RE,
   trackersOf
 } from '../vault/queue-items.mjs';
+import {pluginModule} from '../vault/program-clerk-plugin.mjs';
 import {projectOf} from '../vault/vault-project.mjs';
 import {vaultSettings} from '../vault/vault-settings.mjs';
 import {vaultFetch as fetchWaiting} from '../vault/vault-fetch.mjs';
@@ -294,20 +293,7 @@ const api = async (route, {method = 'GET', body, contentType} = {}) => {
 // One repository's collection, its diff into events, the brief, and the baseline's and the run's
 // writes are the Program Clerk plugin's, which every fleet host installs (vault-storage D762, D763);
 // this script keeps the fleet's enumeration, the packages, and the stored views.
-// PROGRAM_CLERK_PLUGIN_ROOT: the test seam, a plugin folder in place of the installed one.
-const pluginRoot = () => {
-  if (process.env.PROGRAM_CLERK_PLUGIN_ROOT) return process.env.PROGRAM_CLERK_PLUGIN_ROOT;
-  const listed = run('claude', ['plugin', 'list', '--json']);
-  const plugins = listed.ok ? JSON.parse(listed.out) : [];
-  return plugins.find(p => p.id === 'program-clerk@program-clerk' && p.enabled)?.installPath;
-};
-const collectorPath = path.join(pluginRoot() ?? '', 'scripts', 'lib', 'github.mjs');
-if (!existsSync(collectorPath))
-  fail(
-    2,
-    `the Program Clerk plugin's collector is missing (${collectorPath}): install or update the plugin, \`claude plugin update program-clerk@program-clerk\``
-  );
-const collector = await import(pathToFileURL(collectorPath).href);
+const collector = await pluginModule('lib/github.mjs').catch(err => fail(2, err.message));
 
 // Arrays of scalars on one line: a weekly series or a history point stays one
 // line instead of one line per number. Names, dates, and versions never hold

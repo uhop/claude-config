@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // A queue's rule that outlived the one-note format: an item whose title says the work is finished
-// is still open to every list until it is archived. vault-lint's QUEUE category and the session-start
-// brief both ask it, the brief through its stdin: a JSON array of titles in, of findings out.
+// is still open to every list until it is archived. The session-start brief (hooks/fleet-brief.sh)
+// asks it through its stdin: a JSON array of titles in, of findings out. The plugin's `/pc lint`
+// keeps its own copy, in its `scripts/lib/hygiene.mjs`.
 // Filed 2026-08-18 from the fleet audit that found ~95 stranded items across five projects;
 // calibrated 2026-09-06 on all 53 queues.
 

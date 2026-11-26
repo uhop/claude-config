@@ -225,7 +225,7 @@ Read all three to dedupe; write only to vault + claude-config.
 
 ## Cadence and limits
 
-Run it at the start of a fresh session, about weekly, on each machine you work on, and never chained after `/vault wrap`. Why, and what the scanner cannot see: `references/cadence-and-limits.md`.
+Run it at the start of a fresh session, about weekly, on each machine you work on, and never chained after `/wrap`. Why, and what the scanner cannot see: `references/cadence-and-limits.md`.
 
 ## When NOT to run
 

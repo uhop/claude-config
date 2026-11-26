@@ -25,9 +25,8 @@ claim_token, ttl_seconds}` when a run outlasts its TTL, and release with
 `POST /leases/release` and `{holder, claim_token}` when the pass ends. The
 raw inbox's `ready` list and lint's `unenriched_records` already leave
 leased notes out, so read a worklist before you lease, never after.
-`enrich-batch.mjs`, `compact-batch.mjs`, and `reorg-batch.mjs` lease for you;
-`/vault ingest` and the duplicate merge lease by hand (their procedures say
-where). Until the adapter's release after 11e-5, the batch form is REST
+The plugin's `/sweep` scripts and `reorg-batch.mjs` lease for you; `/ingest`
+and the duplicate merge lease by hand (their procedures say where). Until the adapter's release after 11e-5, the batch form is REST
 only: `lease_claim` takes one `resource`.
 
 **A 409 `claimed_by_other` on a move, supersede, or delete** means another
@@ -98,10 +97,7 @@ vault-curl /sections/<record_id>/fm -X PATCH -H 'Content-Type: application/json'
 
 One op per array member; `add` is idempotent on an existing member. The response
 echoes the resulting array, so the effect is visible without a re-read. Get the
-`record_id` from `list_pieces({file_prefix: "<path>"})`. This is what
-`/vault-propose-related` applies its accepted candidates with — see
-`related-batch.mjs` (a script, so it stays on curl). Note the id is a *record*
-id, not a path.
+`record_id` from `list_pieces({file_prefix: "<path>"})`. Note the id is a *record* id, not a path.
 
 **Conditional writes from an MCP read** work as of adapter 0.1.0:
 `read_file({path, include_etag: true})` returns `{path, etag, composed,
@@ -408,6 +404,6 @@ leases: a single-agent session that owns its cwd repo never files one.
 - **Discussion** rides `handoff_note({id, author, text})`, append-only
   and attached to the work; refused once the handoff is done/rejected.
 - **Never auto-resolve someone else's handoff.** Handoffs are deliberately
-  not a suggestion kind — `/vault sweep` cannot see or drain them, and no
+  not a suggestion kind — `/sweep` cannot see or drain them, and no
   `--auto` pass should ever settle one. A cross-agent work request is
   human-or-owner judgment.

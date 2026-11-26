@@ -16,11 +16,6 @@
     "defaultMode": "auto"
   },
   "model": "opus[1m]",
-  "skillOverrides": {
-    "vault-search": "off",
-    "vault-similar": "off",
-    "vault-graph": "off"
-  },
   "hooks": {
     "PreToolUse": [
       {

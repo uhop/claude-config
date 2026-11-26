@@ -145,8 +145,7 @@ the user turn that immediately preceded it — so a `release_cluster` reads:
 
 That is the difference between "you released twice" and "here is the reasoning,
 judge it". Backed by the shared correlator `git-correlate.mjs`, which this skill
-owns and `/reflect` imports (same shape as `vault/vault-triage.mjs` serving the
-`vault-review-*` skills).
+owns and `/reflect` imports.
 
 **Coverage is deliberately sparse and the flag is off by default.** Transcripts
 are per-machine and shallow — on this fleet they reach back about a month, while

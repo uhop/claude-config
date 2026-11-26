@@ -1,7 +1,6 @@
 // Shared correlator between Claude Code transcripts and git history.
 //
-// Owned by /process-review, imported by /reflect — the same ownership shape as
-// vault/vault-triage.mjs serving the vault-review-* skills.
+// Owned by /process-review, imported by /reflect.
 //
 // DELIBERATELY carries no `import.meta.main` guard. That guard exists to stop a
 // CLI from performing its whole job when someone imports it to inspect it; this

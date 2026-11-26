@@ -10,9 +10,16 @@ for the session we want to start."* (Eugene, 2026-10-26.)
 - A session with no log ended without a wrap. Write its log, from
   its record's commits and notes, the drift check, the queue and
   decisions as they stand, and, on the host that ran it, the transcript
-  (`~/.claude/projects/<cwd with / as ->/<session id>.jsonl`), as
-  `/vault log` writes one: the body file, then a `log` line whose
-  `holder` and `ended` are the session's, as the digest names them, so it
+  (`~/.claude/projects/<cwd with / as ->/<session id>.jsonl`), by hand,
+  since the plugin's `wrap.mjs` logs only the session that runs it. Write
+  the body first, with `data_write` (`op: "replace"`), to
+  `projects/<name>/data/sessions/logs/YYYY-MM-DD-<session prefix>-<slug>.markdown`,
+  ending with the `## Open` and `## Next` a `/wrap` log ends with, so a log
+  cut short leaves a body no line names. Then append one line, built with
+  `jq -cn` and ending with a newline, with `data_write` (`op: "append"`):
+  `{"kind": "log", "at": "<now>", "holder": "<its holder>", "ended": "<its end>", "title": "<name>: <what it did> (<YYYY-MM-DD>)", "summary": "<two to four sentences: what was done and what is open>", "body": "<the body's path>"}`,
+  `at` from the machine's clock (`date -u +%Y-%m-%dT%H:%M:%SZ`), and
+  `holder` and `ended` the session's as the digest names them, so it
   pairs with that end alone, a resumed session's other ends included, and
   is not written twice. Append the line to the session's month file
   (`projects/<name>/data/sessions/<YYYY-MM>.jsonl`), or, when its `file` in
@@ -64,8 +71,8 @@ the notes and queue items that mention it (vault-storage D112).
 `queue-items.mjs trackers <project>` reads the same view outside the
 resume flow.
 
-`resume_bundle` still answers the raw blocks, for `/vault learn` and for a
-reader that needs them; its tool description names each one. Before relaying a
+`resume_bundle` still answers the raw blocks, for `/wrap`'s step 1 and for
+a reader that needs them; its tool description names each one. Before relaying a
 summary it marks stale, read the note, one over 64 KB (its `body_bytes`) by the
 sections you need, and restate the summary in your next write to it.
 `project_changes` answers what changed since any time or commit.

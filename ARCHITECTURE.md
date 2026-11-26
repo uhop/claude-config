@@ -11,7 +11,7 @@ the installer.
 CLAUDE.md             # Global rules, loaded by every session on every host
 settings.json         # Harness settings: hooks, permissions, model, plugins
 install.mjs           # Links the entries below into ~/.claude/; dry-run by default
-agents/               # Sub-agent types (vault-sweep.md, design-reader.md)
+agents/               # Sub-agent types (design-reader.md)
 commands/             # Slash commands kept as plain prompts
 hooks/                # Scripts the harness runs on tool and session events
 ├── lib/              # What the hooks share: the shell command parser, the lease token
@@ -48,18 +48,21 @@ silent and allows the call. `lib/shell_segments.py` is the parser the gates shar
 A skill's `SKILL.md` carries the judgment and its scripts carry the mechanical steps, each printing
 a compact digest. The larger families:
 
-- **The vault:** `vault` and the `vault-*` skills drive the knowledge base over its REST API.
+- **The vault:** the Program Clerk plugin's commands (`/pickup`, `/wrap`, `/sweep`, `/pc`) replaced
+  the `vault-*` skills (vault-storage D763 to D768); `vault` keeps the fleet's writing rules, and
+  `vault-reorg` curates a note of lessons. Their scripts call the REST API.
   `skills/vault/vault-settings.mjs` resolves the server's settings, every script calls the API
   through `skills/vault/vault-fetch.mjs`, which waits out a 429 that names its `Retry-After` for
   five minutes at most and an outage for 90 s from its first failure, whose time a file shares so
   every call that meets the outage waits until then and tries once after (questions 430 and 431)
   (vault-storage D751: a connection never made or a 503 that applied nothing for any method, a 502,
-  503, or 504 for a read), and `skills/vault/queue-items.mjs` owns a queue kept as one note per
-  item. The hooks call `curl` through `hooks/lib/vault-retry.sh`, with their one- or two-second caps
-  and two more tries after 1 and 2 s by the same rules, and fail open; the lease gate says a lookup
-  the server refused. An agent reaches the same server through MCP tools; a script cannot call
-  those. A `/vault` command loads the skill's whole `SKILL.md` into context, so the vault's holds
-  the rules a session needs most and a table, and `references/` holds the rest, read on demand.
+  503, or 504 for a read), and `skills/vault/queue-items.mjs` is a shim over the plugin's queue,
+  which `skills/vault/program-clerk-plugin.mjs` finds with `claude plugin list --json`. The hooks
+  call `curl` through `hooks/lib/vault-retry.sh`, with their one- or two-second caps and two more
+  tries after 1 and 2 s by the same rules, and fail open; the lease gate says a lookup the server
+  refused. An agent reaches the same server through MCP tools; a script cannot call those. The
+  `vault` skill's `SKILL.md` holds the rules a session needs most and a table, and `references/`
+  holds the rest, read on demand.
 - **Fleet checks:** `fleet-fix`, `fleet-status`, `release-check`, `release-prep`, and
   `ai-docs-update` read and audit the other repositories.
 - **Retrospectives:** `reflect`, `clarify`, `process-review`, and `transcript-profile` read session

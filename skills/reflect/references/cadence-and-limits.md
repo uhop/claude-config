@@ -6,8 +6,8 @@ Why the cadence is what it is, and the scanner's known limits. Step numbers are 
 
 `/reflect` is a **cross-session, per-machine** sweep, not a per-session step — it looks _back_ over
 recent **closed** sessions for patterns in how the collaboration went. That is a different axis from
-`/vault wrap` (which closes _one_ session's content) and unrelated to `/vault sweep` (vault
-hygiene). Two properties fix the timing:
+`/wrap` (which closes _one_ session's content) and unrelated to `/sweep` (vault hygiene). Two
+properties fix the timing:
 
 - **It needs accumulation.** A signal reaches **high** confidence only on recurrence — ≥ 2 sessions
   or a cross-machine match (step 4). Per-session it mostly sees single instances; it is built to
@@ -20,11 +20,11 @@ on disk — then `/clarify` to drain what it filed. The default `--since=last-ru
 window to everything since your last reflect on this box. Rhythm ≈ weekly, or after a cluster of
 substantive sessions — enough closed sessions that patterns emerge.
 
-**Not** chained after `/vault wrap`: wrap runs _inside_ the session it closes, so that session is
-still live and reflect would skip the very work you just wrapped. **Not** after `/vault sweep`:
-orthogonal — reflect's drain path is `projects/agent-workflow/queue.md` + `/clarify`, not the vault
-maintenance queues. And **per-machine** — transcripts are local-only (§ Limitations), so run it on
-each box you work on; a box that never reflects contributes no cross-machine evidence.
+**Not** chained after `/wrap`: wrap runs _inside_ the session it closes, so that session is still
+live and reflect would skip the very work you just wrapped. **Not** after `/sweep`: orthogonal —
+reflect's drain path is `projects/agent-workflow/queue.md` + `/clarify`, not the vault maintenance
+queues. And **per-machine** — transcripts are local-only (§ Limitations), so run it on each box you
+work on; a box that never reflects contributes no cross-machine evidence.
 
 ## Limitations (first iteration)
 

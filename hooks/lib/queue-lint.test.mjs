@@ -1,5 +1,5 @@
 // queue-lint.mjs's rule, pinned on the titles it was calibrated on. Run:
-// node --test skills/vault-lint/queue-lint.test.mjs
+// node --test hooks/lib/queue-lint.test.mjs
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';

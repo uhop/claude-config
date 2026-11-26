@@ -70,7 +70,7 @@ Per repository, all read-only through `gh api`:
   transitive dependent in update order. The account comes from `--npm-user`, else from the
   publisher of a graph package whose manifest points back at its fleet repository.
 
-Not tracked, by ruling: commits and pushes (`git` and `check-drift.sh` cover them), GitHub's
+Not tracked, by ruling: commits and pushes (`git` and `/pc check` cover them), GitHub's
 "Used by" (no REST or GraphQL surface exists, and scraping the page was ruled out), and
 dependents' names (deps.dev returns counts only, and npmjs.com's list needs a spoofed browser
 user agent).
@@ -94,8 +94,8 @@ WORK=$(mktemp -d)
 ```
 
 - `--cwd` resolves the repository from `origin`, and the vault project from `--project`, a
-  `.claude/pc-project` file (or the older `.claude/vault-project`) at the repository root, or the main checkout's directory name — the same order
-  `check-drift.sh` uses. **Safety gate:** a remote that isn't github.com, no remote, or a private
+  `.claude/pc-project` file (or the older `.claude/vault-project`) at the repository root, or the main checkout's directory name — the plugin's order, though
+  the plugin reads no `.claude/vault-project`. **Safety gate:** a remote that isn't github.com, no remote, or a private
   repository the project's `trackers:` does not name (read from the repository metadata; `--fleet`
   applies it at enumeration) writes `{skipped: true, reason}` and exits `0`. Say nothing about it
   in a resume.
@@ -308,8 +308,7 @@ not change. Before that server they were the `## GitHub` and `## Packages` secti
 `projects/<name>/state.md`; the server takes a section into its file at a start, when the file is
 missing or older by `collected_at`, and cuts both from the note. A copy of this script that still
 reads `state.md` finds no baseline there and reads every repository as a first run, so update
-claude-config on a host before collecting from it. `check-drift.sh --update` keeps any such
-section it finds until then.
+claude-config on a host before collecting from it.
 
 Fleet-shared by construction: Eugene works from seven hosts, and a resume on one host makes
 what it saw not-new to the next sweep anywhere. That is the intended meaning of a shared

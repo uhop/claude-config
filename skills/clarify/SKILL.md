@@ -75,7 +75,7 @@ The helper also files: `clarify-queue.mjs file --question="…?" --context=@ctx.
    | Single-project feedback rule | vault `projects/<name>/feedback.md` (append section) |
    | Cross-project rule | claude-config `~/Open/claude-config/CLAUDE.md` (append section) |
    | Workflow improvement (skill / hook / queue item) | vault `projects/agent-workflow/queue.md` Backlog |
-   | Vault topic note | vault `topics/<slug>.md` (new note, born-enriched per `/vault ingest` step 5) |
+   | Vault topic note | vault `topics/<slug>.md` (new note, born-enriched, as `/ingest` step 6 writes one) |
    | Code fix in a real project | that project's vault `queue.md` Backlog |
 
 4. **Archive resolved items** — one helper call per settled item:

@@ -35,6 +35,7 @@ import {spawnSync} from 'node:child_process';
 import process from 'node:process';
 import {vaultSettings} from '../vault/vault-settings.mjs';
 import {vaultFetch} from '../vault/vault-fetch.mjs';
+import {pluginScript} from '../vault/program-clerk-plugin.mjs';
 import {
   CLASSES,
   archivePathOf,
@@ -58,7 +59,6 @@ const SHARD_KB = 110;
 const TOKENS_PER_KB = 3300; // measured 2026-10-27: 2.3M agent tokens over 697 KB of bullets
 const MINUTES_PER_SHARD = 25;
 const ATOMIZED = 'Atomized from `';
-const ENRICH = new URL('../vault-enrich-all/enrich-batch.mjs', import.meta.url).pathname;
 
 const fail = (code, message) => {
   console.error(message);
@@ -423,11 +423,17 @@ const build = () => {
   );
 };
 
-/** Confirms the folder's summary against the composed note, through enrich-batch's refresh. */
+/** Confirms the folder's summary against the composed note, through the plugin's enrich refresh. */
 const confirmFolderSummary = (dir, aboutPath, holder) => {
+  let enrich;
+  try {
+    enrich = pluginScript('sweep/enrich.mjs');
+  } catch (err) {
+    return err.message;
+  }
   writeFileSync(join(dir, 'about.txt'), `${aboutPath}\n`);
   const ws = join(dir, 'about-ws.json');
-  const run = args => spawnSync(process.execPath, [ENRICH, ...args], {encoding: 'utf8'});
+  const run = args => spawnSync(process.execPath, [enrich, ...args], {encoding: 'utf8'});
   const prepared = run([
     'prepare',
     '--refresh',

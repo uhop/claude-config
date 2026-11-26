@@ -20,7 +20,7 @@ in the same row.
 | One `## Heading` section — read it, or replace its content leaving every other byte alone | **`read_section` / `replace_section`** (adapter ≥ 0.7.0; server ≥ 2026-09-06) | `vault-curl '/vault/<path>?section=<heading line>'` + `POST /vault/edit` with `{path, op: "replace-section", heading, body}` |
 | One span — a section by its heading's leading text (a heading cited without its date) or under a parent, one queue item by its bold title, or one table row by its first cell — read whole or cut to its tail or head, or a `replace` whose `from` need be unique only inside it | **`read_span`**, and **`replace`** with `within` (and `count`, the number it asserts), `prefix` on `replace_section` and the item tools (adapter ≥ 0.18.0; server ≥ 2026-10-26, vault-storage 4h) | `vault-curl '/vault/<path>?item=<title>&section=<heading>&tail=<bytes>'` (or `section` with `prefix=true`, or `row`) + `POST /vault/edit` with `{path, op: "replace", from, to, within: {item: "<title>"}}` |
 | A note's tail or head with no span — the newest entries of a rolling note, the last decision's number in a decisions note still whole (§ A split note for one split) | **`read_span`** with only `tail` or `max_bytes` (adapter ≥ 0.19.0; server ≥ 2026-10-28, vault-storage D514): the body, frontmatter left out, no `hash`; a composed folder note is a 409 `composed_view` naming its pieces, since their order is not its newest (D515). Any cut keeps whole lines while they fill half of it and otherwise fills the rest from the line past them | `vault-curl '/vault/<path>?tail=<bytes>'` |
-| An item in a note that is no queue (§ A queue kept one item to a note) — remove it, insert it, or move it between documents with a trail after its title | **`remove_item` / `insert_item` / `move_item`** (adapter ≥ 0.7.0; server ≥ 2026-09-06, D35) | `POST /vault/edit` with `{op: "remove-item" \| "insert-item", …}` + `POST /vault/move-item` |
+| An item in a note that is no queue (§ A queue is the plugin's `queue` skill) — remove it, insert it, or move it between documents with a trail after its title | **`remove_item` / `insert_item` / `move_item`** (adapter ≥ 0.7.0; server ≥ 2026-09-06, D35) | `POST /vault/edit` with `{op: "remove-item" \| "insert-item", …}` + `POST /vault/move-item` |
 | One frontmatter array member (`related:`, `agent.tags_suggested`) | **`patch_fm`** | `PATCH /sections/{record_id}/fm` via `vault-curl` |
 | One `tags:` member — the server refuses `/tags` in an FM patch (400 `protected_field`, since tags are taxonomy-validated) | **`tag_add` / `tag_remove`** (adapter ≥ 0.9.0) | `vault-curl /sections/{record_id}/tags -X POST` with `{"tag": "<tag>"}`, and `vault-curl /sections/{record_id}/tags/<tag> -X DELETE` |
 | The nearest existing tags for proposed names or a draft's text, before minting (§ Note format) | **`tag_nearest`** (adapter ≥ 0.12.0; server ≥ 2026-09-28, vault-storage D82) | `vault-curl /tags/nearest -X POST -H 'Content-Type: application/json' --data-binary '{"tags": ["<name>", …]}'` |
@@ -38,7 +38,7 @@ in the same row.
 | Handoffs — create/list/get/events, claim/resolve/resubmit/note/verify | **`vault_handoff_*`** (adapter ≥ 0.5.0; `handoff_verify` and `touches` ≥ 0.7.0; § Agent coordination in `coordination.md`). From D67, resolve wants the claim's `claim_token`; on an adapter without it, use the fallback | `vault-curl /handoffs[/{id}\|/events]` + `POST /handoffs[/claim\|resolve\|resubmit\|note\|verify]` |
 | Handoff artifact — the git patch being handed over | **`handoff_put_artifact`** (adapter ≥ 0.6.0); **read it to a file**, not into context: `vault-curl /handoffs/{id}/artifact -s > work.patch` | `vault-curl /handoffs/{id}/artifact -X PUT --data-binary @work.patch` |
 | A data file — opaque text under `projects/<project>/data/` (never `.md`), kept apart from the notes and never parsed, indexed, or searched: logs, dated runs, tables | **`data_read`** (one file, `include_etag` for its etag, or the files under `prefix`; on Postgres `versions` lists the texts a replace or a delete overwrote, kept 18 days, and `version` reads one, which a replace writes back to undo the overwrite) / **`data_write`** (`op` `replace`, `append`, or `delete`, `expected_etag` sent as `If-Match`) (the adapter release after 0.19.0; server ≥ 2026-10-30, vault-storage D547, 10c; the versions from 2026-10-31, 10k) | `vault-curl '/data?prefix=<p>'`, `vault-curl /data/<path>` (the text, its `ETag`), `'/data/<path>?versions=1'` and `'?version=<id>'`, and `-X PUT` / `-X POST` (append) / `-X DELETE` on `/data/<path>` with the text as the body and `-H 'If-Match: <etag>'` to fence |
-| `/commit`, snapshots, `cleanup-tag-aliases`, `release-embedder`, `folder-listing`, individual `find-*` scans, `summary-checked` (enrich-batch's confirmation, D289) | **`vault-curl`** | — deliberately not exposed on MCP |
+| `/commit`, snapshots, `cleanup-tag-aliases`, `release-embedder`, `folder-listing`, individual `find-*` scans, `summary-checked` (the enrich pass's confirmation, D289) | **`vault-curl`** | — deliberately not exposed on MCP |
 
 **A split note** (vault-storage D573): `split` cuts a note at its
 `##` headings into the folder its stem names, a piece per section with
@@ -102,13 +102,12 @@ folder, append a new section to the topic piece it belongs to**
 (`append` to that piece's path; `list_pieces` lists the
 topics), so the folder stays a few topics; an append to the note's path
 still lands, as a piece of its own, which lint lists under
-`ungrouped_pieces` and `/vault sweep` regroups into its topics (vault-storage
+`ungrouped_pieces` and `/sweep` regroups into its topics (vault-storage
 D622).
 
 **Scripts cannot call MCP tools.** MCP is an agent-level surface, so
-`enrich-batch.mjs`, `related-batch.mjs`, `vault-triage.mjs`,
-`compact-batch.mjs`, `vault-sweep.mjs`, and `vault-put.mjs` stay on
-`vault-curl` permanently. Parity changes what *you* call directly; it changes
+`vault-put.mjs`, `reorg-batch.mjs`, and the plugin's scripts call the REST
+API. Parity changes what *you* call directly; it changes
 nothing inside the batch harnesses.
 
 The three data-loss guards that used to justify routing every write through
@@ -145,7 +144,7 @@ Registered as `mcp__program-clerk__<name>`; fetch schemas with
 | Pending suggestions by kind | `suggestions_summary` |
 | Record listing with filters | `list_pieces` |
 | Graph | `backlinks`, `neighborhood`, `similar` |
-| Queue slices | `queue-items.mjs` (§ A queue kept one item to a note), or `query` on `projects/<name>/queue` |
+| Queue slices | `queue-items.mjs` (§ A queue is the plugin's `queue` skill), or `query` on `projects/<name>/queue` |
 | Tags | `list_tags`, `tag_info`, `records_by_tag` |
 | Repo leases (who holds a repo; event transcript) | `lease_list`, `lease_events` (§ Agent coordination) |
 | Handoffs (inbox for a role; one item; transcript) | `handoff_list`, `handoff_get`, `handoff_events` (§ Agent coordination) |
@@ -171,7 +170,7 @@ absence is not evidence of anything.
 
 `resume_bundle` takes `{project, logs, project_bodies}` as of adapter
 0.1.0 — `project_bodies: ["feedback", "learnings", "decisions"]` delivers
-those files with full bodies for the `/vault learn` dedup pass. Files named
+those files with full bodies for `/wrap`'s dedup read. Files named
 there bypass the bundle's size budget; the `feedback` body is otherwise
 included by default **only while the whole bundle fits 32 KiB** (server ≥
 2026-08-04) — above it feedback arrives as `summary` + `body_bytes` +

@@ -156,7 +156,7 @@ API endpoints (invoked via `vault-curl <path> [curl-options...]`):
   - Add `-o /dev/null -w "%{http_code}\n"` to confirm a 204 without flooding stdout (works for either Content-Type).
 - **Conditional writes (`If-Match`, use for read-modify-write on shared docs)**: `GET /vault/{path}` returns an `ETag` header (sha256 of the document's bytes, with `-gzip`, `-br`, or `-zstd` inside the quotes when the response was compressed; the server accepts either form back, vault-storage D70); send it back as `-H 'If-Match: <etag>'` on the PUT (either Content-Type) and the write lands only if the document hasn't changed in between — otherwise **412** `precondition_failed` with `details.current_etag`, meaning another writer got there first: re-GET, re-apply your edit to the fresh copy, retry with the new tag. Adopt this for any flow that GETs a shared doc (queue.md, learnings.md, archives), modifies it, and PUTs it back — it converts silent last-writer-wins clobbering into a visible, retryable conflict. Capture the ETag with `-D-` or `-o /dev/null -D- | grep -i etag`; successful PUTs (204) return the new `ETag` so chained conditional edits don't need a re-GET. `If-Match` never creates files (412 on a missing path); plain unconditional PUT remains valid for docs only one session touches.
 - **Edit (atomic server-side body op)**: `vault-curl /vault/edit -X POST -H 'Content-Type: application/json' --data-binary @op.json` with `{path, op: "append", text}` or `{path, op: "replace", from, to, all?}` — one op per call, server ≥ 2026-07-24. Replace is asserted (absent `from` → 409, ambiguous without `all` → 409 with the count — never a silent no-op); append joins after a single trailing newline; FM rides verbatim (`updated` re-stamped) except for an optional `agent` patch, which is merged over the stored `agent:` block and stamped current (D74, § Keep the enrichment current in the same write). Prefer `vault-put --append/--replace`, which calls this automatically with a round-trip fallback; reach for the raw endpoint only from contexts without vault-put.
-- **FM patch (atomic single-key frontmatter op)**: `vault-curl /sections/{record_id}/fm -X PATCH -H 'Content-Type: application/json' --data-binary @ops.json` with `{ops: [{op: "add"|"remove", path: "/related", value: "..."}]}` (not `/tags`: a 400 `protected_field`; tags go through `POST /sections/{id}/tags` with `{"tag": …}` and `DELETE /sections/{id}/tags/{tag}`, each returning the resulting `tags` array) — server-side membership edit on an FM array, no body round-trip and therefore no way to clobber the document. Returns `{changed, results: [{op, path, changed, array}]}` with the resulting array, so no re-read is needed to confirm. Prefer this over any full-document write whose only purpose is one FM key. `record_id` comes from `list_pieces({file_prefix})`. Used by `/vault-propose-related` (`related-batch.mjs`) to apply accepted candidates.
+- **FM patch (atomic single-key frontmatter op)**: `vault-curl /sections/{record_id}/fm -X PATCH -H 'Content-Type: application/json' --data-binary @ops.json` with `{ops: [{op: "add"|"remove", path: "/related", value: "..."}]}` (not `/tags`: a 400 `protected_field`; tags go through `POST /sections/{id}/tags` with `{"tag": …}` and `DELETE /sections/{id}/tags/{tag}`, each returning the resulting `tags` array) — server-side membership edit on an FM array, no body round-trip and therefore no way to clobber the document. Returns `{changed, results: [{op, path, changed, array}]}` with the resulting array, so no re-read is needed to confirm. Prefer this over any full-document write whose only purpose is one FM key. `record_id` comes from `list_pieces({file_prefix})`.
 - **Supersede (replace a note, archiving the old)**: `vault-curl /vault/supersede -X POST -H 'Content-Type: application/json' --data-binary @payload.json` with `{old_path, new_path?, frontmatter, body}` — the successor in the standard JSON write shape; `new_path` defaults to `old_path` (supersede-in-place: the successor takes over the path, so inbound wikilinks resolve to the replacement). Use this — never DELETE+PUT or a wholesale overwrite — whenever a write *replaces* a note rather than evolving it: the old note moves to `<dir>/archive/<YYYY>/<name>` with its record id intact (edges/embeddings/suggestions survive) and gets `status: superseded`; the successor's body is auto-appended a `> Supersedes [[<archived-path>]].` footer that backs the typed `supersedes` edge (don't add your own). Validation-first — a rejected request (bad FM, occupied `new_path`) mutates nothing; a taken archive slot gives way to `<stem>-<YYYY-MM-DD>.md` (server from 2026-11-01, vault-storage D574). Routine edits to an existing note stay plain PUTs; supersession is for replacement semantics.
 - **List**: `vault-curl /vault/{path}/ -s` (trailing slash → `{"files": [...]}`) — *prefer `list_folder`*.
 - **Delete**: `vault-curl /vault/{path} -X DELETE` — for junk with zero history value; a note retired *in favor of other content* should be superseded (or moved to an archive folder), not deleted. (`delete_file` exists on MCP; the same judgment applies — supersede beats delete.)
@@ -191,25 +191,16 @@ Mostly retired for reads by the MCP surface — an MCP tool call is not a shell
 command, so it has no exit code to cancel a sibling with, and a surprising
 response shape is visible in the result instead of vanishing into an empty
 `jq` output. The rule still binds wherever a `vault-curl … | jq …` pipe
-survives: `/vault ingest`, `/vault sweep`, the `/maintenance/*` calls, and any
-gap-driven curl read.
+survives: the `/maintenance/*` calls and any gap-driven curl read.
 
 When you fire several calls as parallel Bash tool calls in one message, never
 let a `vault-curl … | jq …` pipe exit non-zero. If the API returns an unexpected
 shape, `jq` exits non-zero → the Bash call exits non-zero → the harness
-**cancels its in-flight parallel siblings** (the classic casualty is
-`check-drift.sh` sharing a batch with these reads). Append `|| true` to any
+**cancels its in-flight parallel siblings**. Append `|| true` to any
 such pipe (or guard it as `if vault-curl …; then jq …; fi`) so a malformed
 response degrades to empty output instead of taking down the whole batch.
 Bare `vault-curl … -s` reads with no `jq` stage are already safe and need no
 guard.
-
-**`check-drift.sh` is also a *canceller*, not just a casualty.** It exits `1`
-whenever it detects drift — the common case, not an error. Co-batched as a
-parallel Bash sibling, that exit-1 cancels the *other* calls (reindex, lint,
-suggestions, agent-workflow reads). Run `check-drift.sh` in its **own** Bash
-invocation, sequentially, before the parallel read batch — never inside it.
-Read the drift report from stdout; the exit code is not the signal.
 
 ### Fallback: raw `curl`
 

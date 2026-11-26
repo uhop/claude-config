@@ -45,10 +45,6 @@ ignored. Anything else in `~/.claude/` (per-host `settings.local.json`, runtime 
 
 ### `agents/`
 
-- `vault-sweep.md` — the sub-agent type `/vault sweep` dispatches for its enrichment, tag, edge, and
-  duplicate passes: Sonnet at `medium` effort with `omitClaudeMd`, told not to call the advisor and
-  to report in five lines at most. A `general-purpose` sub-agent inherits the session's
-  `effortLevel` and advisor instead.
 - `design-reader.md` — reads one design note with no session context, before the note's questions go
   to the user, and reports what it proposes and what it commits the work to that the author's
   message does not show: Sonnet at `medium` effort with `omitClaudeMd`, read-only. A running session
@@ -99,8 +95,8 @@ ignored. Anything else in `~/.claude/` (per-host `settings.local.json`, runtime 
   10-second per-repository cache keeps a burst of commands to one request.
 - `fleet-brief.sh` — a `SessionStart` hook for the brief's lines that only this fleet needs, which
   the plugin leaves out (vault-storage D761): agent-workflow's Active items, the count waiting for
-  `/clarify`, and the queue's finished titles (`skills/vault-lint/queue-lint.mjs`), as one
-  `[pc] fleet:` line when one of them has something to say. Fails open.
+  `/clarify`, and the queue's finished titles (`hooks/lib/queue-lint.mjs`), as one `[pc] fleet:`
+  line when one of them has something to say. Fails open.
 
 ## Uninstall
 

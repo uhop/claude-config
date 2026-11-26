@@ -2,7 +2,7 @@
 # SessionStart: the brief's lines that only this fleet needs, which the Program Clerk plugin's brief
 # leaves out (vault-storage D761): agent-workflow's Active items, the findings waiting for /clarify,
 # and the cwd project's queue items whose titles say their work is finished
-# (skills/vault-lint/queue-lint.mjs). One `[pc] fleet:` line when one of them has something to say.
+# (lib/queue-lint.mjs). One `[pc] fleet:` line when one of them has something to say.
 # Fails open, silently: no settings, no curl or jq, an unreachable server, or an answer it cannot
 # read prints nothing.
 
@@ -41,7 +41,7 @@ fi
 clarify=$(jq -r '.workflow.clarify_pending // 0' <<<"$brief" 2>/dev/null)
 [[ ${clarify:-0} =~ ^[0-9]+$ ]] && ((clarify > 0)) && parts+=("$clarify to /clarify")
 
-lint="$here/../skills/vault-lint/queue-lint.mjs"
+lint="$here/lib/queue-lint.mjs"
 if [[ -n $project && -f $lint ]] && command -v node >/dev/null 2>&1; then
   findings=$(query "{\"folder\":\"projects/$project/queue\",\"sort\":\"sequence_key\",\"limit\":500}" |
     jq -c '[.items // [] | .[].frontmatter | select(.section != null) | .title]' 2>/dev/null |

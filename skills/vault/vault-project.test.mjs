@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {execFileSync, spawn} from 'node:child_process';
-import {chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -93,30 +93,22 @@ const requestsOf = async (args, extraEnv = {}) => {
   return urls;
 };
 
-/** Runs a script in the worktree with a stand-in `pc-curl`, which no runner has, and what it asked. */
-const vaultCurlAsks = async args => {
-  const bin = mkdtempSync(join(work, 'bin-'));
-  const log = join(bin, 'asked.log');
-  writeFileSync(join(bin, 'pc-curl'), `#!/usr/bin/env bash\nprintf '%s\\n' "$1" >>"${log}"\n`);
-  chmodSync(join(bin, 'pc-curl'), 0o755);
-  await requestsOf(args, {PATH: `${bin}:${process.env.PATH}`});
-  return decodeURIComponent(readFileSync(log, 'utf8'));
-};
-
-test('vault-verify in a worktree reads its main checkout’s project', async () => {
-  const asked = await vaultCurlAsks(['node', script('../vault-verify/vault-verify.mjs')]);
-  assert.ok(asked.includes('projects/main-name/'), asked);
-  assert.ok(!asked.includes('other-name'), asked);
-});
-
 test('fleet-status --cwd in a worktree reads its main checkout’s project', async () => {
-  // The collector is the installed plugin's; a stand-in folder keeps the test off this machine's.
+  // The collector and the queue are the installed plugin's; a stand-in folder keeps the test off
+  // this machine's.
   const plugin = mkdtempSync(join(work, 'plugin-'));
   mkdirSync(join(plugin, 'scripts', 'lib'), {recursive: true});
-  writeFileSync(
-    join(plugin, 'scripts', 'lib', 'github.mjs'),
-    "export const renderBrief = () => '';\nexport const eventLine = () => '';\n"
-  );
+  const stand = {
+    'github.mjs': "export const renderBrief = () => '';\nexport const eventLine = () => '';\n",
+    'queue.mjs':
+      'export const SOURCE_RE = /^github /;\nexport const SOURCE_HELP = "";\n' +
+      'export const queueOf = async () => ({trackers: {trackers: []}});\n' +
+      'export const fileItem = async () => ({});\n',
+    'common.mjs': 'export const NO_KEY = "";\nexport const connectionOf = () => null;\n',
+    'http.mjs': 'export const request = async () => null;\n'
+  };
+  for (const [name, text] of Object.entries(stand))
+    writeFileSync(join(plugin, 'scripts', 'lib', name), text);
   const urls = await requestsOf(
     ['node', script('../fleet-status/fleet-status.mjs'), 'show', '--cwd'],
     {PROGRAM_CLERK_PLUGIN_ROOT: plugin}
@@ -126,10 +118,4 @@ test('fleet-status --cwd in a worktree reads its main checkout’s project', asy
     urls.join('\n')
   );
   assert.ok(!urls.some(url => url.includes('other-name')), urls.join('\n'));
-});
-
-test('check-drift in a worktree reads its main checkout’s project', async () => {
-  const asked = await vaultCurlAsks(['bash', script('../vault-check-drift/check-drift.sh')]);
-  assert.ok(asked.includes('/vault/projects/main-name/state.md'), asked);
-  assert.ok(!asked.includes('other-name'), asked);
 });

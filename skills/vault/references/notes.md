@@ -14,7 +14,7 @@ projects/          # per-project knowledge (subfolder per project)
     stack.md       # tech stack & dependencies
     queue/         # outstanding work, one note per item (queue.md reads it whole)
     queue-archive/ # closed items, one note each
-    state.md       # baseline snapshot for vault-check-drift
+    state.md       # the checkout's baseline, for /pc check and /pickup's drift
 queries/           # filed Q&A research outputs
 logs/              # session logs until vault-storage 10e-2, expiring at 90 days; since, projects/<name>/data/sessions/
 _index.md          # archived 2026-04-29 — kept for inbound wikilinks; do not update
@@ -114,7 +114,7 @@ Rules:
   for GitHub).
   Declare it with `patch_fm` on the queue, never by rewriting the note;
   `queue-items.mjs trackers <project>` and a resume read it back, validated
-  by `trackers.mjs` with malformed entries named in `problems`, and the server
+  with malformed entries named in `problems`, and the server
   reads only each entry's `kind`, `ref`, and `url` to resolve links
   (vault-storage 11d-2c).
 - **Relations are typed edges, declared at write time** (vault-storage D92,
@@ -122,7 +122,8 @@ Rules:
   the note relates to and how, in the frontmatter's `edges:` map:
   `edges: {"topics/foo": "derived-from", "projects/x/decisions": "applies-to"}`,
   a wikilink target as the body would write it to one of the seven types plus
-  the `basis-for` alias (the table in `/vault-review-edges` § Judgment, each
+  the `basis-for` alias (the table in the plugin's
+  `skills/sweep/references/edges.md` § Judgment, each
   defined by its established equivalent: `supersedes`, `revises`,
   `derived-from`, `basis-for`, `cites`, `applies-to`, `contradicts`,
   `related-to`; vault-storage D94 dropped `caused-by`, `fixed-by`, and
