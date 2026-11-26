@@ -13,6 +13,10 @@ In a fleet project `CLAUDE.md` is a one-line pointer to `AGENTS.md`. Here it is 
 Claude Code session on every fleet host loads, so it stays a whole document, and its rules bind work
 in this repository too. This file holds only what is particular to the repository.
 
+`claude-md-size.test.mjs` holds `CLAUDE.md` to 90,000 characters: Claude Code's 120,000-character
+total for instruction files on a 200k-token window, less the 30,000 bytes a project's imported
+`AGENTS.md` may take.
+
 ## Setup
 
 ```bash
