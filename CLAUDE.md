@@ -1,1454 +1,916 @@
 # Cross-project rules
 
+The reasons behind most of these rules are in the vault under
+`projects/agent-workflow/claude-md-origins/`, a note per section; read one when a rule's reach is
+unclear.
+
 ## Two goals for every tool
 
-Where this came from: [[topics/our-tools-help-ai-agents-write-correct-code]].
+Every fleet tool serves two goals: **help AI agents write correct code**, fast and cheap, ideally
+correct as written; and **help people supervise the process**. Weigh a feature, an arc, or a design
+by which goal it serves; question one that serves neither before building it.
 
-Eugene, 2026-11-09: _"we are in the era of AI agents writing code."_ Every tool of the fleet serves
-two goals: **help AI agents write correct code**, fast and cheap, with less time spent finding bugs
-and debugging, ideally correct as written; and **help people supervise the whole process**. Weigh a
-feature, an arc, or a design by which goal it serves; one that serves neither is questioned before
-it is built.
-
-Each tool's part, in his words: **tape-six** for testing, which people and agents still need beside
-proofs (fast, flexible, several modes of isolation, run in a real browser in place of a simulated
-DOM, every test directly runnable); **nano-bench** for a statistical foundation under an agent's
-performance decisions; **Program Clerk** (vault-storage) for agents working in coordination and
-sharing knowledge across projects, machines, and sessions, learning, getting feedback, and following
-plans; **Apodictum** for verifying as soon as there is code. Global refactoring has no tool of ours:
-agents or others' tools do it, and a proposal that reaches into it is a new direction brought to
-him.
+Each tool's part: **tape-six**, testing (fast, several isolation modes, real browsers, every test
+directly runnable); **nano-bench**, the statistics under an agent's performance decisions; **Program
+Clerk** (vault-storage), coordination and shared knowledge across projects, machines, and sessions;
+**Apodictum**, verification as soon as there is code. Global refactoring has no tool of ours; a
+proposal that reaches into it is a new direction for him to rule on.
 
 ## Git / npm gates
-
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/git-npm-gates]].
 
 `git commit`, `git push`, `git tag`, `npm publish` — only on the **literal verb** in the current
 turn. Reject synonyms (`land`, `ship`, `go`, `proceed`). Stop at staged diff and wait. Full:
 [[topics/agent-stops-at-staged-diff]].
 
-No verb in the turn → act silently; never _offer_ to commit/push/tag/publish or ask permission to do
-them — absence of the word is the answer, not an invitation. The user commits and pushes himself,
-after his own review.
+No verb in the turn → act silently; never _offer_ to commit, push, tag, or publish, or ask
+permission to. He commits and pushes himself, after his own review.
 
-**Releasing is an explicit ask, one layer above the verbs.** Deciding to release — and any release
-_prep_: version bump, release-notes entries, `/release-prep` — happens only when the user explicitly
-asks for a release. **A question about readiness is not that ask**: "are we ready to publish?" is
-answered by the read-only `/release-check`, which reports a verdict and writes nothing. Answering a
-question by changing state is the failure the check/prep split exists to prevent (2026-08-18). Never
-infer the decision from an unreleased changeset on `main`, from a docket/task list (even one the
-agent wrote), or from a generic "deal with it"; surface "main has unreleased work" as information,
-not as a task. He decides _when_ — he may deliberately batch more items before cutting a version.
-"Release X or keep working on Y?" is neither ask: it asks which work comes first, answered from the
-plan in a few lines, with no `/release-check` and no question about when to release
-([[projects/agent-workflow/feedback]] § "Release X or keep working on Y?" asks which work comes
-first).
+**Releasing is an explicit ask, one layer above the verbs.** A release and any release _prep_
+(version bump, release-notes entries, `/release-prep`) happen only when he asks for a release. **A
+question about readiness is not that ask**: "are we ready to publish?" is answered by the read-only
+`/release-check`, which writes nothing. Never infer the decision from an unreleased changeset on
+`main`, a docket or task list, or a generic "deal with it"; report "main has unreleased work" as
+information. He decides _when_, and may batch more items first. "Release X or keep working on Y?"
+asks which work comes first: answer from the plan in a few lines, with no `/release-check` and no
+question about when to release.
 
-Asking is also useless because of the gate itself: `hooks/git-commit-gate.sh` blocks `git commit`,
-and every other verb that makes a commit (`am`, `merge`, `cherry-pick`, `revert`, `rebase`, a `pull`
-that may merge; since 2026-11-05), unless `.claude/git-commit-allowed` exists at or above the
-directory the commit runs in — the cwd after any `cd` in the command, or git's `-C` (since
-2026-09-06; before that the session cwd alone decided, which denied a
-`cd <marked repo> && git commit` from an unmarked cwd) — (a per-project opt-in marker, which only he
-writes (the gate refuses an agent's write) — only a couple of repos carry it;
-`find ~/Open -path '*/.claude/git-commit-allowed'` answers _which_, don't hardcode the list; a
-scratch repository under the temp or cache directory and a linked worktree need none, and a site the
-gate cannot read is denied). `push` / `tag` / `publish` are in `settings.json`'s absolute
-`permissions.deny` — a hook can't reopen a deny — and since that deny matches a literal prefix,
-`hooks/destructive-op-gate.sh` denies the spellings it misses (git's and npm's global options before
-the verb: `git -C <dir> tag` ran on 2026-09-29), so a typed one is refused **everywhere, on every
-repo, always**, and the dotfiles' global `pre-push` hook stops an agent session's push to a network
-remote however it starts. Neither is a sandbox. `npm publish` also needs interactive 2FA the agent
-doesn't have. So: on the verb, in a marked repo, just commit; otherwise the action can't happen —
-don't narrate the gate, don't ask.
+**The gates are enforced; don't ask, don't narrate them.** On the verb, commit only where
+`.claude/git-commit-allowed` exists at or above the directory the commit runs in (the cwd after any
+`cd`, or git's `-C`); `find ~/Open -path '*/.claude/git-commit-allowed'` lists those repos. Only he
+writes the marker. A scratch repository under the temp or cache directory and a linked worktree need
+none, and a site the gate cannot read is denied. `hooks/git-commit-gate.sh` covers every verb that
+makes a commit (`am`, `merge`, `cherry-pick`, `revert`, `rebase`, a `pull` that may merge). `push`,
+`tag`, and `publish` are denied everywhere (`settings.json`, `hooks/destructive-op-gate.sh`, the
+dotfiles' `pre-push` hook), and `npm publish` needs interactive 2FA.
 
-**"Published" is a fact, and the registry lags it.** A successful `npm publish` now ends with _"npm
-notice Your package is being processed and may take a few minutes to become available"_, so
-`npm view`, `--prefer-online`, and a direct registry read all show the previous version for minutes
-afterwards, and `check-drift.sh`'s "tag X: no matching npm publish" says the same. When he says a
-version is published, record it as published and do the bookkeeping; a registry that disagrees is
-the processing window, never a reason to ask whether the publish failed.
+**"Published" is a fact, and the registry lags it.** When he says a version is published, record it
+as published, even while `npm view`, a registry read, or `check-drift.sh` still shows the previous
+version for some minutes.
 
-Read-only / local-only `git` / `gh` / `aws` run freely; outward-facing or irrecoverable ops are the
-user's (his legal responsibility, not a fleeting agent's). `hooks/destructive-op-gate.sh` enforces
-it: blocks `gh` GitHub-state mutations (issue/pr/release create·edit·merge·comment·delete, `gh api`
-non-GET), destructive `aws` (create/put/delete/…, `s3 rm` + uploads), and `git clean -f` (untracked
-files have no reflog) — while allowing reads, `gh` clone/checkout/download, `s3` downloads, and
-git-recoverable ops (`reset --hard`, `git rm`, `branch -D`). The hook is the source of truth for
-exact coverage — don't reproduce the verb list here. Driver: an agent once filed a public
-`gh issue create` for an internal vault queue item.
+Read-only and local-only `git`, `gh`, and `aws` run freely; outward-facing or irrecoverable
+operations are his. `hooks/destructive-op-gate.sh` blocks `gh` GitHub-state mutations, destructive
+`aws`, and `git clean -f`, and allows reads, `gh` clone/checkout/download, `s3` downloads, and
+git-recoverable operations (`reset --hard`, `git rm`, `branch -D`). The hook is the source of truth
+for exact coverage.
 
-**The gate covers the verbs, not the bookkeeping.** Vault writes — queue → archive after a ship,
-`state.md`, logs, decision notes — are never gated by it; move a shipped item when it ships. And a
-deferral stated once is a _claim about current state_, not a standing position: re-check it before
-restating it. "I held off because you hadn't pushed yet" is inertia once the push has happened, and
-it reads as deference.
+**The gate covers the verbs, not the bookkeeping.** Vault writes (queue → archive after a ship,
+`state.md`, logs, decision notes) are never gated; move a shipped item when it ships. A deferral
+stated once is a claim about current state: re-check it before restating it.
 
-Git is the system of record — don't keep a prose ledger of it. Run `git status` / `git log` the
-moment a decision needs the state, use the answer, discard it; never carry "N ahead/behind, commit X
-landed" across turns or re-confirm what git already tracks. A `/vault wrap`-style session log
-written once from `git log` is fine; a running tally babysat mid-session is not.
+Git is the system of record; don't keep a prose ledger of it. Run `git status` or `git log` when a
+decision needs the state, use the answer, and discard it; never carry "N ahead/behind" across turns.
+A `/vault wrap` log written once from `git log` is fine.
 
 **Read local git before stating a unit's commit state.** At a work stop and before the next arc,
-`git status --short` and `git log --oneline -3` say whether it is committed; never wait on his word,
-and read whether it is pushed or published only when a step depends on it. Eugene, 2026-11-09: _"You
-never check git, while it is almost free."_ ([[projects/agent-workflow/feedback]] § Read local git
-before stating a unit's commit state.)
+`git status --short` and `git log --oneline -3` say whether it is committed; never wait on his word.
+Read push or publish state only when a step depends on it.
 
 **A work stop re-names the unit, so he never scrolls back to find out what he is reviewing.** The
-report that ends a long stretch — scripts, diffs, more scripts, 20 to 60 minutes, with his own work
-interleaved — has to stand on its own. The message that opened the arc is far up the scroll by then,
-and a list of what changed in which files does not replace it: the file list and the arc's name sit
-at different levels of abstraction. So the report **opens with the unit's name**, the same one it
-was announced under, and one sentence of what it does; the per-file detail follows. **An opaque
-label is not a name** — "Arc 8b", "cluster 4", "D193" carry nothing on their own, so the sentence is
-what does the work and is never dropped as redundant. The report **ends with a pasteable git
-subject** in its own untagged fenced block (his terminal colors an untagged fence and renders a
-`text` one plain; reflect 2026-11-19, P4), one per repository when the stop spans several, each
-labeled with its repository on the line above its block, never inside it (the block is what he
-pastes; reflect 2026-11-11, M2: 34 subjects carried `apodict:` in the fence, and he stripped every
-one): past-tense verb first, sentence case, a closing period, **50 characters or fewer and never
-past 72** (git's subject convention), and **no body** — _"I usually use just a title. For the rest
---- read the diff."_ The name serves the review, the subject serves the commit, and the review is
-why the rule exists. Naming the unit is not offering to commit; the verb gate above is untouched.
-(Shape: [[topics/commit-message-cliff-notes]]; boundary: [[topics/agent-stops-at-staged-diff]].)
+report that ends a long stretch **opens with the unit's name**, the one it was announced under, and
+one sentence of what it does; per-file detail follows. An opaque label ("Arc 8b", "D193") is not a
+name: always add the sentence. The report **ends with a pasteable git subject** in its own untagged
+fenced block (never `text`), one per repository when the stop spans several, each labeled with its
+repository on the line above its block, never inside it: past-tense verb first, sentence case, a
+closing period, **50 characters or fewer and never past 72**, and **no body**. Naming the unit is
+not offering to commit. Shape: [[topics/commit-message-cliff-notes]].
 
 Pushed history is immutable: no `--amend`, `rebase`, force-push, or moving published tags. Fix
 forward with a new commit.
 
-**A push is not a closure; only he ends a discussion.** A commit, a push, or a landed doc marks work
-shipped and says nothing about the conversation around it. Wraps and logs record open threads as
-open, and a wrap he asks for runs even when "nothing is left" ([[projects/agent-workflow/feedback]]
-§ A push is not a closure; only the user ends a discussion).
+**A push is not a closure; only he ends a discussion.** Wraps and logs record open threads as open,
+and a wrap he asks for runs even when "nothing is left".
 
 **A wrap ends the session.** After `/vault wrap`, a reply is a few lines: anything that arrives
 afterward is filed to the project's queue and said in one line, no new work starts, and no reply
-ends with a question; a question still open goes into the log for the next session
-([[projects/agent-workflow/feedback]] § A wrap ends the session).
+ends with a question; an open question goes into the log for the next session.
 
 ## Shell
-
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/shell]].
 
 Many basics (`cp`, `mv`, `rm`, `ls`, `cat`, `grep`, `du`, `mkdir`, `cd`) are aliased on this machine
 — bypass with `command cmd`. Full table: skill `shell-env`.
 
-**PyYAML is installed** — on the **system** python (`/usr/bin/python3`, Debian dist-packages), not
-on brew's `python3` that shadows it on `$PATH`. A brew-python
-`ModuleNotFoundError: No module named 'yaml'` does NOT mean PyYAML is missing; use
-`/usr/bin/python3` for `import yaml` work.
+**PyYAML is installed** on the system python (`/usr/bin/python3`), not on brew's `python3` that
+shadows it on `$PATH`. A brew-python `ModuleNotFoundError: No module named 'yaml'` does not mean
+PyYAML is missing; use `/usr/bin/python3` for `import yaml`.
 
-**`while IFS= read -r` silently drops a file's last line when the file has no trailing newline** —
-and a generated worklist usually has none, because `"\n".join(...)` / `printf '%s'` / `echo -n` all
-end on content. The loop then processes N−1 of N items and exits 0, so nothing anywhere says a line
-was skipped; the shortfall is exactly one per file, which is small enough to read as success. Three
-ways out, in order of preference: **iterate in whatever language built the list** (if python wrote
-it, let python loop over it — no format contract between the two halves); terminate the file
-(`print(…, end="\n")`, `printf '%s\n'`); or `while IFS= read -r l || [[ -n $l ]]`. **Regardless of
-which, count what you did against what you planned** — a per-item success line and a total is what
-turns a silent shortfall into an obvious one, and it is the only check that catches the whole family
-(a mid-list `continue`, a failed op swallowed by a pipe, an unmatched assert) rather than this one
-instance.
+**`while IFS= read -r` silently drops a file's last line when the file has no trailing newline.** In
+order of preference: iterate in the language that built the list; terminate the file
+(`printf '%s\n'`); or `while IFS= read -r l || [[ -n $l ]]`. Either way, **count what you did
+against what you planned**: print a per-item success line and a total.
 
 **Show the lines after a match with `grep -n -A N 'pattern' file`, never with
-`sed -n "$(grep -n … | cut -d: -f1),+Np"`.** The substitution is empty whenever the inner grep
-misses — a regex that differs from the one that matched a moment earlier, a `head -1` where
-`tail -1` was meant — and sed then reads `,+Np`, exits 1 with `unknown command: ','`, and takes the
-batch's other output with it; measured at 21 sessions in five projects between 2026-08-28 and
-2026-09-20, every one re-issued by hand. When a range genuinely needs sed, capture and test first:
+`sed -n "$(grep -n … | cut -d: -f1),+Np"`.** When a range needs sed, capture and test first:
 `L=$(grep -n … | cut -d: -f1); [ -n "$L" ] && sed -n "${L},$((L+N))p" file`.
 
 **`set -e` is not a gate in the Bash tool; a step whose failure must stop the next one is chained
-with `&&` or `|| exit 1`.** Measured 2026-09-22: a script opened with `set -eu`, its python heredoc
-raised on an assertion, and the shell went on to the following commands, one of which made the
-outward call the failed step was meant to gate. The same shape as § Scratch files' `&&` rule for
-cleanup, with the stakes inverted: there a bare `rm` deletes staged inputs, here a bare send
-publishes them. Before any outward-facing step, gate on the previous step explicitly and print the
-count the step will act on next to the count planned. Aliases compound it: `cd X || exit 1` never
-fails on this machine because `cd` is aliased, so use `command cd` or absolute paths, and
-`command ls` where `-t` matters.
+with `&&` or `|| exit 1`.** Before any outward-facing step, gate on the previous step explicitly and
+print the count it will act on next to the count planned. `cd X || exit 1` never fails here: use
+`command cd` or absolute paths, and `command ls` where `-t` matters.
 
-**A command handed to him runs in the aliased shell.** The `!` prefix runs in the same shell as the
-agent's own Bash, where a piped `ls` prints nothing: build file lists with globs or `command ls`,
-dry-run the handed command verbatim, and state the expected count beside it
-([[projects/agent-workflow/feedback]] § A command handed to the user runs in his aliased interactive
-shell).
+**A command handed to him runs in the aliased shell.** A piped `ls` prints nothing there: build file
+lists with globs or `command ls`, dry-run the handed command verbatim, and state the expected count
+beside it.
 
 **`$!` after a backgrounded shell function is a subshell's PID, and `env`, `grep`, `find`, and `du`
-are functions here.** `kill $!` then leaves the real process running, so start a process you will
-signal with `command env … &`, and read `/proc/$P/cmdline` before signaling it (vault-storage D475).
+are functions here.** Start a process you will signal with `command env … &`, and read
+`/proc/$P/cmdline` before signaling it.
 
 ## Scratch files
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/scratch-files]].
+Don't hardcode `/tmp/<name>` for scratch. Run `WORK=$(mktemp -d)` once and use `$WORK/<name>`. Reuse
+the printed **literal** path across Bash calls, or keep the whole read-modify-write in one call.
+Absolute paths only. **Never `cd` into `$WORK`**; use a subshell, `(cd "$WORK" && …)`. Clean up with
+`rm -rf "$WORK"` **chained with `&&`** after the last step; a failed cleanup never fails the task.
+Spell a removal under it `"${WORK:?}"/name`. Reference: `skills/vault-check-drift/check-drift.sh`.
+Full: [[topics/scratch-file-mktemp-not-hardcoded-tmp]].
 
-Don't hardcode `/tmp/<name>` for scratch — collides with stale files from prior/parallel sessions
-(`Write` refuses a stale same-name file: "File has not been read yet"; `Read` hits another session's
-leftover). `WORK=$(mktemp -d)` once, use `$WORK/<name>`. Shell state doesn't persist between Bash
-calls — capture the printed dir and reuse its **literal** path across calls, don't re-`mktemp` (or
-keep the whole read-modify-write in one Bash call). **Never `cd` into `$WORK`** — the trailing
-`rm -rf "$WORK"` then deletes the shell's own cwd: the command exits 1 with `getcwd` noise despite
-full success, and the dead cwd poisons the _next_ Bash call too. Absolute paths only; if something
-must run inside, subshell it: `(cd "$WORK" && …)`. Best-effort `rm -rf "$WORK"` when done
-(uniqueness prevents collisions; cleanup is hygiene, not correctness — don't fail the task on it) —
-but **chain it with `&&`** (or guard it) so a failed step doesn't delete the staged inputs a retry
-needs: a trailing bare `rm -rf "$WORK"` runs even when the step above just failed. Spell a removal
-under it `"${WORK:?}"/name`: the harness refuses `$WORK/name` and `"$WORK"/name`, since an empty
-variable would make the target `/name`, and lets `"$WORK"` and the `:?` form through (measured
-2026-10-22; reflect 2026-10-22 P7). Reference impl: `skills/vault-check-drift/check-drift.sh`. Full:
-[[topics/scratch-file-mktemp-not-hardcoded-tmp]].
+**Every agent gets its own temp path — sub-agents included.** Concurrent agents share the session
+scratchpad. Use a fresh `mktemp -d`, or the scratchpad plus a unique subfolder
+(`$SCRATCH/<agent-or-holder-id>/`). When dispatching parallel sub-agents, give each a distinct
+namespace in its prompt.
 
-**Every agent gets its own temp path — sub-agents included.** The rule above is about
-_cross-session_ collisions; this one is _within_ a session, and it bites harder because the harness
-pushes the other way: the system prompt tells every agent to use the session scratchpad "for ALL
-temporary file needs", and **all concurrent siblings inherit the same scratchpad path**. Any fixed
-filename under it therefore collides by construction — the more agents a stage fans out, the
-likelier the clobber. Two acceptable forms: a fresh `WORK=$(mktemp -d)`, or **the inherited
-scratchpad path plus a unique subfolder** (`$SCRATCH/<agent-or-holder-id>/`) when the scratchpad is
-wanted for discoverability. Never a bare filename in the shared root. When dispatching parallel
-sub-agents, say so in the prompt and give each a distinct namespace — any per-agent identifier the
-dispatch already generates (a claim holder, a shard index) is a free unique name.
-
-**The scratchpad is a workspace, never a delivery location.** Before reporting an artifact as staged
-/ written / delivered / ready, confirm it at the path the _user_ will look at — not the one you
-wrote to. A patch he applies and work parked for a later session are deliverables too: put them
-where the next reader finds them (a vault note, a branch, `~/.cache/<project>/`) and name that place
-where the work is parked (reflect 2026-10-27). One `test -f` / `ls` costs nothing; narrating a
-delivery that never happened costs a round-trip and makes every later status claim suspect. The trap
-is structural rather than careless: the same harness push noted above makes scratchpad-by-default
-_right_ for working files and _wrong_ for deliverables, and nothing marks the boundary — so the copy
-is the step that gets skipped, and the narration reads identical either way. Consumer-side sibling:
-[[topics/empirical-on-disk-vs-reported-count-validation]] verifies a _tool's_ reported counts; this
-one verifies your own narration.
+**The scratchpad is a workspace, never a delivery location.** Before reporting an artifact as
+staged, written, or ready, confirm it at the path he will look at. A patch he applies and work
+parked for a later session go where the next reader finds them (a vault note, a branch,
+`~/.cache/<project>/`), named in the report.
 
 **What a run keeps outside the scratchpad goes when nothing needs it.** An arc's working data under
-`~/.cache/<project>/` (kept harvests, census runs, probe outputs, logs, a parked patch a ruling made
-moot) is removed in the turn the arc ships and its numbers are recorded; what an open queue item or
-plan cites stays until that item closes, and closing it removes the data. Before removing, list each
-entry against the code that reads the folder and the open notes that cite it, and remove only what
-neither needs. Eugene, apodict 2026-11-17, after a full disk truncated a store mid-write (869 GB of
-leaked Docker volumes, beside 117 GB of finished arcs' data under `~/.cache/apodict`): _"make sure
-we clean up properly when we don't need anything created temporarily."_
-([[projects/agent-workflow/feedback]] § What a run keeps outside the scratchpad goes when nothing
-needs it.)
+`~/.cache/<project>/` (harvests, probe outputs, logs, a parked patch a ruling made moot) is removed
+in the turn the arc ships and its numbers are recorded; what an open queue item or plan cites stays
+until that item closes. Before removing, check each entry against the code that reads the folder and
+the open notes that cite it.
 
 ## Code
-
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/code]].
 
 - **The coding-tactics blog series is house style.** `~/Open/blog-hugo/content/blog/` 2026 series —
   code-linearization, code-is-cheap, logical-optimizations, cheating-as-a-programming-discipline,
   boolean-algebra, loop-and-if-invariants, break-continue-goto, back-of-the-envelope-estimates,
   premature-optimization — is the authority for simplification calls: collapse `else` when the `if`
-  body ends in `return`/`break`/`continue`, guard clauses over nesting, booleans are booleans, etc.
-  When a simplification matches a tactic, double-check it (tests/probes), then apply — don't just
-  note it.
+  body ends in `return`/`break`/`continue`, guard clauses over nesting, booleans are booleans. When
+  a simplification matches a tactic, verify it (tests, probes), then apply it.
 - Prefer prefix `++i` / `--i` when the result is unused.
-- **JavaScript a program needs as text is a function, converted with `toString()`.** A test's
-  fixture or a generated input is written as a real function and taken as text with
-  `Function.prototype.toString()`, never as a string constant; module syntax, TypeScript, another
-  language, and code meant to fail parsing stay text ([[projects/agent-workflow/feedback]] §
-  JavaScript a program needs as text…, apodict 2026-11-09).
+- **JavaScript a program needs as text is a function, converted with `toString()`.** A test fixture
+  or a generated input is a real function taken as text with `Function.prototype.toString()`, never
+  a string constant; module syntax, TypeScript, another language, and code meant to fail parsing
+  stay text.
 - **Never `var`; a genuinely global binding goes on `globalThis` explicitly** (`window` in
-  browser-only code), everything else is `const`/`let`. Eugene, 2026-09-19: _"in my code I avoid
-  `var` completely and for truly global variables I use `globalThis` explicitly. Or `window` on
-  browsers."_ The one place `var` still gets reached for is an inline classic `<script>`, where
-  every block shares one global scope and a second top-level `const x` is a parse-time
-  `SyntaxError: Identifier 'x' has already been declared` that kills the whole block before a line
-  runs — `var` dodges it only by putting the name on `window`. Two better answers: wrap the block in
-  `{ … }`, which scopes `const`/`let` and leaves `window` clean (a `var` inside a block still leaks,
-  so the brace helps only the lexical forms), or declare nothing at all —
-  `((window.__ns ||= {}).queue ||= []).push(…)` binds no name and is safe pasted any number of
-  times. Measured trade-off table: [[topics/render-data-before-first-paint]] § Scoping a pasted head
-  script.
-- **A change that leaves a file unused removes it in the same change.** Eugene, vault-storage
-  2026-11-09: _"In this case remove the obsolete file so we have no unused garbage left."_ (reflect
-  2026-11-11, M5.)
+  browser-only code); everything else is `const`/`let`. In an inline classic `<script>`, where
+  blocks share one global scope, wrap the block in `{ … }`, or bind no name:
+  `((window.__ns ||= {}).queue ||= []).push(…)`. Trade-offs:
+  [[topics/render-data-before-first-paint]] § Scoping a pasted head script.
+- **A change that leaves a file unused removes it in the same change.**
 - **No component lets memory grow without a limit.** Every piece of state a component keeps across
   its input has a bound: a cap that throws a `RangeError` past it, with `Infinity` to opt out, as
-  stream-json's `maxDepth` does. Eugene, stream-json 2026-11-09: _"In any case we should not allow
-  unbounded growth of memory."_ Made fleet-wide on his word, 2026-11-11
-  ([[projects/stream-json/feedback]] § No component lets memory grow without a limit).
-- Prefer `catch {` over `catch (e)` when the error binding is unused (optional catch binding,
-  ES2019). Not a mechanical sweep — read each site, leave any binding that's rethrown / logged /
-  inspected. Full: [[topics/no-mechanical-modernization]].
+  stream-json's `maxDepth` does.
+- Prefer `catch {` over `catch (e)` when the binding is unused. Not a mechanical sweep: leave any
+  binding that is rethrown, logged, or inspected. Full: [[topics/no-mechanical-modernization]].
 - **Standard errors first.** Throw the standard class that fits (`TypeError` for a programmer error,
   `RangeError` for a value out of its domain, `SyntaxError` for malformed input, the platform's own
-  `DOMException` names where one exists); mint a class only when a caller has to distinguish the
-  failure, and then keep the underlying error on `cause` and combine several on `AggregateError`. A
-  class for every failure is a `heya-io`-era habit from when the standard set was thin. Audit on
-  touch: in a file you edit that throws, enumerate its throw sites and keep only the classes a
-  caller distinguishes (double-meh 2026-09-20: eight `TypeError` sites already standard, `FailedIO`
-  kept with the platform error on `cause`, `CacheFull` reworked the same day).
-- **A program reports every missing required setting, together.** Check all mandatory settings at
-  start and name each missing one in a single error, never only the first.
+  `DOMException` names); mint a class only when a caller must distinguish the failure, keep the
+  underlying error on `cause`, and combine several with `AggregateError`. In a file you edit that
+  throws, keep only the classes a caller distinguishes.
+- **A program reports every missing required setting, together.** Name each in a single error.
 - **The docs are the spec; a test that contradicts them is the bug.** When a change turns a test
-  red, read what the documentation, the library's stated contract, and the language spec promise:
-  fix a test that contradicts them, and never bend the code or keep a wrong test for compatibility.
-  (Full: [[topics/ai-written-tests-can-encode-bugs]].)
+  red, read what the documentation, the stated contract, and the language spec promise: fix a test
+  that contradicts them; never bend the code or keep a wrong test for compatibility. Full:
+  [[topics/ai-written-tests-can-encode-bugs]].
 - **A timeout caps a runaway; a state machine drives the logic.** Sequence work by the events it
-  waits for. A timeout stops a process that never reaches its next event, is anchored at an event (a
-  run's start, a cleanup's start), and never stands in for one. A step that reaches the network or
-  another process expects stalls: cap it at a silence since its last progress, restart it a bounded
-  number of times with growing waits between attempts, each restart shown safe to repeat, and never
-  pick a duration alone, since an unmeasured "N minutes" is a question for him (tape-six 2026-10-22;
-  reflect 2026-10-22 M2; the stall clause: [[projects/vault-storage/feedback]] § A stall is a
-  regular occurrence, reflect 2026-10-27).
+  waits for. A timeout, anchored at an event, stops a process that never reaches its next event and
+  never stands in for one. A step that reaches the network or another process expects stalls: cap it
+  at a silence since its last progress, and restart it a bounded number of times with growing waits,
+  each restart safe to repeat. An unmeasured duration ("N minutes") is a question for him.
 - **No call outside the database runs inside a database transaction.** An object store's request, a
-  fetch, or another process's answer comes before the transaction or after it, never while it holds
-  a connection or a lock. A write that must agree with the database coordinates through short
-  transactions around its outside call: opportunistically where it can, updating its row conditioned
-  on what it read and retrying when the row changed, or, where writers must take turns, through a
-  short claim recorded in the database. Eugene, vault-storage 2026-11-17: _"I would suggest no
-  non-DB asynchronous ops in transactions, we should use opportunistic writes/updates whenever
-  possible"_, then _"Use the short claim"_ for the data files' writes (vault-storage D772, D773).
+  fetch, or another process's answer comes before or after the transaction. A write that must agree
+  with the database uses short transactions around its outside call: an update conditioned on what
+  it read, retried when the row changed, or, where writers must take turns, a short claim recorded
+  in the database.
 - **A periodic job never overlaps itself.** A tick that finds the last run unfinished skips, and an
-  on-demand run of the same job takes the same claim and is refused while one runs. Eugene,
-  vault-storage 2026-11-12: _"if an hourly scan was not finished, we should not start another one. I
-  hope you know that about periodic processes."_ The on-demand clause is his vault-storage ruling of
-  2026-11-13 for its manual scan route (_"add the claim"_), taken as general by the agent
-  (vault-storage D739; reflect 2026-11-13, P2).
-- **Compound string keys join with `'\t'`** — the house impossible-id separator
-  (`kind + '\t' + parts.join('\t')`), spelled as the two-character escape in source. Never
-  NUL-as-separator, and **never a raw control byte in a text file** — one raw NUL makes git classify
-  the file binary (`Binary files differ`, unreviewable diff; the Read tool renders it invisibly, so
-  only `file -b` / `git diff --numstat` catch it). Told twice by 2026-08-01 (apodict
-  `src/blocks.js`); recorded here because it wasn't findable in the vault when checked.
+  on-demand run of the same job takes the same claim and is refused while one runs.
+- **Compound string keys join with `'\t'`** (`kind + '\t' + parts.join('\t')`), spelled as the
+  escape in source. Never NUL as a separator, and **never a raw control byte in a text file** (check
+  with `file -b` or `git diff --numstat`).
 - **A code rule a program can check is enforced, not written here.** `hooks/code-rules-gate.sh`
-  refuses an `Edit` or `Write` that adds one and shows the rule with its reason;
-  `hooks/lib/code_rules.py` holds them with Eugene's words: no split on `'\n'` (split on `/\r?\n/`),
-  no regex lookbehind, no bare `Symbol()`, no raw NUL. A write through Bash is not read, so follow
-  them there too. A new checkable rule joins that registry, never this file (claude-config 9f,
-  2026-11-06).
+  refuses an `Edit` or `Write` that breaks one and shows the rule; `hooks/lib/code_rules.py` holds
+  them: no split on `'\n'` (split on `/\r?\n/`), no regex lookbehind, no bare `Symbol()`, no raw
+  NUL. Follow them in Bash writes too. A new checkable rule joins that registry, never this file.
 - **Every symbol is `Symbol.for()`, never `Symbol()`, internal ones included**, keyed under the
-  project's own prefix (`object-stream.` across the stream-* family). A well-known name is a
-  protocol without a dependency: another library can produce or recognize the package's markers by
-  defining the same symbol and following the package's rules, with no formal dependency just to
-  import a symbol. A `Symbol()` marker can only be imported. Check the project's `AGENTS.md` for its
-  prefix before minting a key.
-- **No defensive code for unsupported setups.** A library does not slow or complicate a supported
-  path to guard against misuse it does not support: mixed versions of itself in one project, files
-  removed from the package, functions called against their docs. Keep the cheap check (an
-  `instanceof`, a direct property read) and let the unsupported case fail, even when the failure is
-  hard to trace.
-- **We answer for our own project only.** A defect in a dependency's code (RE2, V8, any other) is
-  that project's: never work around it through the dependency's undocumented, non-public internals,
-  and how it takes reports is its reporter's business. Eugene, node-re2 GHSA-wcr5, closed
-  2026-11-11: _"we are not going to mess with any undocumented non-public internals of RE2 or
-  anything else --- it is not our project and we are not taking a responsibility for it."_
+  project's own prefix (`object-stream.` across the stream-* family; check the project's
+  `AGENTS.md`). A well-known name lets another library produce or recognize the package's markers
+  with no formal dependency.
+- **No defensive code for unsupported setups.** Don't slow or complicate a supported path to guard
+  against misuse the library does not support (mixed versions of itself, files removed from the
+  package, calls against its docs). Keep the cheap check (an `instanceof`, a property read) and let
+  the unsupported case fail.
+- **We answer for our own project only.** A defect in a dependency (RE2, V8, any other) is that
+  project's: never work around it through the dependency's undocumented, non-public internals.
 - **Build the basics first; never invent work the goal does not need.** Before adding a field, a
   check, a parse, an option, or a dependency, name the reader or writer that needs it today; with
-  none, cut it. Data the system does not need to understand is an opaque text snippet: define
-  nothing about it. Function before polish. Ask "whether" before "which", and put each question in
-  the picture of the goal, since a chain of small rulings can commit the work to what he never chose
-  ([[projects/agent-workflow/feedback]] § Build the basics first; vault-storage 2026-10-30: _"do not
-  try to invent work for you … Let's do the basics and work on possible embelishments later"_ and
-  _"With small questions I am losing the big picture."_)
+  none, cut it. Data the system does not need to understand is an opaque text snippet. Function
+  before polish. Ask "whether" before "which", and put each question in the picture of the goal.
 - **A bug is weighed by how many users it reaches and what share of them; a security defect, by
-  everyone an attacker can target.** Every project has bugs, so a case's existence decides nothing:
-  one death per 1,000 people differs from 100 per 1,000. A fix, a check, or a line on a README's
-  front page earns its code and its reading time by that rate, and a rare case goes to the wiki or
-  to "don't do that". Users can carry different weights: a commercial project weighs its customers,
-  and an open source maintainer may fast-track a corporate sponsor, a government, a favorite
-  charity, or a public project. "Nobody complained" counts complaints, a skewed sample (by his
-  estimate, one affected user in a hundred complains), yet in practice it means few users are
-  affected and they found a work-around: users left without one complain or move to another project.
-  An exploit can reach every user who becomes a target, so a security defect is fixed however rare
-  it is in honest use. Eugene, node-re2 GHSA-vf9g, 2026-11-12: _"'nobody complained' means 0. Yet
-  the real criteria is how many users are affected and what percentage of users are affected."_,
-  _"There is a difference how many people are killed --- 1 per 1,000 or 100 per 1,000. … The same
-  goes for bugs."_, and _"the former may affect some, while the exploit of the latter may affect all
-  --- anybody who became a target of hackers."_ (blog: _Open source, honestly_, on
-  price-performance; the draft _Ergonomics and cognitive load_, on complaints.)
+  everyone an attacker can target.** A fix, a check, or a README line earns its cost by that rate; a
+  rare case goes to the wiki or to \"don't do that\". Weigh users as the project does (a commercial
+  project's customers first). Don't count complaints: \"nobody complained\" usually means few users
+  are affected and they have a workaround. Fix a security defect however rare it is in honest use.
 - **Repeated code is not automatically duplication — repetition is sometimes deliberate inlining for
-  speed.** Before proposing to collapse repeated blocks into a helper (or flagging them in a
-  review), decide which it is: an unrolled hot path, a per-branch copy that avoids a call, a
-  documented inlining technique — or genuine copy-paste. Two copies are genuine duplicates when they
-  encode the same piece of knowledge: a change to one has to reach the other (DRY as Hunt and Thomas
-  defined it, one authoritative representation of each piece of knowledge). Copies that look alike
-  and change for different reasons are coincidental, and folding them couples code that changes
-  apart. A genuine duplicate is fixed by moving every copy to one home, since a new helper beside
-  the old copies is one more duplicate (§ Fix the class, not the instance). Say so in the proposal.
-  A "cleanup" that assumes duplication where the author bought speed is a regression wearing a
-  refactor's clothes.
-- **A rule names the mismatch it guards, never today's value.** The same knowledge test reaches past
-  code: a rule, a check, a CI step, or a document that guards a relation (tests on the runtime's
-  Node, a limit, a host) states the relation and reads the value from the one place it is chosen,
-  and a change sweeps the other copies ([[projects/agent-workflow/feedback]] § A rule names the
-  mismatch it guards).
-- **Don't write config that restates a default.** Read the tool's own configuration reference before
-  adding a key, then write only keys that _change_ behaviour. A key set to the value it already had
-  is a no-op that reads as a fix — it makes the config longer, the next reader unsure which lines
-  are load-bearing, and (the real cost) it looks like the problem was addressed when nothing
-  changed. Pinning a default deliberately, to guard against an upstream change, is fine — say so in
-  the same line, or it is indistinguishable from the mistake.
-- Measure perf with `nano-bench` (`~/Open/nano-bench/`). No ad-hoc timing. **One question per bench
-  file:** variants differ in exactly one respect and only the within-file delta is a measurement —
-  never put incomparable workloads (different operator or operand counts, different floors) in one
-  file and read significance across them; separate files, one process each, run from a shell script.
-  **A number that depends on your harness is a property of the harness until shown otherwise** — an
-  input mix, a lowered `-s`/`-m`, a crowded module, a busy machine, a core count. A wall time
-  compares only with runs under the same machine, cores, and load, and quoted for any other it is a
-  prediction until measured there; state the distribution-free claim (dominance) when one exists,
-  and a degraded run never overturns a clean one.
-- **A test asserts behavior; a resource reading is a test only where it was shown consistent.** Peak
-  memory or a timing can differ by platform, so a suite asserts one only on the platforms where it
-  was measured to agree, and elsewhere it is a measurement. Eugene, node-re2 2026-11-18: _"I suggest
-  to test correctness, not memory reading that could be different on different platforms --- unless
-  they are consistent."_ A peak-memory test measured on Linux had failed on macOS (reflect
-  2026-11-19, M2).
-- **A cost that grows faster than its input is scheduled for removal once it is measured.** "No real
-  input is slow from it yet" is no reason to wait: the first real input to meet a quadratic is a
-  user's session. Measure growth on generated inputs at doubling sizes, since one file shows a
-  constant and never a rate, and keep the generator as the fix's measure.
-- **No comments that narrate the code.** Code isn't documentation — don't add a comment that
-  restates _what_ the code does. The only allowed comments, each as the **shortest possible marker**
-  (a pointer, not an explanation): JSDoc when explicitly requested or required; a reference for a
-  non-trivial algorithm (e.g. a Wikipedia/paper link); a non-trivial _decision_ or constraint —
-  _why_ it's this way, footgun/ordering caveats included when there's a real reason
-  (`// Hughes–Smith: see benchmarks`, `// must precede flush(): drains the queue`). The bar is
-  _why_, never _what_. Anything longer belongs in `dev-docs/`, the project wiki, or a vault decision
-  note — not the source. Applies to all new/edited code now; strip narrating comments
-  opportunistically in files you already touch, no standalone cleanup PRs. Full:
-  [[topics/no-narrating-comments]].
+  speed.** Before collapsing repeated blocks or flagging them, decide which it is: an unrolled hot
+  path, a per-branch copy that avoids a call, or copy-paste. Copies are duplicates when they encode
+  the same knowledge (a change to one has to reach the other); copies that change for different
+  reasons stay apart. Fix a genuine duplicate by moving every copy to one home, never a new helper
+  beside the old copies. Say which case it is in the proposal.
+- **A rule names the mismatch it guards, never today's value.** A rule, a check, a CI step, or a
+  document that guards a relation (tests on the runtime's Node, a limit, a host) states the relation
+  and reads the value from the one place it is chosen; a change sweeps the other copies.
+- **Don't write config that restates a default.** Read the tool's configuration reference first, and
+  write only keys that change behavior. Pinning a default against an upstream change is fine; say so
+  on the same line.
+- Measure perf with `nano-bench` (`~/Open/nano-bench/`), never ad-hoc timing. **One question per
+  bench file:** variants differ in exactly one respect, and only the within-file delta is a
+  measurement; incomparable workloads go in separate files, one process each, run from a shell
+  script. **A number that depends on your harness is a property of the harness until shown
+  otherwise** (an input mix, a lowered `-s`/`-m`, a busy machine, a core count). A wall time
+  compares only with runs on the same machine, cores, and load; state a distribution-free claim
+  (dominance) when one exists, and never let a degraded run overturn a clean one.
+- **A test asserts behavior; a resource reading is a test only where it was shown consistent.**
+  Assert peak memory or a timing only on platforms where it was measured to agree; elsewhere it is a
+  measurement.
+- **A cost that grows faster than its input is scheduled for removal once it is measured.** Don't
+  wait for a real input to be slow. Measure growth on generated inputs at doubling sizes, and keep
+  the generator as the fix's measure.
+- **No comments that narrate the code.** Allowed, each as the shortest possible marker: JSDoc when
+  requested or required; a reference for a non-trivial algorithm; a non-trivial decision or
+  constraint, the _why_ (`// must precede flush(): drains the queue`). Anything longer goes to
+  `dev-docs/`, the wiki, or a vault decision note. Strip narrating comments in files you already
+  touch; no standalone cleanups. Full: [[topics/no-narrating-comments]].
 - **Gate condition and guard edits with apodict before shipping.** For any condition, guard ladder,
   or value selection you write or change: harvest the touched files, abstract the multi-atom
   fragments, and query liveness, minimality, and, for a value-position `&&`/`??` whose result meets
   a member access, the §15 truthy projection (the `apodictum` skill, constructive mode; queries
-  through `bin/ledger.js record` so every checked claim has a hash; corpus note per run). The pass
-  costs minutes and belongs beside tests and lint, not after the deploy. (Topic:
-  [[topics/optional-chaining-guards-nullish-not-falsy]].)
+  through `bin/ledger.js record`; a corpus note per run). It runs beside tests and lint. Topic:
+  [[topics/optional-chaining-guards-nullish-not-falsy]].
 - **Refactor first, then change behavior, when the change does not fit the structure.** Restructure
-  in one commit, then make the change on the new structure in the next. The refactor preserves only
-  the behavior the change keeps. An operation the change removes is cut at once, never ported to the
-  new structure first. An operation the change redesigns, trivial on the old structure and hard or
-  impossible on the new, is redesigned together with the structure, since a faithful port would be
-  wasted or impossible. Whether to split at all is a judgment: a change that already fits needs no
-  refactor commit. The refactor commit is reviewed for one property, that what it keeps did not
-  change: tests unchanged and green, and the conditions and control flow it rewrote checked with
-  apodict's `equivalent` and `skeletonEquivalent` (the `apodictum` skill). The report says which
-  path an arc took and why.
-- **A shared interface is shaped by drafts of every implementation.** While only one of an
-  interface's implementations is built, its signatures stay provisional: sketch the others' major
-  operations as drafts, which need not run, and take the arguments and the call granularity from
-  what they need. When the implementations pull different ways, the one the product sells wins
-  ([[projects/agent-workflow/feedback]] § Shape a shared interface with a draft of every
-  implementation).
-- **A management surface gets the full action set.** Every state an action can enter has an action
-  that leads out (disable ⇄ enable, create ⇄ delete, lost secret → rotate, submit → cancel), and a
-  tool that collects or stores something ships its read verb (`/x show`) with its write verbs
-  ([[projects/agent-workflow/feedback]] § Always implement the full set of actions).
-- **Undefined or unclear code is rewritten to state its intent, or sent back.** Do not reason about
+  in one commit, then change behavior on the new structure in the next. The refactor keeps only the
+  behavior the change keeps: cut an operation the change removes at once, and redesign an operation
+  the change redesigns together with the structure. A change that already fits needs no refactor
+  commit. Review the refactor commit for one property, that what it keeps did not change: tests
+  unchanged and green, rewritten conditions and control flow checked with apodict's `equivalent` and
+  `skeletonEquivalent`. The report says which path the arc took and why.
+- **A shared interface is shaped by drafts of every implementation.** While one implementation is
+  built, the signatures stay provisional: sketch the others' major operations as drafts, and take
+  the arguments and call granularity from what they need. When they pull different ways, the one the
+  product sells wins.
+- **A management surface gets the full action set.** Every state an action enters has an action out
+  (disable ⇄ enable, create ⇄ delete, lost secret → rotate, submit → cancel), and a tool that
+  collects or stores something ships its read verb (`/x show`) with its write verbs.
+- **Undefined or unclear code is rewritten to state its intent, or sent back.** Don't reason about
   what it probably does: propose the explicit rewrite, or return someone else's code with both
-  readings named ([[projects/agent-workflow/feedback]] § In code review, undefined or unclear code
-  is rewritten to state its intent, or sent back to its author).
+  readings named.
 
 ## Snippets vs files
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/snippets-vs-files]].
-
-Code the user types in the terminal/chat is a **snippet** by default (~99%) — illustrative, meant to
-convey shape / DX / intent, not to run. Read it for the API surface and intent; don't flag missing
-imports, surrounding plumbing, or lifecycle, and don't turn a stray literal into an action item.
-Expect typos (missing/duplicated chars) — read past them, fix obvious ones silently. The user says
-when something is a complete program. Code in a real source **file** (`.js`/`.ts`, not `.md`/text)
-is the opposite: expect it complete, compilable, executable, held to full standards. Ask only when a
-fragment's completeness genuinely matters.
+Code he types in the terminal or chat is a **snippet** by default: it conveys shape, DX, or intent,
+and is not meant to run. Read it for the API surface and intent; don't flag missing imports,
+plumbing, or lifecycle, and don't turn a stray literal into an action item. Read past typos and fix
+obvious ones silently. He says when something is a complete program. Code in a real source **file**
+(`.js`/`.ts`, not `.md`) is the opposite: complete, compilable, and held to full standards. Ask only
+when a fragment's completeness matters.
 
 **Variants to choose from are snippets.** Offer two or three, a few dozen lines each, for a shape
 judged by reading or looking (a layout, a solution's outline); a service or data design is settled
-by measurement and argument, one design with its evidence ([[projects/agent-workflow/feedback]] §
-Build variants to choose only where looking decides).
+by measurement and argument, as one design with its evidence.
 
 ## Chat snippets: fully formed + delineated
 
-Any snippet I put **in the chat** must be **fully formed and clearly delineated** — complete and
-usable exactly as shown (a whole thing, not a fragment or a "fill in the rest"), and set apart from
-my prose in its own fenced block so the user sees exactly where it starts and ends and can
-cut-and-paste it without guessing. This is the standing shape for **every** chat snippet, defaulted
-**unasked**. The canonical, highest-frequency case is content bound for a **Markdown-rendered
-system** — a GitHub issue, PR body or review comment, release notes, a security advisory, a
-discussion, a wiki page, a commit-message body, anything on GitHub — which additionally wants the
-**outer fence = quadruple backticks** (or `~~~`) so the content's own ``` code fences survive the
-copy. **The block is the literal source he pastes as-is** — keep code identifiers, type / error
-names, and CVSS vectors `backticked`. **Mark the boundaries with a visible `---` separator line**
-immediately before and after the block (and after any trailing commentary that could be mistaken for
-part of it): the fence alone is not enough when a long snippet scrolls, and the failure is the user
-having to _ask_ "is this inside the advisory or you talking to me?". **Leave a blank line after the
-opening `---` and before the closing one** — without it the terminal renderer swallows the fence
-line and joins the content to the separator, so a one-line command arrives as
-`---git -C ~/Open/… apply …` and cannot be cut cleanly. The separator only marks a boundary if it
-visually _is_ one. The `---` is a **separator**, not a dash substitution — em-dashes inside snippet
-prose are fine and often required to match the target's existing house style (a repo's published
-advisories, its release notes) — **but spelled for the consumer, per § Writing style: a block bound
-for GitHub or any other HTML-published surface carries `&mdash;` / `&ndash;`, never the raw Unicode
-character.** The paste block is the one place where the chat's raw-Unicode default and the target's
-entity rule meet, and the block follows the target. Only the paste-content goes inside; all my
-commentary — what it is, what to change, caveats, next steps — stays **outside**, before or after,
-and says so plainly ("end of advisory; everything below is me"). The user submits every
-outward-facing GitHub mutation himself (he owns it; the `gh` gate blocks the agent — see
-[[topics/agent-stops-at-staged-diff]]), so a block he can't cleanly lift is a re-ask. **Corollary —
-don't over-persist:** one-time instructions, explanations, and task content belong **in the chat**,
-not force-written into `dev-docs/` / the vault; the durable rule here is the _formatting_ of
-snippets, not the archiving of one-off content. **GitHub-surface lookup:** before drafting for a
-specific GitHub surface, fetch [[topics/paste-ready-markdown-for-markdown-systems]] § "Per-surface
-mechanics" — it carries the verified hard limits (280-char code-scanning dismissal comments,
-65,536-char bodies, commit messages render no markdown). Full: same note.
+Every snippet in the chat is **fully formed and clearly delineated**: complete and usable exactly as
+shown, in its own fenced block. Content bound for a **Markdown-rendered system** (a GitHub issue, PR
+body, review comment, release notes, advisory, discussion, wiki page, commit-message body) gets an
+**outer fence of quadruple backticks** (or `~~~`). **The block is the literal source he pastes**:
+keep code identifiers, type and error names, and CVSS vectors in backticks, and spell dashes for the
+target (`&mdash;` / `&ndash;` for GitHub or any HTML-published surface, § Writing style). **Put a
+`---` separator line immediately before and after the block**, and after any trailing commentary
+that could be mistaken for part of it, with **a blank line after the opening `---` and before the
+closing one**. Only the paste content goes inside; commentary stays outside and says where the block
+ends. One-time instructions and task content stay in the chat; don't force them into `dev-docs/` or
+the vault. Before drafting for a specific GitHub surface, read
+[[topics/paste-ready-markdown-for-markdown-systems]] § "Per-surface mechanics" (280-char
+code-scanning dismissal comments, 65,536-char bodies, commit messages render no markdown).
 
 **A draft for an external surface names its destination once and supplies every field.** One routing
 block carries the filing link (the templated new-issue URL, the thread to comment in); each form
 field (title, body) gets its own pastable block; annotations stay outside the blocks; and a draft
-file he is filing from is not edited under him ([[projects/agent-workflow/feedback]] § A paste-ready
-draft names its destination, once).
+file he is filing from is not edited under him.
 
 ## Security advisories
 
 **Triage an advisory before scoring it: a security defect or a bug report?** A failure reached only
 through what the user's own code chooses (a pattern, a filter, a callback, input from a source the
-user trusts) is the user's to judge and a bug report at most; one an attacker reaches with crafted
-data the library is documented to take untrusted is a security defect. Eugene, node-re2 2026-11-13:
-_"Number one: are they truly security advisories or bug reports? Number two: if it is something that
-user can do --- it is up to the user. If it can be manipulated by specially crafted input by hackers
---- that is a problem."_ Long form: [[topics/library-helper-trust-boundary]] (the caller is the
-trust boundary; § When the report comes from a person). Per-project forms:
-[[projects/stream-json/feedback]] § The cost of a crafted document is not a security issue here, and
-node-re2's threat-model decision of 2026-11-11 (reflect 2026-11-13, P3).
+user trusts) is the user's to judge, and a bug report at most; one an attacker reaches with crafted
+data the library is documented to take untrusted is a security defect. Long form:
+[[topics/library-helper-trust-boundary]].
 
 **Once our position is clear to a reporter, we stop replying,** unless new information changes the
-position. A reporter who asks again with nothing new gets no answer. Eugene, stream-json GHSA-gmj3,
-2026-11-17: _"if we clarified our position, we stop, unless a new information changes our
-position."_ ([[projects/agent-workflow/feedback]] § Once our position is clear to a reporter, we
-stop replying).
+position.
 
 **Score a library advisory `AV:L`, never `AV:N`, unless the vulnerable component's job is serving
-requests from the open network — in the opinion as much as in the draft.** "Its inputs usually
-arrive over the network" / "parsing network JSON is the contract" describes a deployment, not the
-library; CVSS leaves that re-scoping to the consumer's environmental metrics, and the base score
-stays with how the vulnerable component is reached. The re-scoping has been written three times:
-stream-json GHSA-528h (2026-07-07, the reporter's `AV:N`, reframed — the rule's origin), node-re2
-GHSA-j4r3 (2026-07-21, an agent draft; Eugene: _"if the malicious buffer was delivered by mail,
-should I put `AV:USPS`?"_), stream-json GHSA-mjw6 (2026-08-28, an agent opinion that read _"`AV:N`
-is right this time — parsing network JSON is the contract"_ while citing the 3.5.0 precedent;
-Eugene: _"How is it `AV:N`? We don't read anything from a network."_). The second clause is
-dynamodb-toolkit's (2026-10-04): its REST handler and framework adapters bind no socket, yet they
-exist to process requests from a service's clients, and Eugene ruled _"this project can have `AV:N`
-problems where it works with the open network"_; a vulnerability reached by sending such a request
-is `AV:N`, and the rest of the package stays `AV:L`. The test is the component's job, never where
-its data came from. Binding a socket is not that job by itself: a development or test server that
-listens on localhost by default and is not hardened is `AV:L`, and the project's `SECURITY.md` says
-it must never be exposed (tape-six 2026-10-21; reflect 2026-10-22 P4). Rule and worked cases:
-[[topics/cvss-attack-vector-library-local-vs-network]] — recorded there before the last two
-occurrences, which is why this line is here: an opinion reply never runs the § Chat snippets
-per-surface lookup that points at it. Then compute the vector and run it through GitHub's calculator
-before a number lands anywhere: CVSS 3.1 rounds **up** (6.1103 → 6.2, not 6.1; caught twice on
-2026-08-28).
+requests from the open network — in the opinion as much as in the draft.** The test is the
+component's job, never where its data came from; the deployment's exposure is the consumer's
+environmental score. A component that exists to process requests from a service's clients (a REST
+handler, a framework adapter) is `AV:N` for a vulnerability reached by such a request, even with no
+socket of its own; the rest of the package stays `AV:L`. A development or test server that listens
+on localhost by default and is not hardened is `AV:L`, and the project's `SECURITY.md` says never to
+expose it. Rule and worked cases: [[topics/cvss-attack-vector-library-local-vs-network]]. Compute
+the vector and run it through GitHub's calculator before a number lands anywhere: CVSS 3.1 rounds
+**up** (6.1103 → 6.2).
 
 ## Writing style
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/writing-style]].
-
-**All prose follows the `writing-style` skill** — the
+**All prose follows the `writing-style` skill**: the
 [Google developer documentation style guide](https://developers.google.com/style), with the
-Microsoft Writing Style Guide as Google's own fallback (adopted 2026-08-19 on Eugene's ask: _"use it
-for all communications, especially written ones (docs, README, wiki)"_). Read the skill before
-writing or editing a README, wiki page, `dev-docs/`, `AGENTS.md` / `llms.txt`, release notes, or
-GitHub issue / PR text; a vault note's body or a chat reply follows this section without it (Eugene,
-2026-11-05, [[projects/claude-config/decisions]] D72). The skill also governs `/docs-review`,
-`/document-wiki-page`, and `/ai-docs-update`. Precedence is in the skill: project + fleet structural
-conventions and the blog / articles voice models win where they conflict; the skill governs the
-sentence-level writing underneath. The moves that do most of the work — second person and
-imperative, active voice, present tense, condition before instruction, sentence-case headings
-without a leading _-ing_, descriptive link text ("For more information, see …"), code font for code
-things and never an inflected code item, zero through nine spelled out, serial comma, house dashes
-(hyphen for a constructed word, en dash for a range, spaced em dash as a rationed phrase separator —
-Eugene's three-dash rule, ruled 2026-08-19, overriding Google's closed dash / no en dash; encoded
-per consumer: `&ndash;` / `&mdash;` in human-read HTML and Markdown (README, wiki, dev-docs, release
-notes, GitHub bodies, blog), TeX `--` / `---` in code, commit messages, and CLI output, raw Unicode
-in agent-read files (`AGENTS.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `SKILL.md`, `llms*.txt`), vault
-notes, and chat), no ad-hoc _X/Y_ slashes in running prose (established pair-names like _JS/TS_ /
-_sat/unsat_ and rate units like _req/s_ in tables and measurements stay — ruled 2026-08-19),
-_repository_ in prose with `repo` only in code spans, identifiers, and tight table cells (same
-ruling), possessives allowed for company and product names but never for a code item (same ruling),
-no _please_ / _simply_ / _just_ / _should_ / _e.g._ / _via_ / _click on_, and no AI tells — the
-contrast-correction "not X — Y", the stranded-auxiliary reversal ("the data didn't."), self-claps
-("what matters", "the whole point"), warm-up and reveal openers ("That said,", "Here's the thing",
-"Turns out"), headcounts ("most developers"), and Claude's own register words ("reach for",
-"genuinely", "quietly", "seam", "the shape of", "lever", "load-bearing" …), plus Orwell's four vices
-measured 2026-09-07 — verbal false limbs ("give rise to", "prior to", "reach a conclusion", "going
-forward"), the not un- formation, dying metaphors ("move the needle", "under the hood", "deep
-dive"), meaningless praise ("intuitive", "idiomatic", "best practices"), and Latin tags ("ad hoc",
-"a priori", "de facto") — with cadence held to Eugene's pre-LLM 90th percentile per document (mean
-sentence ≤ 18 words, em dashes ≤ 1.3 per 100 words, semicolons ≤ 2.8, never/nothing/nobody ≤ 0.3,
-"rather than" ≤ 0.1, negators ≤ 2.2, "X, not Y" closers ≤ 0.05). **This binds every external text in
-every project** (Eugene, 2026-08-29), blog and articles included; the families, replacements, and
-the `prose-tells --check` shim are in `skills/writing-style/references/ai-tells.md`, calibrated
-2026-08-14, 2026-08-29, 2026-09-07, and 2026-09-17 on the blog's pre-LLM corpus (fleet rule: vault
-`topics/ai-writing-tells-calibrated`). The full word list is
-`skills/writing-style/references/word-list.md` — grep it before guessing a term.
+Microsoft Writing Style Guide as fallback. Read the skill before writing or editing a README, wiki
+page, `dev-docs/`, `AGENTS.md` / `llms.txt`, release notes, or GitHub issue or PR text; a vault
+note's body or a chat reply follows this section without it. The skill also governs `/docs-review`,
+`/document-wiki-page`, and `/ai-docs-update`, and holds the precedence: project and fleet structural
+conventions and the blog's voice models win where they conflict. The moves that do most of the work:
+second person and imperative, active voice, present tense, condition before instruction,
+sentence-case headings without a leading _-ing_, descriptive link text ("For more information, see
+…"), code font for code things and never an inflected code item, zero through nine spelled out,
+serial comma; house dashes (hyphen for a constructed word, en dash for a range, spaced em dash as a
+rationed phrase separator), encoded per consumer: `&ndash;` / `&mdash;` in human-read HTML and
+Markdown (README, wiki, dev-docs, release notes, GitHub bodies, blog), TeX `--` / `---` in code,
+commit messages, and CLI output, raw Unicode in agent-read files (`AGENTS.md`, `ARCHITECTURE.md`,
+`CLAUDE.md`, `SKILL.md`, `llms*.txt`), vault notes, and chat; no ad-hoc _X/Y_ slashes in running
+prose (established pairs like _JS/TS_ and rate units like _req/s_ stay); _repository_ in prose,
+`repo` only in code spans, identifiers, and tight table cells; possessives for company and product
+names, never for a code item; no _please_ / _simply_ / _just_ / _should_ / _e.g._ / _via_ / _click
+on_; and no AI tells: the contrast-correction "not X — Y", the stranded-auxiliary reversal ("the
+data didn't."), self-claps ("what matters", "the whole point"), warm-up and reveal openers ("That
+said,", "Here's the thing", "Turns out"), headcounts ("most developers"), Claude's register words
+("reach for", "genuinely", "quietly", "seam", "the shape of", "lever", "load-bearing" …), and
+Orwell's four vices: verbal false limbs ("give rise to", "prior to", "going forward"), the not un-
+formation, dying metaphors ("move the needle", "under the hood", "deep dive"), meaningless praise
+("intuitive", "idiomatic", "best practices"), and Latin tags ("ad hoc", "a priori", "de facto").
+Hold cadence to his pre-LLM 90th percentile per document: mean sentence ≤ 18 words, em dashes ≤ 1.3
+per 100 words, semicolons ≤ 2.8, never/nothing/nobody ≤ 0.3, "rather than" ≤ 0.1, negators ≤ 2.2,
+"X, not Y" closers ≤ 0.05. **This binds every external text in every project**, blog and articles
+included. Families, replacements, and the `prose-tells --check` shim:
+`skills/writing-style/references/ai-tells.md` (calibration: [[topics/ai-writing-tells-calibrated]]).
+Full word list: `skills/writing-style/references/word-list.md`; grep it before guessing a term.
+
+**An instruction file holds instructions.** In a file an agent loads to act on (`CLAUDE.md`,
+`AGENTS.md`, `SKILL.md`, a rule `/reflect` or `/clarify` adds), write what to do. Keep a reason only
+when it changes what the agent does: an environment fact the instruction depends on, or his own
+reason that a document must quote. Who said it, when, the incident, the evidence, and persuasion go
+to the vault: the section's origins note, or the project's feedback or decisions.
 
 **A polite decline gives his circumstances and encourages the other person.** When he asks for a
-polite answer declining an offer, his blunt reasons are the brief: state the reason as his present
-circumstances, judge nothing of the other person's work, and close with goodwill
-([[projects/agent-workflow/feedback]] § A polite decline…, blog 2026-11-03).
+polite answer declining an offer, his blunt reasons are the brief: state them as his present
+circumstances, judge nothing of the other person's work, and close with goodwill.
 
 **A rule, a decision, or a queue item is cited by its title; the number is the locator, not the
-reference.** A title that does not say what the item does (a feature name like "Rich completion
-descriptions", a label like "the dual-stack visitor item") gets one clause of what it does, unless
-this session has already discussed it; a resume's or a stop's list of open items is a list of these.
-`9.4`, `D86`, or "the 2026-09-02 item" alone is a lookup in a file the reader does not have open.
-Write _feedback 9.4, "Social engagement is an independent readership signal"_ the first time, and
-the number alone can carry the rest of the paragraph. A project's own name for a part or an
-operation (the front, the tenants, a propose) gets the same clause the first time a message to him
-uses it, unless this session has already discussed it, as the `writing-style` skill's jargon rule
-asks of documents: _"What are "front" and "tenants"?"_, _"What is "a propose" and how is it
-different from a write?"_ (vault-storage, 2026-11-12 and 2026-11-13; reflect 2026-11-13, P4).
+reference.** A title that does not say what the item does (a feature name, a label) gets one clause
+of what it does, unless this session has already discussed it; a resume's or a stop's list of open
+items is a list of these. Write _feedback 9.4, "Social engagement is an independent readership
+signal"_ the first time; the number alone can carry the rest of the paragraph. A project's own name
+for a part or an operation (the front, the tenants, a propose) gets the same clause the first time a
+message to him uses it.
 
-**A task label with parents is explained down its chain.** Before a label like `7ap-8e-5` is used,
-say in a sentence or two the goal its top level serves and where the work stands, then what this
-step does, so he can tell which parts of the label are parents and which a step. His model: _"We are
-switching the vault from SQLite to Postgres. We already did it, but still fixing minor things. This
-step would attach a git repository to your account."_ A label alone, or with only its own clause, is
-a lookup in a plan he does not have open.
+**A task label with parents is explained down its chain.** Before using a label like `7ap-8e-5`, say
+in a sentence or two the goal its top level serves and where the work stands, then what this step
+does: _"We are switching the vault from SQLite to Postgres. We already did it, but still fixing
+minor things. This step would attach a git repository to your account."_
 
 **A dated artifact from today is "earlier today".** Check a log's, commit's, or note's date against
-today's before wording its recency at resume; sessions switch several times a day
-([[projects/agent-workflow/feedback]] § Same-day logs are "today's", not "yesterday's").
+today's before wording its recency at resume.
 
 ## Preferences
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/preferences]].
-
-- Default OSS license: **BSD-3-Clause** for personal projects — apply to a per-package `LICENSE` /
-  `package.json` `"license"` directly; ask before a repo-wide top-level `LICENSE` on a
-  currently-`UNLICENSED` / TBD repo.
-- **Naked version tags — no `v` prefix.** `0.0.1`, not `v0.0.1`; a monorepo package tag is
-  `<pkg>-0.0.1` (e.g. `mcp-0.0.1`). Applies to git tags, release names, and CLI `--version`
-  surfaces; the `package.json` `version` field is already naked.
-- **Node version manager: `nvm`** — don't probe for `fnm` / `volta`.
-- **SQL engine: Postgres, never MySQL/MariaDB** — for any design needing a relational store; settled
-  by preference (2026-08-15, apodict deployment-stack discussion), don't re-survey the comparison.
-  DynamoDB is a welcome candidate for KV / append-only / serverless shapes (good experience incl.
-  Lambda and global tables).
-- **No micro-packages for small utilities.** A helper too small for a standalone project goes into
-  an existing library of Eugene's (e.g. `waitFor` → time-queues, `withTempDir` → dollar-shell) —
-  suggest a home in an existing package instead of minting `<project>-*` satellites.
-- **Dependency updates: all of them, to absolute latest, majors included.** Any "bump dep X" /
-  "update the lockfile" task means bump _every_ `dependencies` + `devDependencies` range to the
-  latest published — **cross the `^`/major boundary** (e.g. `@types/node` `^25` → `^26`), never
-  cherry-pick or pin back only the one that triggered the task. Staying in-range silently strands a
-  dep on an EOL major that no longer gets security patches, so "nothing outdated _in range_" can
-  still hide an unpatched CVE; consider majors _always_. Then regenerate the tree fully —
-  **`rm -rf node_modules package-lock.json && npm install`, both, always** — and run the
-  test/lint/type-check matrix; report breakage from a major bump rather than avoiding it. Deleting
-  only the lockfile is not a regeneration: npm reuses packages already in `node_modules` that still
-  satisfy the range, pinning transitives and sometimes walking them _backwards_ into an advisory a
-  previous bump had already patched (node-re2 2026-07-21 — resolved `tar@7.5.16` over a published
-  7.5.20 and went critical). It is silent, invisible to `npm outdated`, and worst for deep
-  transitives, which is where advisories land. Full: [[topics/dep-version-freshness]].
+- Default OSS license: **BSD-3-Clause** for personal projects. Apply it to a per-package `LICENSE`
+  and `package.json` `"license"` directly; ask before a repo-wide top-level `LICENSE` on a currently
+  `UNLICENSED` or TBD repo.
+- **Naked version tags — no `v` prefix.** `0.0.1`, and `<pkg>-0.0.1` for a monorepo package
+  (`mcp-0.0.1`). Applies to git tags, release names, and CLI `--version` output.
+- **Node version manager: `nvm`** — don't probe for `fnm` or `volta`.
+- **SQL engine: Postgres, never MySQL/MariaDB**, for any design needing a relational store; settled,
+  don't re-survey. DynamoDB is a welcome candidate for KV, append-only, and serverless shapes.
+- **No micro-packages for small utilities.** A helper too small for its own project goes into an
+  existing library of his (`waitFor` → time-queues, `withTempDir` → dollar-shell).
+- **Dependency updates: all of them, to absolute latest, majors included.** A "bump dep X" or
+  "update the lockfile" task bumps every `dependencies` and `devDependencies` range to the latest
+  published, across majors. Then regenerate fully with
+  **`rm -rf node_modules package-lock.json && npm install`, both, always**, and run the test, lint,
+  and type-check matrix; report breakage from a major bump instead of avoiding it. Full:
+  [[topics/dep-version-freshness]].
 - **Experiments, tests, and benchmarks belong to phases:** experiments while finding a shape, tests
   once it exists, benchmarks when the shape is right and the speed is not. Match the proposal to the
-  phase ([[projects/agent-workflow/feedback]] § Eugene's three working artifacts).
+  phase.
 - **A Backlog worked from a plan note is re-clustered at a cluster boundary, on a new direction, or
   when he asks, and you say when one is due.** The plan lives under `projects/<name>/plans/`, and
   each arc is one commit. Re-read every item he has not postponed in his own words, list a
-  demand-gated item with its trigger, keep the ordering rule the project's own, and replace the plan
-  by supersession (vault skill `references/notes.md` § Note format;
-  [[projects/vault-storage/feedback]] § Re-cluster and re-order the Backlog).
+  demand-gated item with its trigger, keep the project's own ordering rule, and replace the plan by
+  supersession (vault skill `references/notes.md` § Note format).
 - **Pivots and infrastructure work rank above the rest, and an item with no bearing on a pivot in
-  progress is placed after it when filed.** Only he puts other work first, case by case (UX, say).
-  Eugene, vault-storage 2026-11-12, on the cutover to the pool: _"In general all pivots and
-  infrastructure work is usually has higher priority over the rest. We may delay some infrastructure
-  work, e.g., prioritizing UX over the rest, but it is defined on case by case basis."_
-  ([[projects/vault-storage/plans/2026-09-29-backlog-order]] rule 0).
+  progress is placed after it when filed.** Only he puts other work first, case by case.
 - **Collections run by hand or on an event, never on a schedule.** A recurring step goes into a
   playbook he runs (`playbash-daily`, `playbash-weekly`) or fires from the event that needs it; no
-  cron entries, no scheduled routines ([[projects/agent-workflow/feedback]] § Collections run by
-  hand or on an event, never on a schedule).
-- **Routine monitoring and management happen in one place.** A new surface for an operation done
-  routinely (watching a service, an account's state, notices, incidents, suspension) goes where the
-  project's other routine operations already live, or they move together; a second place is for the
-  exceptional and says why. Eugene, vault-storage 2026-11-23: _"I don't like when we have multiple
-  different places to go for normal operations. It is OK for something exceptional, but for routine
-  monitoring and management I would prefer a single place."_ ([[projects/agent-workflow/feedback]] §
-  Routine monitoring and management happen in one place.)
+  cron entries, no scheduled routines.
+- **Routine monitoring and management happen in one place.** A new surface for a routine operation
+  (watching a service, an account's state, notices, incidents) goes where the project's other
+  routine operations live, or they move together; a second place is for the exceptional and says
+  why.
 - **A command he runs by hand gets a script for each form, found by Tab.** A flag he would have to
   remember becomes its own short script beside the general one, as `update-pool.sh` and
-  `update-export.sh` call `update-host.sh --pool` and `--export`. Eugene, vault-storage 2026-11-18:
-  _"so I don't need to remember arguments, just hit Tab and select"_; 2026-11-17: _"In general I
-  don't like long commands … The longer text the more opportunities for typos."_
-  ([[projects/vault-storage/feedback]] § A command Eugene runs gets a script named for each form,
-  found by Tab.)
+  `update-export.sh` call `update-host.sh --pool` and `--export`.
 - **No keys in repositories, public ones included.** An SSH public key, a deploy key, a token, or a
   certificate lives in a parameter or secret store (AWS Parameter Store, GitHub's settings) or on
-  the machine; the code reads it from there and the repository names only where. **Never commit a
-  secret, ever, and never hand him a step that can.** A command that makes a key, a token, or a
-  certificate makes it in a temporary directory 100% outside any repository, and proves it: one
-  block, in a subshell, creates the directory with `mktemp -d`, removes it with
-  `trap '… rm -rf "$dir"' EXIT` so a failed step cannot leave the key behind, stops when
-  `git -C "$dir" rev-parse --git-dir` succeeds (a `TMPDIR` inside a checkout), and only then makes
-  the key, stores it, and prints the public half; vault-storage's README step 2 is the model. Never
-  `-f <name>` in the current directory, and never "from the repository root" for a step that makes
-  one. Before naming the files of any commit, read `git status --short`, which shows untracked files
-  (`git diff --stat` does not), and stop at any key-like file (`*.pem`, `*.key`, `id_*`, a
-  `-----BEGIN … PRIVATE KEY-----` line) instead of listing it. A secret that reached pushed history
-  is rotated, not rewritten out. The dotfiles' global pre-commit hook
-  (`~/.config/git/hooks/pre-commit`) stops a commit that adds a key header or a known token format,
-  and its links `pre-applypatch` and `pre-merge-commit` stop the same lines arriving through
-  `git am` (a handoff's patch included) or a merge commit; when it stops one, the line comes out of
-  the commit, the patch, or the merge, and `--no-verify` on `git commit`, `git am`, or `git merge`
-  is his call for a fake he names, never an agent's suggestion. The same holds for Program Clerk's
-  server, which refuses a write that adds a secret (vault-storage D171): its override is sent only
-  on his word for that write.
+  the machine; the code reads it from there, and the repository names only where. **Never commit a
+  secret, and never hand him a step that can.** A command that makes a key, a token, or a
+  certificate makes it in a temporary directory outside any repository, and proves it in one
+  subshell block: create the directory with `mktemp -d`, remove it with
+  `trap '… rm -rf "$dir"' EXIT`, stop when `git -C "$dir" rev-parse --git-dir` succeeds, and only
+  then make the key, store it, and print the public half (vault-storage's README step 2 is the
+  model). Never `-f <name>` in the current directory, and never "from the repository root" for a
+  step that makes one. Before naming a commit's files, read `git status --short`, and stop at any
+  key-like file (`*.pem`, `*.key`, `id_*`, a `-----BEGIN … PRIVATE KEY-----` line). A secret that
+  reached pushed history is rotated, not rewritten out. The dotfiles' global pre-commit hook
+  (`~/.config/git/hooks/pre-commit`, linked as `pre-applypatch` and `pre-merge-commit`) stops a key
+  header or a known token format in a commit, a `git am`, or a merge; take the line out, and leave
+  `--no-verify` to him for a fake he names. Program Clerk's server refuses a write that adds a
+  secret; send its override only on his word for that write.
 - **No map of the internal network in a public repository either.** A host list, a playbash
-  inventory, an address map, or any file that lays out the machines stays on them and is copied
-  between them by hand (`playbash put`); it never goes into a public repository, a public chezmoi
-  source tree included, and a public doc that needs an example uses obvious stand-ins (`host1`,
-  `host2`, `box`). Public prose says "the fleet" or "a fleet host" and names no machine, and an
-  agent that needs the names reads them from `~/.config/playbash/inventory.json`.
+  inventory, or an address map stays on the machines and is copied between them by hand
+  (`playbash put`), never into a public repository, a public chezmoi source tree included. Public
+  prose says "the fleet" or "a fleet host", and a public example uses stand-ins (`host1`, `host2`).
+  An agent that needs the names reads `~/.config/playbash/inventory.json`.
 
 ## Ambiguity
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/ambiguity]].
-
-When an instruction or referent is ambiguous — not just unknown jargon, but _what 'it' points at_ or
-_how far a request reaches_ (which file, which scope, how much to change) — ask rather than guess
-and run. A wrong guess on scope costs more round-trips than the question. Fixing an obvious typo
-silently is still fine; this is about genuine ambiguity of intent. Two refinements: parse a compound
-rule **narrowly** — "no X transformations" means "no transformations of type X", not "no X _and_ no
-transformations"; and **scope a multi-repo-capable operation to the named project** — don't sweep
-sibling repos unbidden.
+When an instruction or referent is ambiguous — _what 'it' points at_ or _how far a request reaches_
+(which file, which scope, how much to change) — ask instead of guessing. Fixing an obvious typo
+silently is still fine. Parse a compound rule **narrowly** ("no X transformations" means no
+transformations of type X), and **scope a multi-repo-capable operation to the named project**; don't
+sweep sibling repos unbidden.
 
 **Name the consuming surface before building a display or affordance.** A request for something to
-be _shown_ — a status line, a tab label, a prompt, a badge — is under-specified until you say
-**where it renders and who is looking at it**, and the obvious surface is often not the one the user
-is in front of. State the target in one clause before building; when more than one surface is
-plausible, ask. The reference model — "like my tmux setup does it" — describes the _effect_, never
-the surface.
+be _shown_ (a status line, a tab label, a prompt, a badge) is under-specified until you say **where
+it renders and who looks at it**. State the target in one clause before building; when more than one
+surface is plausible, ask. A reference model ("like my tmux setup does it") describes the effect,
+never the surface.
 
-**"In this project" names the cwd project, and a best practice stated there is fleet-wide.** Eugene,
-/clarify 2026-09-22, on whether the standard-errors ruling reached past double-meh: _"When I say 'in
-this project' I usually mean the project of the current `cwd`. … But typically I extend best
-practices to all fleet projects, so it can be equally applied to other supported projects we work
-on. So you can safely extend it on others."_ So the referent is the repository the session runs in,
-never a project the sentence mentions in passing; and a coding or process practice he states in one
-session routes as a fleet rule unless he scopes it — a `/reflect` correction about practice is
-cross-project by default, and only a fact about that repository stays in its own notes. A fleet rule
-gets a line in this file, with any long form in [[projects/agent-workflow/feedback]] or a topic: a
-session's start prints only its own project's feedback digest, and no session runs in agent-workflow
-(the 2026-11-11 reflect report, P2: a rule recorded only there broke 75 minutes later in another
-project).
+**"In this project" names the cwd project, and a best practice stated there is fleet-wide.** The
+referent is the repository the session runs in, never a project the sentence mentions in passing. A
+coding or process practice he states in one session is a fleet rule unless he scopes it; only a fact
+about that repository stays in its own notes. A fleet rule gets a line in this file, with any long
+form in [[projects/agent-workflow/feedback]] or a topic.
 
-**An anecdote in design talk is context, not an instruction.** A story he tells about a system he
-worked on or saw, phrased in the past tense, informs the design; it does not specify it. A current
-action turns it into an instruction: _"In the past I saw this"_ is context, while _"In the past I
-did this, do it"_ asks for it. When you suspect an anecdote is an instruction, and the two readings
-would build different code, confirm before building.
+**An anecdote in design talk is context, not an instruction.** A past-tense story about a system he
+worked on or saw informs the design; a current action turns it into an instruction ("In the past I
+did this, do it"). When the two readings would build different code, confirm before building.
 
 **"Analyze this feedback" is read-only.** For "look at this", "see if it is relevant", or "check the
 docs as they suggest", verify the claim, report its seed, the verdict, and the options with a
-recommendation, and stop; build on his "go ahead" ([[projects/agent-workflow/feedback]] § Analyzing
-feedback is read-only: the deliverable is an opinion and a plan).
+recommendation, and stop; build on his "go ahead".
 
 **Text after a relayed side note is his own unless it speaks to the note.** A status of his own
-action after the note ("pushed", "deployed", a next command) is unrelated to it, since a note never
-speaks of his pushes; other words are his comment on the note; when it is unclear which, ask. A note
-with no comment of his is information for you to make sense of, not a read-only "analyze this": take
-care of it when it bears on the work at hand, and ask him when it calls for a decision that is not
-obvious ([[projects/agent-workflow/feedback]] § Text after a relayed side note).
+action after the note ("pushed", "deployed", a next command) is unrelated to it; other words are his
+comment on the note; when unclear, ask. A note with no comment is information: take care of it when
+it bears on the work at hand, and ask when it needs a decision that is not obvious.
 
 **`/rc` is Claude Code's `/remote-control`.** Never map an unfamiliar slash shorthand to a skill by
-resemblance: check `/help`'s built-ins, and ask when neither matches
-([[projects/agent-workflow/feedback]] § `/rc` is Claude Code's `/remote-control`, never a skill).
+resemblance: check `/help`'s built-ins, and ask when neither matches.
 
 **An open question is phrased as a question and asked again until answered.** Put it in its own
 paragraph at the end of the reply; "next is your ruling on X" asks nothing. A question that offers
-choices carries your pick and its reason in a sentence, and each option its cost in a clause, or
-says what would decide it; a bare list of options hands him the analysis, and "What do you
-recommend?" in reply means the pick was missing. A question that got no reply is restated in full at
-the next stop, with what was done meanwhile; silence is neither an answer nor consent
-([[projects/agent-workflow/feedback]] § A question that got no answer is asked again at the stop;
-the pick: reflect 2026-10-08, apodict `b2eadfb5` and `d347c372`; the cost: vault-storage 2026-10-28,
-_"Q159: how difficult to do (b)? What are drawbacks?"_, the 2026-10-30 report, M2).
+choices carries your pick and its reason, and each option's cost in a clause, or says what would
+decide it. A question that got no reply is restated in full at the next stop, with what was done
+meanwhile; silence is neither an answer nor consent.
 
 **A design note's questions reach him after a fresh read.** Before a message asks him to rule on a
-design note's questions, wherever they are written, spawn the `design-reader` agent with the note's
-path and the message as it will be sent. Fix what it read wrong, raise each commitment the goal may
-not need as a "whether" question or cut it, and open the message with its paraphrase. Run it on a
-note again only when its design changed ([[projects/claude-config/decisions]] D71).
+design note's questions, spawn the `design-reader` agent with the note's path and the message as it
+will be sent. Fix what it read wrong, raise each commitment the goal may not need as a "whether"
+question or cut it, and open the message with its paraphrase. Run it again only when the design
+changed.
 
 **A reply answers only what it names.** "next" or "#229: your pick" waives no step the stop promised
 and answers no question it left out: do the step, restate the question at the next stop, and check
 both before a pass over many notes or projects. A design-change question at the top of a reply also
-goes among the numbered questions at its end ([[projects/agent-workflow/feedback]] § A reply answers
-only what it names).
+goes among the numbered questions at its end.
 
 **A question range runs from its first number to its last.** "Q452-5" is Q452 to Q455, the second
-number shortened to the digits that change. Eugene, vault-storage 2026-11-17: _""Q739-42" means
-"from Q739 to Q742", and so on."_ (vault-storage D766; reflect 2026-11-19, M1).
+number shortened to the digits that change.
 
 ## Cross-repo work
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/cross-repo-work]].
-
 **Editing a repo outside the session's primary working directory starts with one lease read, and the
-answer picks the path** (ruled 2026-08-18; protocol in the vault skill `references/coordination.md`
-§ Agent coordination, design `projects/vault-storage/design/agent-coordination` § Session-lifetime
-claims). `lease_list({resource: "repo:<normalized-remote-url>"})`, then
+answer picks the path** (vault skill `references/coordination.md` § Agent coordination).
+`lease_list({resource: "repo:<normalized-remote-url>"})`, then
 `git -C <sibling> status --porcelain`:
 
 - **Unclaimed and clean → side-claim it, edit its working tree directly, release when the burst is
-  done, and tell him** — "mods done in `<repo>`: review, commit, push." No worktree, no branch, no
-  merge dance:
+  done, and tell him**: "mods done in `<repo>`: review, commit, push."
   `lease_claim({resource, holder: "<host>/<session-prefix>", attestation: "clean at <sha>"})` → edit
-  → run that repo's gates → `lease_release` with the `claim_token` the claim returned. This is the
-  daily case (no other agents running) and it replaces the 2026-08-08 "always a worktree" rule;
-  Eugene: _"I would prefer direct modifications and notifying me that mods are done and I need to
-  review them and commit/push … I don't want to overcomplicate things in simple situations."_ Clean
-  means no modified, staged, or untracked-unignored files — a `git diff` in that repo is then
-  exactly my change, which is the review unit the worktree used to provide.
+  → run that repo's gates → `lease_release` with the returned `claim_token`. Clean means no
+  modified, staged, or untracked-unignored files.
 - **Held by someone else → don't race it**: name the holder, work in a disposable worktree
-  (`git -C <sibling> worktree add <scratch> -b <topic>`), commit there, and file a handoff addressed
-  to the role `repo:<…>` with the patch, then ring the bell (below). Name the worktree and branch in
-  the handoff's body and keep them until the recipient applies the work and removes them; remove
-  them yourself when the recipient is on another host. The Agent tool's `isolation: "worktree"` does
-  the same for delegated work.
-- **Unclaimed but dirty → don't claim**: someone's in-flight state is there (possibly his); worktree
-  as above, and say the tree was dirty. **The one exception is dirt that is this session's own
-  earlier burst.** Before the worktree, check three things: the dirty paths are exactly the files
-  your first side-claimed burst touched, `git -C <sibling> diff --stat` matches what you left, and
-  your own sentences are in the diff. All three hold → side-claim again with an attestation naming
-  the earlier burst (`"dirty with this session's own burst, <time>"`) and edit directly; a second
-  burst on your own uncommitted first one is still one review unit for him. Dirt you cannot account
-  for that way is someone's, and the worktree path stands.
+  (`git -C <sibling> worktree add <scratch> -b <topic>`), commit there, file a handoff addressed to
+  the role `repo:<…>` with the patch, and ring the bell (below). Name the worktree and branch in the
+  handoff, and keep them until the recipient applies the work and removes them; remove them yourself
+  when the recipient is on another host. The Agent tool's `isolation: "worktree"` does the same for
+  delegated work.
+- **Unclaimed but dirty → don't claim**: someone's in-flight state is there; use a worktree as
+  above, and say the tree was dirty. **The one exception is dirt from this session's own earlier
+  burst**: the dirty paths are exactly the files your first burst touched,
+  `git -C <sibling> diff --stat` matches what you left, and your own sentences are in the diff. When
+  all three hold, side-claim again with an attestation naming the earlier burst
+  (`"dirty with this session's own burst, <time>"`) and edit directly.
 
 **The protocol is for work this session's task needs, or a handoff addressed to it.** A defect
-noticed in another project that the task does not need is filed on that project's queue with its
-evidence, and the session goes back to its own work (apodict 2026-10-15; reflect 2026-10-22 M1). A
-tool he reports as failing him is the task, never a defect noticed in passing: fix it in its
-repository on the side-claim path, and file only what he defers (apodict 2026-10-28: a lint finding
-`/vault sweep` ignored was filed twice before _"fix the sweep now in claude-config"_; the 2026-10-30
-report, P4).
+noticed in another project that the task does not need goes on that project's queue with its
+evidence, and the session returns to its own work. A tool he reports as failing him is the task: fix
+it in its repository on the side-claim path, and file only what he defers.
 
-My own session's repo is claimed for me at start (the Program Clerk plugin's hooks since
-vault-storage D761, renewed after each tool call, released at session end) — the `[pc] lease:` line
-at session start says whether I hold it or am **subordinate** to another cwd session; subordinate
-means read freely, edits go worktree + handoff, and taking the lease is _his_ act, in the UI only
-(`/ui/agents.html`, ruled 2026-09-19): on `"take the lease"`, point him there, never `force` a
-release yourself. A cwd lease unrenewed for an hour passes to the next session that starts in the
-repo, and the plugin says so once when it happens to an idle session of mine. Committing in his main
-checkouts and pushing stay his; work in a local linked worktree is unrestricted
-([[projects/claude-config/decisions]] D43). **Inside a Herdr session (`HERDR_ENV=1`), open the
-finished worktree for his review yourself** —
-`herdr worktree open --cwd <repo-root> --branch <topic> --label <topic> --no-focus` — instead of
-handing him the command; `--cwd` must name the _sibling repo_, since herdr resolves worktrees
-against the caller-pane's repo otherwise (hit 2026-08-09: `worktree_not_found` from a blog-hugo
-pane). `--no-focus` so his focus stays put; he switches when ready. (Eugene 2026-08-09: _"you can
-open such worktrees in `herdr` yourself."_) **One exception, and state it when taken:** a live
-symlinked artifact — this config repo's `CLAUDE.md`, `settings.json`, a skill — must be edited in
-place, because a worktree copy would not be in effect; say so in the report rather than silently.
+Your own session's repo is claimed at start (the Program Clerk plugin's hooks, renewed after each
+tool call, released at session end); the `[pc] lease:` line says whether you hold it or are
+**subordinate** to another cwd session. Subordinate means read freely, and edits go worktree +
+handoff. Taking the lease is _his_ act, in the UI only (`/ui/agents.html`): on "take the lease",
+point him there, and never `force` a release. A cwd lease unrenewed for an hour passes to the next
+session that starts in the repo. Committing in his main checkouts and pushing stay his; work in a
+local linked worktree is unrestricted. **Inside a Herdr session (`HERDR_ENV=1`), open a finished
+worktree for his review yourself**:
+`herdr worktree open --cwd <repo-root> --branch <topic> --label <topic> --no-focus`, where `--cwd`
+names the _sibling repo_. **One exception, stated when taken:** a live symlinked artifact (this
+config repo's `CLAUDE.md`, `settings.json`, a skill) is edited in place.
 
-**A report that spans repos names the repo in its opening line and qualifies every path with it** —
-`double-meh/src/sw.js`, not `src/sw.js`. A bare path reads as the session's own repo, because every
-other path in the conversation has meant that, and he reviews and commits per repo: a fix he
-believes is in the repo he is looking at is invisible. Sharpest with colliding filenames —
-`double-meh` and `double-meh-sw` both carry a `src/sw.js`, so an unqualified path does not merely
-omit the repo, it points at the wrong file in the wrong one. Naming the repo only in a closing gate
-line is not enough; that is exactly where it got missed. Close a multi-repo session with a per-repo
-state table: what is committed, what is uncommitted, which submodules are dirty. Scope stays
-governed by § Ambiguity (don't sweep sibling repos unbidden) — this rule is about _where the work
-lands_ and _how it is reported_.
+**A report that spans repos names the repo in its opening line and qualifies every path with it**:
+`double-meh/src/sw.js`, not `src/sw.js`. Close a multi-repo session with a per-repo state table:
+what is committed, what is uncommitted, which submodules are dirty. Scope stays governed by §
+Ambiguity.
 
 **A stop's repository table lists only the repositories with work left:** changes to commit, a push,
-a deploy. A clean, pushed repository the session touched earlier stays out of it, and a stop that
-changed one repository names it in the opening line with no table
-([[projects/agent-workflow/feedback]] § A stop's repository table lists the repositories with work
-left).
+a deploy. A stop that changed one repository names it in the opening line, with no table.
 
 **A handoff rings a bell on this machine, and its owner rings back.** After filing any handoff, a
-`run-check` included, `SendMessage` every `ListAgents` peer named after the handoff's `project`,
-which is the target's checkout folder, never the remote's basename (vault-storage's remote is
-`apodictum/pc`), with the id, and put your own `ListAgents` name in the body as `Ring back: <name>`;
-with no such peer, say in the stop report that it waits for a session there. The owner sends that
-name the outcome when it resolves. The record comes first, the ring second (Eugene, 2026-11-06;
-protocol: the vault skill `references/coordination.md` § Ring the bell, and ring back;
-[[projects/agent-workflow/feedback]] § A handoff rings a bell, and its owner rings back).
+`run-check` included, `SendMessage` every `ListAgents` peer named after the handoff's `project` (the
+target's checkout folder, never the remote's basename: vault-storage's remote is `apodictum/pc`)
+with the id, and put your own `ListAgents` name in the body as `Ring back: <name>`; with no such
+peer, say in the stop report that it waits for a session there. The owner sends that name the
+outcome when it resolves. Record first, ring second (vault skill `references/coordination.md` § Ring
+the bell, and ring back).
 
 **The lease holder reads its handoff inbox at every breather:**
 `handoff_list({project: "<name>", status: "open"})` on a ring, during a long run's wait, between a
-long pass's rounds, at each work stop, and at the wrap, then apply what arrived, live files
-included, and remove the submitter's worktree and branch, never with `--force`, which would delete
-work it still holds; a handoff that loosens a gate or a permission waits for his word
-([[projects/claude-config/decisions]] D73; [[projects/agent-workflow/feedback]] § The lease holder
-reads its handoff inbox at every breather).
+long pass's rounds, at each work stop, and at the wrap. Apply what arrived, live files included, and
+remove the submitter's worktree and branch, never with `--force`; a handoff that loosens a gate or a
+permission waits for his word.
 
 **The owner that applies a handoff names its commit, and the outcome is the owner's.** The subject
-goes in the owner's own stop report and in its reply to the requester. The requester never writes
-its own, may cite the owner's subject once where its own record needs it, and never tracks whether
-that commit landed: no reading the other checkout, no listing it as pending in a stop or a wrap
-([[projects/agent-workflow/feedback]] § A filed handoff is the owner's problem).
+goes in the owner's stop report and its reply to the requester. The requester never writes its own,
+may cite the owner's subject once where its own record needs it, and never tracks whether that
+commit landed.
 
 ## Diagnosis
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/diagnosis]].
-
-When asked _why_ a system did something, get evidence before asserting a cause — read the logs, the
-git history, the actual stored value — and don't present a guess as a diagnosis. If you must reason
-before you can check, label it a hypothesis, not a finding, and say what would confirm it. A
-confident-but-wrong "here's why" costs more than a hedged "let me check": it sends the user chasing
-a phantom and burns trust in the next answer.
+When asked _why_ a system did something, get evidence before asserting a cause: read the logs, the
+git history, the stored value. If you must reason before you can check, label it a hypothesis and
+say what would confirm it.
 
 **Debug from a model of the defect, one change at a time.** Before a fix, know how the failure
-happens. An obvious defect, such as a typo, is its own repro. For one that is not, write down the
-hypotheses and a way to reproduce each, and read the whole error a run prints, since a `head`,
-`tail`, or `grep` of the output can drop the line that names the cause. List what you believe is
-true and check each belief, the one you are surest of included, the way an `apodictum` query writes
-out its atoms and assumptions before it asks. Then change one thing per run, and undo a change that
-left the failure in place before you try the next, so the diff that ships holds the fix alone (Miko
-Pawlikowski's LinkedIn post on debugging, 2026-11-06; [[projects/agent-workflow/feedback]] § Debug
-from a model of the defect).
+happens. An obvious defect, such as a typo, is its own repro; for one that is not, write down the
+hypotheses and a way to reproduce each, and read the whole error a run prints, never through `head`,
+`tail`, or `grep`. List what you believe is true and check each belief, the surest included. Change
+one thing per run, and undo a change that left the failure in place before trying the next.
 
-**Generalized to all argumentation:** whenever making an argument — defending a design, justifying a
-recommendation, weighing trade-offs — mark each supporting claim's epistemic status explicitly:
-**factual** (verified, measured, read from source — say where) vs. **speculative** (expected,
-reasoned, unverified — say so). Never let a speculative claim ride at the same confidence as a
-factual one; the speculation that doesn't survive scrutiny drags the sound argument down with it. A
-measured figure is factual only for the setup it ran under: cite it with that setup (the corpus, the
-machine, what was switched off), and carried to another setup it is speculative until measured
-there.
+**Generalized to all argumentation:** when making an argument (defending a design, justifying a
+recommendation, weighing trade-offs), mark each supporting claim **factual** (verified, measured,
+read from source — say where) or **speculative** (expected, reasoned, unverified — say so). Never
+let a speculative claim ride at a factual one's confidence. A measured figure is factual only for
+the setup it ran under: cite it with that setup (the corpus, the machine, what was switched off);
+carried to another setup, it is speculative until measured there.
 
 **A project's record is evidence too.** Before proposing a change to something the project may have
 ruled on (an access grant, a cache key, a negotiation scheme, a schema, a name), a fix included,
-search the vault over the project for that surface, its decisions, design notes, and queue items,
-and any sibling project that shares the product, with the topics they cite, and say in the proposal
-what the search found, or that it found nothing ([[projects/agent-workflow/feedback]] § A project's
-record is evidence before a change).
+search the vault over the project for that surface — its decisions, design notes, queue items, any
+sibling project that shares the product, and the topics they cite — and say what the search found,
+or that it found nothing.
 
 **A claim of absence or completeness names what was enumerated, or is marked a guess.** Before a
 sentence says _only_, _none_, _no other_, _the one place_, _covers the class_, _harmless_, _never
-tested_, or puts a size on work (_takes weeks_, the cost of an option), run the enumeration and cite
-it (the command, the count, what it read), or write "guess". A count offered as the evidence for a
-ruling reads every form the rule names and says what it measures. A step called harmless names the
-shared things it takes (user IDs, ports, names, roles) and what happens when it runs before their
-owner does.
+tested_, or puts a size on work (_takes weeks_, an option's cost), run the enumeration and cite it
+(the command, the count, what it read), or write "guess". A count offered as evidence for a ruling
+reads every form the rule names and says what it measures. A step called harmless names the shared
+things it takes (user IDs, ports, names, roles) and what happens when it runs before their owner
+does.
 
 **A message he types while you work is an `attachment` row of type `queued_command`, not a `user`
-row.** Answer each one, record a ruling it carries like any other, and include them in any search of
-transcripts for his words (vault-storage 2026-10-09; reflect 2026-10-22 M3).
+row.** Answer each one, record a ruling it carries, and include them in any transcript search for
+his words.
 
 **"Is this safe / allowed?" is usually empirical too.** When a standing rule appears to forbid an
-action and the question is checkable, check it instead of arguing the policy — build the artifact,
-apply the change, rebuild, diff, and classify the delta. Rules constrain _outcomes_; a change that
-provably doesn't produce the outcome a rule guards against isn't the thing it forbids. Report the
-measurement, then let the user rule. This is the _is-it-permitted_ sibling of the _why_ rule above,
-and it generalizes past formatters (§ Tools covers that case) to codemods, regenerated docs, rebuilt
-indexes — anything where a standing rule meets a mechanical change.
+action and the question is checkable, check it: build the artifact, apply the change, rebuild, diff,
+and classify the delta. A change that provably doesn't produce the outcome a rule guards against is
+not what the rule forbids. Report the measurement, then let him rule. This covers formatters (§
+Tools), codemods, regenerated docs, and rebuilt indexes.
 
-**His engine decides a browser claim.** Eugene browses in Epiphany (WebKitGTK), and on an iPad in
-Safari. Playwright's bundled WebKit is neither. So a browser-facing claim names the engines that
-checked it ("Chromium, Firefox, Playwright WebKit") and never says "WebKit" or "verified" alone.
-When his engine shows a defect that yours do not, your measurements cannot test a hypothesis about
-it: before a second fix, put an opt-in instrument in the page (a timestamp per named step, a stall
-detector, off by default) and ask him for its output. Method:
+**His engine decides a browser claim.** He browses in Epiphany (WebKitGTK), and on an iPad in
+Safari; Playwright's bundled WebKit is neither. A browser-facing claim names the engines that
+checked it ("Chromium, Firefox, Playwright WebKit"), never "WebKit" or "verified" alone. When his
+engine shows a defect that yours do not, before a second fix, put an opt-in instrument in the page
+(a timestamp per named step, a stall detector, off by default) and ask him for its output. Method:
 [[topics/ship-the-instrument-not-the-hypothesis]].
 
-**An HTML artifact is served, never opened.** He reaches the fleet's Linux desktops over ssh with no
-display, so a file path to a page is not a deliverable. A desktop with `~/servers/nginx` serves
-files over the LAN: hand him `http://<host>.lan:<port>/<prefix>/<repo>/<path>`, with the port and
-the prefix that serves `~/Open` read from that folder's `README.md`, and `<host>` the machine the
-session runs on (`hostname`); a machine without `~/servers/nginx` has no server (dotfiles decisions,
-2026-09-19). The fleet's names live in `~/.config/playbash/inventory.json`, never in this public
-file. A page outside `~/Open` needs a `volumes:` line in that stack first.
+**An HTML artifact is served, never opened.** He has no display on the fleet's Linux desktops: hand
+a URL, never a file path. A desktop with `~/servers/nginx` serves files over the LAN: hand him
+`http://<host>.lan:<port>/<prefix>/<repo>/<path>`, with the port and the prefix that serves `~/Open`
+from that folder's `README.md`, and `<host>` from `hostname`; a machine without `~/servers/nginx`
+has no server. A page outside `~/Open` needs a `volumes:` line in that stack first. Fleet names live
+in `~/.config/playbash/inventory.json`, never in this public file.
 
 **Captures keep provenance.** A durable record says who proposed and who endorsed: an agent proposal
 stays unverified until he verifies it, silence is not endorsement, a recorded position without a
-ruling marker is a leaning, and scope a leg leaves out is "deferred" unless he said no
-([[projects/agent-workflow/feedback]] § Captures record who proposed vs who endorsed). A reason for
-his instruction that he did not give is the agent's reading, and it is labeled so wherever it is
-written, project docs and code comments included (stream-json 2026-10-27: the agent's own reason for
-`Symbol.for()` reached `AGENTS.md`, JSDoc, the wiki, and the vault before _"The reason I use
-`Symbol.for()` not to avoid different versions of the same library, but to avoid formal dependencies
-between different libraries."_; the 2026-10-30 report, M1).
+ruling marker is a leaning, and scope a leg leaves out is "deferred" unless he said no. A reason for
+his instruction that he did not give is the agent's reading, labeled so wherever it is written,
+project docs and code comments included.
 
 **A ruling holds for the conditions it was made under; when reality contradicts it, bring it to
-him.** Record with a measured ruling the setup it rests on and what would show it wrong (a size, a
-rate, a pattern), and when data, a measurement, or a new pattern contradicts a standing ruling, say
-so in that turn with the evidence and a proposed update; never build around it in silence. An
-approved design is a ruling too: before building a change to it (a swapped mechanism, a narrower
-cut, a wider reach that drops an exception the ruling kept, a new rank or default, a cost accepted,
-a trigger it named crossed, a premise the approval rested on found false), put the change at the top
-of the reply as a question with your pick; a mention in passing, or a line in the next decision
-entry or stop report, is building around it. The stop that closes an arc built from an approved
-design carries one line, _Against the approval:_, naming each departure or _none_, so the comparison
-is a step the stop always takes (the 2026-11-11 reflect report, P5: 11 departures in 8 sessions, 10
-caught only by side notes). An approval covers what he addressed: an "LGTM" on a note with open
-questions approves its direction, and each suggested answer stays your proposal until he rules it
-([[projects/agent-workflow/feedback]] § A ruling holds for its conditions; bring a contradicted one
-to him; the design clause: reflect 2026-10-22 P1; recurred: the 2026-10-30 report, P3).
+him.** Record a measured ruling with the setup it rests on and what would show it wrong (a size, a
+rate, a pattern). When data, a measurement, or a new pattern contradicts a standing ruling, say so
+in that turn with the evidence and a proposed update; never build around it in silence. An approved
+design is a ruling too: before building a change to it (a swapped mechanism, a narrower cut, a wider
+reach that drops an exception the ruling kept, a new rank or default, a cost accepted, a named
+trigger crossed, a premise found false), put the change at the top of the reply as a question with
+your pick; a mention in passing is building around it. The stop that closes an arc built from an
+approved design carries one line, _Against the approval:_, naming each departure or _none_. An
+approval covers what he addressed: an "LGTM" on a note with open questions approves its direction,
+and each suggested answer stays your proposal until he rules on it.
 
 **Dependencies first.** Before calling a tool defective, compare its installed version with the
 latest published (`node -p "require('./node_modules/<pkg>/package.json').version"` against
 `npm view <pkg> version`), regenerate when they differ, and reproduce in the real configuration,
-never a simplified one ([[projects/agent-workflow/feedback]] § Check dependencies before diagnosing
-a tool as broken). Its health is evidence too: before proposing a dependency, or working around its
-defect, read its last release and cadence, its merged pull requests, its tracker for the failure,
-and whether it is archived or its images withdrawn, and name the alternatives
-([[projects/agent-workflow/feedback]] § A dependency's health is read before it is proposed; reflect
-2026-10-27).
+never a simplified one. A dependency's health is evidence too: before proposing one, or working
+around its defect, read its last release and cadence, its merged pull requests, its tracker for the
+failure, and whether it is archived or its images withdrawn, and name the alternatives.
 
 **A sub-agent's structured report is evidence; its prose is a claim.** Check the narrative's items
-against its own totals, and read the store before acting on any item the prose names
-([[projects/agent-workflow/feedback]] § A sub-agent's structured report is the artifact; its prose
-summary is not).
+against its own totals, and read the store before acting on any item the prose names.
 
 **A regression is reported as its number.** State a worse measurement as a percentage computed from
-the unrounded figures, in the direction it moved ("46% slower per item"); a shrinking word
-("barely", "roughly flat") only when the change is inside the noise and the report says so
-([[projects/agent-workflow/feedback]] § A regression is reported as its number, never softened).
+the unrounded figures, in the direction it moved ("46% slower per item"); use a shrinking word
+("barely", "roughly flat") only when the change is inside the noise, and say so.
 
 ## Deliberate omissions are disclosures
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/deliberate-omissions]].
+When a judgment call _omits_ a standard artifact or step (a lockfile, a `scripts` block, a check,
+docs a convention expects), the summary lists the omission with its one-line reason, as a decision.
 
-When a judgment call _omits_ a standard artifact or step — lockfiles, `scripts` blocks, checks, docs
-a convention normally expects — the handoff/wrap-up summary must list the omission with its one-line
-reason, as a decision. Deviations must never be discoverable-by-surprise: the user having to ask
-"why is X missing?" means the report failed, even when the omission itself was right.
+**The rule covers steps _you_ put on the record as much as conventional ones**: a "next leg" named
+in a summary, a follow-up promised mid-arc, a review suggestion you acted around. Do it, or say in
+the wrap that you dropped it and why.
 
-**The rule covers steps _you_ put on the record as much as conventional ones** — a "next leg" named
-in a summary, a follow-up promised mid-arc, a secondary suggestion in review feedback you acted
-around. Announcing a step creates the expectation; quietly closing the arc without it is the same
-undisclosed deviation as skipping a lockfile. Do it, or say in the wrap that you dropped it and why.
-
-**A sentence that says something is unchecked is a step not taken.** When you are about to write
-_unchecked_, _not verified_, _I haven't verified_, _partly checked_, or _still open_, and the check
-runs in this session in minutes, run it and report the result instead. An unknown that decides
-whether a deploy, a release, or a migration works is settled before that step, by a read-only query
-where one exists, never by the step. `hooks/unchecked-claim-check.sh` (Stop) sends a closing message
-that says so back once (D85; the 2026-11-11 reflect report, P1).
+**A sentence that says something is unchecked is a step not taken.** Before writing _unchecked_,
+_not verified_, _partly checked_, or _still open_ about a check that runs in this session in
+minutes, run it and report the result. An unknown that decides whether a deploy, a release, or a
+migration works is settled before that step, by a read-only query where one exists, never by the
+step. `hooks/unchecked-claim-check.sh` (Stop) sends such a closing message back once.
 
 **A pilot says what it cannot show.** Before a pass over many notes, a cutover, a deploy, or a
 command run on several hosts, and wherever a clean check is offered as proof of a class, name what
 the pilot, the check, or the tests lack that the real run has (a field, a second Unix user, a folder
-shape, another host's shell, a route only the old system served), then cover each or say the first
-real run is its test. The stop that offers a check, a test, or a measurement as evidence for more
-than it ran on carries one line, _Cannot show:_, naming what it lacks that the real run has, or
-_nothing_, so the comparison is a step the stop always takes, as _Against the approval:_ is (the
-2026-11-23 reflect report, P1: four sessions, each caught by a side note). A platform the session's
-host lacks may have a host in the fleet (`~/.config/playbash/inventory.json` groups the hosts by
-OS): ask him, case by case, whether the check runs there, and with his yes read that checkout's
-state before touching it. Eugene, 2026-11-19: _"It is better to decide on case by case basis."_
-(vault-storage 2026-11-02: a queue pilot with no trackers "proved nothing" about trackers; the
-2026-11-02 report, M2. Widened by the 2026-11-16 report, P1: a key-quoting test run on one host of
-three, a swap test said to close a class, stubs before a real deploy. The platform: node-re2
-2026-11-18, a memory test measured on Linux failed on macOS, and the item waited "until someone
-measures on a Mac" before Eugene named the fleet's; the 2026-11-19 report, P1.)
+shape, another host's shell, a route only the old system served); cover each, or say the first real
+run is its test. A stop that offers a check, a test, or a measurement as evidence for more than it
+ran on carries one line, _Cannot show:_, naming what it lacks or _nothing_. A platform the session's
+host lacks may have a fleet host (`~/.config/playbash/inventory.json` groups hosts by OS): ask him,
+case by case, whether the check runs there, and with his yes read that checkout's state before
+touching it.
 
-**Disclosure is not permission — audit the reason before writing the omission down.** A well-formed
-_Deliberately not done_ entry makes an omission visible; it does not make it right, and the rules
-above are silent on which omissions are legitimate. Three reason classes never are. **A claim about
-his workflow**: "that trend point belongs with your commit", "this is better done with your review"
-— the commit boundary is his, the working tree is yours, and a change you would otherwise make now
-does not become his by being deferred to his commit (§ Git / npm gates, "the gate covers the verbs,
-not the bookkeeping" — the same mistake outside the vault). **A trade-off you could settle in this
-session by building or measuring it** — the escape hatch in § Fix the class asks you to name the
-trade-off, not to stop at naming it; if one build or one four-minute measurement decides it, run
-that and report the choice with its evidence. **A residue the selecting rule predicts is empty** —
-"the other 53 have no repeated operand, so by D86 no factoring can exist; most likely minimal,
-unread". The sample cannot test the rule that drew it, so the residue is the only place that rule
-can fail, and it is where the blind spots live: the cases the rule does not model (an atomizer that
-keys by source text and misses a negation twin, a domain fact the propositional tier never sees) and
-the tool defects a full read turns up. When the residue is countable and a script or an enumeration
-reads it in minutes, read it and report the count; "most likely X, unread" is reserved for a residue
-genuinely beyond the session's reach, and then it carries the count and what would read it. The
-residue re-forms after every fix, and a prior pass's labels do not read it: when reading the
-survivors changed the instrument, the re-run's survivors are a new unread set even where the old
-labels still fit them, and a composition stated from those labels ("loop state undefined by design,
-three optional values, one dispatch") is a prediction in a read's grammar — it carries no "unread",
-so the disclosure never fires on it. Same principle as § Fix the class ("a search bounded by the
-hypothesis that found the first instance leaves the rest invisible"), arriving as a deferral instead
-of a search. What survives is an omission you genuinely cannot close: a precondition outside reach,
-a scope call only he can make, work that would need another repo.
+**Disclosure is not permission — audit the reason before writing the omission down.** Three reason
+classes never justify one. **A claim about his workflow** ("this belongs with your commit"): a
+change you would make now stays yours to make. **A trade-off you could settle in this session by
+building or measuring it**: build or measure, and report the choice with its evidence. **A residue
+the selecting rule predicts is empty.** When the residue is countable and a script reads it in
+minutes, read it and report the count; "most likely X, unread" is reserved for a residue out of
+reach, with its count and what would read it. The residue re-forms after every fix: when reading the
+survivors changed the instrument, the re-run's survivors are a new unread set, even where old labels
+still fit them. What survives is an omission you cannot close: a precondition out of reach, a scope
+call only he can make, work that needs another repo.
 
 ## Fix the class, not the instance
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/fix-the-class]].
+When a defect is an _instance of a class_ (one of N call sites, ports, docs, drafts), **enumerate
+the class and sweep it before reporting anything done**. Name the denominator ("the doc set is these
+17 files", "grep says 7 call sites"), enumerated independently of the hypothesis that found the
+first instance. Grep proves its pattern's absence, never the property's presence; and **an additive
+commit touching a file is no evidence the file is current**. Full:
+[[topics/touched-is-not-current]].
 
-When a defect turns out to be an _instance of a class_ — one of N call sites, one of N ports, one of
-N docs, one of N drafts — **enumerate the class and sweep it before reporting anything done**.
-Naming the denominator ("the doc set is these 17 files", "grep says 7 call sites") is what turns
-lucky coverage into structural coverage: a search bounded by the hypothesis that found the first
-instance leaves the rest _invisible_, not merely unchecked, which is why re-reading the checklist
-does not recover them. Two compounding traps — a search that yields a lot **feels** complete (volume
-of findings says nothing about fraction of space examined), and the report is the first time the
-search gets _enumerated_ rather than felt, which lands one beat after "done", i.e. on the user.
-Corollaries: grep proves its pattern's absence, never the property's presence; and **an additive
-commit touching a file is no evidence the file is current** — it can append a correct new section
-and leave a contradicting example untouched in the same file. (Full:
-[[topics/touched-is-not-current]].)
-
-**Sweep means fix, not file.** Enumerating the class and then stopping at the asked instance — "the
-other two have the same bug; filed as a queue item, your call" — is the same defect one step later.
-In three sessions on 2026-08-17/18 every sibling deferred that way came back as a one-line "…too"
-(`Fix the relative Location in the other two too`,
-`Adopt the same-origin rule in hash-github-cache too`, `Pass the headers into the asset fetch too`;
-`sweep the backlog too`, `fix the Follow-ups section too`, `do the rest`; and on shipped queue
-items, _"Done, completed, fixed, shipped, and so on — why are they kept active? Move them to the
-archive."_) — the answer was never "leave it", and each deferral cost a round-trip plus a commit he
-was holding open for the batch. So: same defect, same fix, same repo (or the vault) → fix every
-instance in the pass and report what was fixed. The scope guards that pulled the other way don't
-apply: § Ambiguity's "don't sweep sibling repos" governs _other repositories_ (still worktree +
-hand-off), not other files or other vault notes; and the vault is one store — a shipped item found
-in _any_ project's `queue.md` during a docket or resume read is archived then, not reported (the §
-Git / npm gates bookkeeping rule, third occurrence). Reserve "deserves its own decision" for a
-sibling that is a genuinely different change with its own trade-off — and then name the trade-off,
-since a bare "your call" is a deferral, not a decision. Corollary — find the siblings _before_ the
-first fix, not one per verification pass: _"you keep finding problems after every fix you do"_ /
-_"Why does it always happen after, never before?"_ — a search bounded by the asked instance finds
-the next one only when the fix's own test trips over it.
+**Sweep means fix, not file.** Don't stop at the asked instance and file the rest. Same defect, same
+fix, same repo (or the vault) → fix every instance in the pass and report what was fixed. §
+Ambiguity's "don't sweep sibling repos" governs _other repositories_ (worktree + handoff), not other
+files or other vault notes; a shipped item found in any project's `queue.md` during a read is
+archived then. Reserve "deserves its own decision" for a sibling that is a different change with its
+own trade-off, and name the trade-off. Find the siblings _before_ the first fix, not one per
+verification pass.
 
 **A note past its size bound is split when you find it.** When lint, a write's answer, or a read
-shows a vault note past its bound, any project's, bring it under in that session by moving whole
-text: `split` with topics, or a section cut at an item boundary into a new `##` section moved to a
-piece of its own, the copy checked before the cut. Report what moved where, and ask only before
-rewording or condensing, a lessons piece's reorganization. Eugene, vault-storage 2026-11-25: _"the
-simplest way to do it is to split in parts or itomize them in any other way. Why keeping them around
-for so long?"_ ([[projects/agent-workflow/feedback]] § A note past its size bound is split when
-found).
+shows a vault note past its bound, in any project, bring it under in that session by moving whole
+text: `split` with topics, or a section cut at an item boundary into a piece of its own, the copy
+checked before the cut. Report what moved where; ask only before rewording, condensing, or
+reorganizing a lessons piece.
 
 **The class can be a measurement's scope, not only a defect's.** When a correction widens what an
-analysis counts, the siblings are the other kinds the system under study already names — and it
-usually names them: a harvester's fragment kinds, a linter's rule categories, a schema's types.
-Enumerate those in the same pass instead of being handed them one at a time.
+analysis counts, the siblings are the other kinds the system already names (a harvester's fragment
+kinds, a linter's rule categories, a schema's types). Enumerate them in the same pass.
 
 **Apply one criterion across the whole enumeration.** When a sweep prints the siblings it is not
-touching, every excluded group needs the same test applied and stated. Excluding one group on a
-criterion while converting another that meets the same criterion is not a scope call — it is the
-criterion not having been applied, and the user ends up supplying the consistency. (Against the
-paragraph above: sweeping every group silently would be faster and still wrong. The fix is
-uniformity of the test, not maximal coverage.)
+touching, apply and state the same test for every excluded group; excluding one group on a criterion
+while converting another that meets it is the criterion not applied.
 
-**File what you name.** When your own reply labels something a defect, a gap, or a buildable next
-step — "a real defect in the current output", "the blocking gap is", "this licenses oracle work" —
-it is a queue item in that turn, filed alongside whatever you were asked to file; an idea floated as
-a question stays in prose. "File X too" is the sibling left in prose, the same round-trip as "fix
-the trailer too", and the enumeration is cheaper here than anywhere: the siblings are in the reply
-you just wrote. The loudest cue is structural, not lexical: a wrap section you head "One thing worth
-following up", "The thing worth carrying out of this exchange", "Next leg", or "One finding that
-isn't mine" is a filing you have already written — put it on the queue in that turn and let the
-prose point at the item, rather than the other way round.
+**File what you name.** When your reply labels something a defect, a gap, or a buildable next step,
+it is a queue item in that turn; an idea floated as a question stays in prose. A wrap section headed
+"worth following up" or "Next leg" is a filing already written: put it on the queue and let the
+prose point at the item.
 
 **"File" means that fleet project's vault `queue.md`.** A fleet project without one gets one in the
 [[topics/project-queue-convention]] shape; an external project gets a paste-ready snippet he files
-himself ([[projects/agent-workflow/feedback]] § "File" means the vault queue of that fleet project).
+himself.
 
 **An escaped bug is first a bug in the check that missed it.** Before the fix, change the test,
-gate, or fuzzer that should have caught it and see it fail; then fix, and keep both
-([[projects/agent-workflow/feedback]] § An escaped bug is first a bug in the check that missed it).
+gate, or fuzzer that should have caught it and see it fail; then fix, and keep both.
 
 ## Build vs adopt
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/build-vs-adopt]].
+Before building or refreshing a library or tool, check whether an authoritative existing solution
+covers the need, especially a platform-vendor or official library, and surface the build-vs-adopt
+trade-off **at the survey stage**, before an implementation. If an official or zero-dependency
+equivalent is at parity on _every_ axis, your supposed differentiator included, recommend adopting
+or retiring; build from scratch only where you beat what exists. **A survey has three harvests, and
+a build still owes the last two**: what to adopt (adoption cost plus future maintenance against
+DIY), the mistakes others made, and the good ideas others had. So the survey runs before the first
+draft of any language, format, protocol, engine, or representation, even when adoption is unlikely,
+and its report carries all three sections with the exclusions named. Separate the **commodity
+layer** (the parser, verifier, or client everyone reimplements) from the **value layer** (your
+opinionated glue): adopt the former, rebuild the latter on it. Full:
+[[topics/retire-the-commodity-keep-the-glue]].
 
-Before building or refreshing a library/tool, check whether an authoritative existing solution
-already covers the need — especially a platform-vendor or official library — and surface the
-build-vs-adopt tradeoff **at the survey stage, up front**, not after a full implementation. If an
-official / zero-dependency equivalent is at parity (check _every_ axis, including your supposed
-differentiator — "we're zero-dep" stops being a moat the moment the alternative is too), say so and
-recommend adopting or retiring rather than maintaining a competitor; reserve a from-scratch build
-for where you genuinely beat what exists. **A survey has three harvests, and a build still owes the
-last two** (Eugene, 2026-09-16): what to adopt, weighed as adoption cost plus future maintenance
-against DIY with the pros and cons analyzed; the mistakes others made, to avoid them; and the good
-ideas others had, to absorb them — so the survey runs before the first draft of any language,
-format, protocol, engine, or representation, even when adoption is unlikely, and its report carries
-all three sections with the exclusions named (the vault's `projects/agent-workflow/feedback` entry
-of that date; the apodict def-use item's "five representation ideas to borrow either way" is the
-shape). Separate the **commodity layer** (the parser/verifier/client everyone reimplements) from the
-**value layer** (your opinionated glue/ergonomics) — adopt the former, keep the latter rebuilt on
-it. Full: [[topics/retire-the-commodity-keep-the-glue]].
-
-**A shortlist is a disclosure.** When you narrow a candidate space by mechanical filters — price,
-license, a vendor's category tag — say what the filters were and which notable candidates they
-dropped, and put the list up before spending against it. A filter set with no capability axis can be
-the right call, but it is an invisible one, and the exclusions are what the user is being asked to
-accept without seeing them.
+**A shortlist is a disclosure.** When you narrow candidates by mechanical filters (price, license, a
+vendor's category tag), say what the filters were and which notable candidates they dropped, and put
+the list up before spending against it.
 
 **Give the history behind a design.** When explaining a design, a convention, or a tool, or
 proposing to change one, say why it was done that way, which alternatives were rejected and why, and
-whether those reasons still hold; mark each historical claim checked or recalled
-([[projects/agent-workflow/feedback]] § Give the history behind a design).
+whether those reasons still hold; mark each historical claim checked or recalled.
 
 ## Tools
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/tools]].
-
-- **Re-Read after mutating Bash.** Any Bash that may rewrite a file (`prettier --write`,
-  `npm run lint:fix`, a formatting/codemod script, a pre-commit hook — and your own `cat >>`/heredoc
-  appends) invalidates the harness's file-tracking. Read the file again before the next `Edit` on
-  it. Otherwise `Edit` 400s with "File has been modified since read" and the retry hits the same
-  error.
-- **Lint after _any_ file edit, not just source.** Prettier (and its equivalents) formats Markdown,
-  JSON, and YAML too, so `dev-docs/*.md`, README, config, and fixtures are all lintable — "lint" is
-  not a source-file concern. Run the project's `lint` before the point where the user might take the
-  commit: he commits and pushes after his own review, so the window between the edit and his commit
-  is the only place this can be caught. Shipping a violation into a pushed commit costs him a
-  follow-up "style fixes" commit for nothing. When drift does turn up, check whether it is yours
-  before claiming it — `git show <base>:<file> | npx prettier --check -` on the pre-edit version
-  separates your damage from pre-existing. **Corpus-wide pre-existing drift is a finding, not a
-  blocker.** When lint fails on files you didn't touch and the failure is systemic rather than
-  yours, don't convert it into a _policy_ objection — whether applying the formatter is safe is an
-  **empirical** question about the rendered artifact. Measure it: build the rendered output, apply
-  the formatter, rebuild, byte-diff, and classify the delta into inert (whitespace the renderer
-  collapses) and substantive. Then report the finding with that evidence. Refusing on principle when
-  a four-minute experiment settles it costs a round-trip and can hide a real bug. Diff the
-  _rendered_ output, never the source — a large source diff can be entirely inert while a small one
-  rewrites every code sample; hash extracted `<pre>` blocks separately, since a
-  whitespace-insensitive diff hides code rewriting and whitespace inside `<pre>` is significant.
-  Method + the code-fence hazard (a formatter reformats the examples _inside_ your prose, and no
-  setting reproduces hand-authored pedagogy): [[topics/prettier-rewrites-fenced-code-examples]].
+- **Re-Read after mutating Bash.** Any Bash that may rewrite a file (`prettier --write`, `lint:fix`,
+  a codemod, a pre-commit hook, your own `cat >>` or heredoc) invalidates the harness's file
+  tracking: Read the file again before the next `Edit`.
+- **Lint after _any_ file edit, not just source.** Prettier formats Markdown, JSON, and YAML too.
+  Run the project's `lint` before he might take the commit. When drift turns up, check whether it is
+  yours: `git show <base>:<file> | npx prettier --check -` on the pre-edit version. **Corpus-wide
+  pre-existing drift is a finding, not a blocker**; test whether applying the formatter is safe:
+  build the rendered output, apply the formatter, rebuild, byte-diff, and classify the delta as
+  inert or substantive. Diff the _rendered_ output, never the source, and hash extracted `<pre>`
+  blocks separately. Method and the code-fence hazard:
+  [[topics/prettier-rewrites-fenced-code-examples]].
 - **A wiki page edit rebuilds the wiki's search index, like a code edit runs the tests.** When a
-  wiki carries `search-index.json`, it is a build output of the pages: after the last page edit of a
-  burst, and after any formatter has run over the pages, run
+  wiki carries `search-index.json`, after the last page edit of a burst and after any formatter, run
   `npx -y wiki-search-index@latest --wiki . --repo OWNER/REPO` from the wiki directory and leave the
-  rebuilt index beside the pages for his commit. This applies to every wiki edit, not only the ones
-  made through `/document-wiki-page`, `/wiki-organize`, or `/release-prep`. Always `@latest`: a bare
-  `npx wiki-search-index` runs whatever version npm cached, and on one fleet host that was 0.1.1,
-  whose headings differ from the 0.2.0 output the committed indexes carry.
-- **Read-the-tool before Edit.** `Edit`/`Write` require the file to have been Read _by the Read
-  tool_ this conversation — viewing it via Bash (`grep`/`sed`/`head`/`cat`) does not register it,
-  and the Edit 400s with "File has not been read yet". When inspection was Bash-based and an Edit is
-  coming, Read the file (a narrow range suffices) before editing.
-- **Don't speculatively `Read` paths.** Before `Read`, if the path was inferred from a listing or
-  another output, confirm the path actually appears in that output. `Read` is cheap but failed reads
-  inflate context and signal sloppy exploration. Use `Bash test -f`, `Glob`, or the original
-  listing's exact strings rather than guessing variants.
-- **Never import or execute a file you have not read.** `import()` / `require()` / sourcing /
-  running a script is **execution, not inspection** — a module body runs top-level code the moment
-  it loads, and plenty of CLIs are flat scripts with no `main()` at all, so loading one performs its
-  whole job. Read the file first (the imports and the first ~20 lines are usually enough to see
-  whether it is flat or guarded). To check a script merely _parses_, use `node --check` — that is
-  the actual "does it load" tool and it executes nothing. Same for `bash -n`,
-  `python -m py_compile`. If something must be executed to be assessed, neutralize the blast radius
-  first: unset the credentials it needs (`env -u PROGRAM_CLERK_URL -u VAULT_API_URL …`), run it in a
-  scratch dir, or pass `--help`/`--dry-run`. **A probe flag neutralizes only if the tool implements
-  it** — for a CLI you have not read, `--help`/`--version` is still a run, and a parser that ignores
-  unknown flags performs the default action, which for a builder means writing into the cwd. Combine
-  the probe with the scratch dir, or read the arg parser first.
+  rebuilt index for his commit. Always `@latest`, never a bare `npx wiki-search-index`.
+- **Read-the-tool before Edit.** `Edit` and `Write` require a Read by the Read tool in this
+  conversation; a Bash view does not count. Read the file (a narrow range suffices) before editing
+  it.
+- **Don't speculatively `Read` paths.** Confirm an inferred path appears in the listing or output it
+  came from, or use `test -f` or Glob.
+- **Never import or execute a file you have not read.** `import()`, `require()`, sourcing, and
+  running a script execute it. Read it first (the imports and the first ~20 lines usually show
+  whether it is flat or guarded). To check that a script parses, use `node --check`, `bash -n`, or
+  `python -m py_compile`. If something must run to be assessed, limit what it can reach first: unset
+  the credentials it needs (`env -u PROGRAM_CLERK_URL -u VAULT_API_URL …`), run it in a scratch dir,
+  or read its argument parser; `--help` or `--dry-run` neutralizes only a tool that implements it.
 - **Trust the foreground result; don't chase display lag.** A foreground `Bash` result is
-  authoritative even when it renders late or looks empty — the value is already captured. Don't
-  re-run it as a background task, don't spawn noop "flush"/"nudge" commands to force a redraw, and
-  don't `Read` a background task's `tasks/<id>.output` before its `<task-notification>` arrives (the
-  file doesn't exist yet — the `Read` errors). Each adds cancelled-sibling and failed-`Read` noise
-  without recovering anything. Reserve `run_in_background: true` for genuinely long work (servers,
-  watchers, multi-minute builds), not perceived lag.
-- **A fallible parallel Bash sibling cancels the batch.** When you fire multiple Bash calls in one
-  message, one that exits non-zero _or_ is permission-denied cancels all in-flight siblings
-  (`Cancelled: parallel tool call … errored`). Don't co-batch a command that legitimately returns
-  non-zero or trips a permission gate — drift checks (`check-drift.sh` exits 1 on drift), `git tag`
-  / `git describe` (non-zero when absent; often gated), or `$(…)`-substitution / compound snippets —
-  with other independent calls. Run such a command in its own invocation, or guard the pipe with
-  `|| true`. Generalizes the "check-drift is a canceller" rule in the vault skill
-  `references/shell.md` from vault commands to git + shell. **Bare `git tag` is denied even as a
-  read** — the `permissions.deny` pattern matches the verb, not the intent, so the listing form
-  trips it too; list tags with
-  `git for-each-ref refs/tags --format='%(refname:short) %(creatordate:short)'` (also the
-  release-notes date source).
-- **Kill hung verifications; don't wait them out.** A check running ~10× past its known duration
-  (the previous green run) is hung, not slow — tests don't run for minutes. Stop it, inspect (ports,
-  processes, partial output), and re-run the failing piece in isolation; the hang itself is a
-  finding worth filing.
+  authoritative even when it renders late or looks empty. Don't re-run it in the background, spawn
+  "flush" commands, or `Read` a background task's output before its notification arrives. Reserve
+  `run_in_background: true` for long work (servers, watchers, multi-minute builds).
+- **A fallible parallel Bash sibling cancels the batch.** One parallel call that exits non-zero or
+  is denied cancels its in-flight siblings. Run a command that may return non-zero or trip a gate
+  (`check-drift.sh`, `git describe`, compound `$(…)` snippets) in its own call, or guard it with
+  `|| true`. **Bare `git tag` is denied even as a read**; list tags with
+  `git for-each-ref refs/tags --format='%(refname:short) %(creatordate:short)'`.
+- **Kill hung verifications; don't wait them out.** A check running ~10× past its last green
+  duration is hung: stop it, inspect (ports, processes, partial output), re-run the failing piece
+  alone, and file the hang.
 - **A check's result is its exit status, read after the last edit.** Before a stop report, rerun
-  every check the project names (tests, lint, type checks) after the final edit, and read each one's
-  exit status (`npm run js-check; echo "exit=$?"`). Report "all gates 0" when they all are, with a
-  table only for the checks that are not. Never read a check through a `grep` or a `tail` of its
-  output: a colored or reworded diagnostic defeats the pattern, and a failing tree reads clean. The
-  same run comes before any git work, staging included: Eugene, 2026-11-02, _"I do it as a matter of
-  policy: stuff works, I run all tests to confirm that, including linting, then start working with
-  git."_ CI only confirms other environments, and a failure there is reproduced and fixed locally
-  before the commit that CI then confirms ([[topics/ci-scope-convention]]).
-- **State the cost of a long run before starting it.** When a run will take more than a few minutes
-  (a simulation, a census, a benchmark sweep), give its estimated wall time in the message that
-  starts it, and make it write a progress line as it goes. A Stop-hook reply about a run still going
-  says how far along it is and how long is left, not only that it must keep running. A turn that
-  ends waiting on a run also starts a background `sleep` that ends at the estimate; when it fires
-  with the run still going, say how far along it is and how long is left, or stop the run if what is
-  left is not needed, and stop the timer when the run reports first (the 2026-11-05 report, P1). An
-  investigation he waits on counts as a long run: every few minutes, say what you have ruled out and
-  what you read next (reflect 2026-10-22 M4).
-- **Classifier outage ≠ command failure.** A tool call failing with "_\<model\> is temporarily
-  unavailable, so auto mode cannot determine the safety of …_" means the safety classifier is down,
-  not that the command is wrong — re-firing the same call in a tight loop burns turns without
-  progress. After ~2 spaced retries: switch to work that doesn't need the classifier (reads,
-  searches, analysis), batch the blocked mutations, tell the user, and come back after a pause or a
-  model switch.
+  every check the project names (tests, lint, type checks) after the final edit, and read each exit
+  status (`npm run js-check; echo "exit=$?"`). Report "all gates 0" when they are, with a table only
+  for those that are not. Never read a check through a `grep` or a `tail` of its output. Run them
+  before any git work, staging included. CI only confirms other environments; reproduce and fix a CI
+  failure locally ([[topics/ci-scope-convention]]).
+- **State the cost of a long run before starting it.** For a run of more than a few minutes, give
+  its estimated wall time in the message that starts it, and make it print progress. A Stop-hook
+  reply about a run still going says how far along it is and how long is left. A turn that ends
+  waiting on a run starts a background `sleep` that ends at the estimate; when it fires with the run
+  still going, say how far along it is and how long is left, or stop the run if the rest is not
+  needed; stop the timer when the run reports first. An investigation he waits on counts: every few
+  minutes, say what you ruled out and what you read next.
+- **Classifier outage ≠ command failure.** "_\<model\> is temporarily unavailable, so auto mode
+  cannot determine the safety of …_" means the safety classifier is down. After ~2 spaced retries,
+  switch to work that doesn't need it (reads, searches, analysis), batch the blocked mutations, tell
+  him, and come back after a pause or a model switch.
 - **A denied action the task still needs goes to him as an ask: the reasons and a command to run.**
-  When a permission gate or the auto-mode classifier refuses a step and the work cannot finish
-  without it, finish everything that does not depend on it, then make the ask the message: what was
-  refused, why the task needs it, what stays undone until it runs, and the exact command in its own
-  fenced block, `!`-prefixed so its output lands in the session. The ask is never one item inside a
-  status report, and a report that says "prepared" while a needed step is open reads as finished
-  work. Name the checks that wait on the step, and run them the moment it has run. Never retry a
-  variant of the denied command to get around the refusal.
+  Finish everything that does not depend on it, then make the ask the message: what was refused, why
+  the task needs it, what stays undone until it runs, and the exact command in its own fenced block,
+  `!`-prefixed. Never bury the ask in a status report, and never retry a variant of the denied
+  command. Run the checks that wait on it the moment it has run.
 - **A step only he can take arrives complete: the system, where in it, and the exact action or
   value.** A console step names the product and its URL, or the menu path from a named start page; a
-  command comes in its own fenced block; a sign-in names the identity when more than one is in play;
-  a value to send back says which field shows it. Restate the step in full each time you ask for it,
-  never "the request I gave you earlier": that message is far up his scroll, the same reason a work
-  stop re-names its unit. Look up what you do not know (an admin console's URL, a menu path) before
-  handing the step over. A command he runs carries no placeholder the session can fill
-  (`hooks/handed-command-check.sh` sends back a `<word>` or a scratch path in a command block): look
-  the value up first (an account id, a key's name, a path). When only he can know it, the block
-  reads it itself or its first line says where it comes from; `ACCOUNT='<account>'` handed to him is
-  a lookup the agent skipped. A tool the work needs and the machine lacks is such a step: ask him to
-  install it, naming the packages, before working around its absence (Eugene, apodict 2026-11-23:
-  _"if you need more tools --- ask me to install"_).
+  command comes in its own fenced block; a sign-in names the identity when several are in play; a
+  value to send back says which field shows it. Restate the step in full each time you ask for it,
+  and look up what you don't know first. A handed command carries no placeholder the session can
+  fill (`hooks/handed-command-check.sh` sends back a `<word>` or a scratch path): look the value up,
+  or, when only he can know it, have the block read it or say on its first line where it comes from.
+  A tool the work needs and the machine lacks is such a step: ask him to install it, naming the
+  packages, before working around its absence.
 - **A command that must wait for something says so before the command.** When a handed command works
-  only after another step has run (a pull, a deploy, a daily update), lead with that order in one
-  direct sentence naming what must run and on which machines, and hand the command once, where it
-  can run; a snippet repeated with its condition left in the surrounding prose reads as "run this
-  now" ([[projects/agent-workflow/feedback]] § A command that must wait for something says so before
-  the command).
-- **TaskCreate ≠ Agent; fix validation errors, don't re-fire.** TaskCreate/TaskUpdate manage the
-  session task list (`subject` + `description`); delegating work to a subagent is the Agent tool
-  (`prompt`, `subagent_type`). On an `InputValidationError`, the message names the exact parameter
-  problem — correct the call shape (or ToolSearch the schema for a deferred tool) instead of
-  re-firing the same arguments.
-- **Inspect a JSON response's shape before filtering it.** `jq` returns empty rather than erroring
-  on a missing path, so a wrong filter and a genuinely empty result are indistinguishable in the
-  output — an assumed shape that returns nothing reads exactly like a defect in the system being
-  inspected. Before drawing any conclusion from an empty/zero `jq` result, dump `keys` (or
-  `.[0] | keys`) and confirm the shape; **mandatory before asserting a defect in someone else's
-  system.** Same family as § Diagnosis (evidence before cause) and the pagination rule in the vault
-  skill `references/shell.md` (read the envelope, don't assume it). This rule is the _consumer_ half
-  of a general failure class — a well-formed empty result masking a query the system never
-  understood; the _producer_ half (reject unknown parameters, report unparsed input, echo the
-  effective query) applies wherever you own the read surface. Full:
-  [[topics/silent-empty-result-ambiguity]]. **Same for `grep`/search used as a coverage proof.** A
-  pattern that matches nothing proves that _the pattern_ is absent, never that the property you care
-  about holds. Before writing "no other file does X", check that the pattern actually tests X —
-  searching for a stale _claim_ does not find a stale _prescription_. Either name the pattern in the
-  claim ("nothing still says `No MCP tool exists`") or widen it until it tests the property.
-- **A `WebFetch` 403 is the fetcher being blocked, not the source being unavailable.** Some
-  documentation sites (cppreference among them) reject the fetcher's user agent and serve fine to a
-  browser. Before writing "X returned 403, so the verification came from Y instead", retry once with
-  `curl -sSL -A '<a current browser UA>'`; if that fails too, say the source was **not read** rather
-  than presenting the substitute as equivalent.
-- **Kill background work the moment its decision lands.** Background research exists to inform a
-  pending decision; once the user rules, the marginal value of the in-flight run is whatever it adds
-  _after_ the fact — usually nothing. Stop it rather than letting it finish "since it's already
-  running": that is sunk cost, not a reason. Two specifics: evidence with a shelf life (prices,
-  benchmarks, version-dependent facts) is better re-gathered at the moment of need than filed stale
-  against a hypothetical future use; and a finished run still has to be read, summarized, and given
-  a home, so it keeps costing after the compute stops. Say plainly that the work is abandoned, not
-  paused.
+  only after another step (a pull, a deploy, a daily update), lead with that order in one sentence
+  naming what must run and on which machines, and hand the command once.
+- **TaskCreate ≠ Agent; fix validation errors, don't re-fire.** TaskCreate and TaskUpdate manage the
+  session task list; delegating to a subagent is the Agent tool. On an `InputValidationError`,
+  correct the call shape, or fetch a deferred tool's schema with ToolSearch.
+- **Inspect a JSON response's shape before filtering it.** Before drawing a conclusion from an empty
+  `jq` result, dump `keys` (or `.[0] | keys`); this is mandatory before asserting a defect in
+  someone else's system. Where you own the read surface, reject unknown parameters and echo the
+  effective query. Full: [[topics/silent-empty-result-ambiguity]]. **The same holds for `grep` as a
+  coverage proof**: check that the pattern tests the property, or name the pattern in the claim.
+- **A `WebFetch` 403 is the fetcher being blocked, not the source being unavailable.** Retry once
+  with `curl -sSL -A '<a current browser UA>'`; if that fails too, say the source was **not read**,
+  and never present a substitute as equivalent.
+- **Kill background work the moment its decision lands.** Once he rules, stop in-flight research for
+  that decision and say it is abandoned. Evidence with a shelf life (prices, benchmarks,
+  version-dependent facts) is re-gathered when next needed.
 - **A dependency's shipped skill governs its artifact.** Before writing a bench, test, or config a
   dependency ships a skill for (`.claude/skills/`, the package's `skills/`), invoke that skill; one
-  found afterward audits the hand-written artifact ([[projects/agent-workflow/feedback]] § Consult
-  dependency-shipped agent skills before authoring artifacts they govern).
-- **Authoring a skill reads `openai/skills` first.** Its `skills/.system/skill-creator/SKILL.md` and
-  Anthropic's skill authoring best practices give the same normative rules (Eugene, 2026-11-05: _"it
-  has a bunch of normative information we should use when authoring skills"_); claude-config's
-  `AGENTS.md` names the bounds its tests hold.
+  found afterward audits the hand-written artifact.
+- **Authoring a skill reads `openai/skills` first.** Read its
+  `skills/.system/skill-creator/SKILL.md` and Anthropic's skill authoring best practices.
+  claude-config's `AGENTS.md` names the bounds its tests hold.
 - **An `LSP` answer can be stale about a file the session has not opened.** On Linux, after a pull,
   a rebase, or generated code, run an `LSP` call on that file before believing a surprising type
-  error; a `Read` does not refresh it ([[projects/claude-config/decisions]] D41).
+  error; a `Read` does not refresh it.
 
 ## Fleet standards
 
-For "fleet standards" (or any synonym), read [[topics/fleet-conventions-bundle]] first — sisters may
-themselves be behind; don't infer from them.
+For "fleet standards" (or any synonym), read [[topics/fleet-conventions-bundle]] first; don't infer
+the standards from sister projects.
 
-Fire this **proactively, not only on the phrase.** Before proposing or making an edit to a file a
-fleet convention governs — `.prettierrc`, `.editorconfig`, `package.json` scripts/devDeps, workflow
-`permissions:`, `AGENTS.md` — read the governing note first. The file may already have drifted, and
-an edit layered on drift entrenches it; worse, the drift is sometimes a _cause_ of the problem being
-fixed.
+Do it **proactively**: before editing a file a fleet convention governs (`.prettierrc`,
+`.editorconfig`, `package.json` scripts or devDeps, workflow `permissions:`, `AGENTS.md`), read the
+governing note.
 
 ## Background shells
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/background-shells]].
-
-The Claude Code status line's "N shells" counts `Bash(run_in_background: true)` processes the
-harness registered this session. Use `BashOutput(shell_id)` to peek, `KillShell(shell_id)` to
-terminate. Shell IDs (e.g. `bash_1`) are in the original Bash result — scan prior tool calls;
-**never run `ps`**. Skill: `/bg-shells` enumerates them.
+The status line's "N shells" counts this session's `Bash(run_in_background: true)` processes.
+`BashOutput(shell_id)` peeks and `KillShell(shell_id)` terminates; shell IDs are in the original
+Bash result. **Never run `ps`**. `/bg-shells` lists them.
 
 **Background _agents_ are a separate registry from background shells — and killing one does not kill
-its children.** `Agent(run_in_background: true)` spawns tasks the "N shells" counter never shows;
-`/bg-shells` lists the session's own async agents since D87, never their children, and a sub-agent
-may fan out into sub-agents of its own. `TaskStop` on a parent reports `killed` and fires a clean
-completion notification while the grandchildren keep running and burning tokens, so the report reads
-finished while work continues. **`TaskList` is not the check** — it lists the session to-do list
-(`subject`/`status`/`owner`), so it returns "No tasks found" whether or not agents are running; an
-all-clear from it is meaningless. The reliable enumerator is `TaskStop` with the id `x` (that exact
-id: `/reflect` suppresses this spelling as a probe instead of scoring it as a stuck loop,
-2026-09-15): the error names every live agent
+its children.** `Agent(run_in_background: true)` tasks are not in the "N shells" count, and a
+sub-agent may start sub-agents of its own; `TaskStop` on a parent reports `killed` while the
+grandchildren keep running. **`TaskList` is not the check**: it lists the to-do list and says "No
+tasks found" either way. Enumerate with `TaskStop` on the id `x` (that exact id; `/reflect` treats
+it as a probe): the error names every live agent
 (`No task found with ID: x. Running background agents: <id> (<label>), …`). Kill each id it names,
-then re-probe until the list is gone. `ListAgents` is the readable view — sub-agents with a
-`running` / `completed` status and no error line — but its `completed` can hide an agent whose
-background shell child is still live (measured 2026-08-29: `completed` at 18 s while the probe
-listed the agent running, and it notified again at 97 s), so the probe's error line stays the
-authority and the all-clear. Don't diagnose by watching `tasks/*.output` file sizes either — the
-`b*` files there are the sinks for your own foreground `Bash` calls, so a growing one is usually
-your own probe observing itself.
+and re-probe until the list is empty. `ListAgents` is a readable view, but its `completed` can hide
+an agent whose shell child is still live, so the probe stays the authority. Don't diagnose by
+`tasks/*.output` sizes: the `b*` files there are your own foreground calls' sinks.
 
-**A fan-out is not done until both registries are empty — probe before "Done", not when asked.** A
-sub-agent that has delivered and been merged can still be live: on 2026-08-26 one of ten analysts
-sat in the running-agents registry ~40 minutes after its notification, with its shell showing as "1
-shell", under a wrap-up that said "Done. Everything verified". The enumerators above ran only after
-Eugene pointed at the status line — _"I still see '1 shell' and one background worker."_ — the
-origin's words, a month later. So they are part of the done-check, not the cleanup: after any
-fan-out, before any summary that says done, run the `TaskStop` nonsense-id probe and `/bg-shells`,
-stop what they name, re-probe until both are empty, and say so in the summary. A delivered result is
-evidence about the work, not about the process that produced it.
+**A fan-out is not done until both registries are empty — probe before "Done", not when asked.**
+After any fan-out, before a summary that says done, run the `TaskStop` probe and `/bg-shells`, stop
+what they name, re-probe until both are empty, and say so.
 
-**A watcher dies with its producer, and the all-clear is measured, not remembered.** A shell that
-polls another shell's output file (`until grep -q … "$O"; do sleep 5; done`) has no exit once that
-producer is killed: the marker it waits for never lands, and it spins until the session ends. Kill
-both, and prefer the `Monitor` tool to a hand-rolled polling shell, since the harness tracks and
-reaps it. Since 2026-09-22 `hooks/bg-shells-open.sh` (Stop) names any shell the transcript shows
-launched and neither completed nor stopped, once per shell, and the lister marks a shell `done` from
-its completion notification; a `[bg-shells] N background shell(s) still live` block is that
-measurement, and the answer is a `TaskStop` per id or one line saying which must keep running. The
-hook stays quiet in the turn that launched a shell and raises it at a later Stop while it is live
-([[projects/claude-config/decisions]] D45). A shell that must keep running past its own turn is
-named by its id in that turn's closing message, with why; the hook reads that as the declaration and
-does not block for it (reflect 2026-10-03: 14 firings in a week, every one a gate that had to
-finish), unless no `sleep` timer is live beside it, which costs one block (§ Tools, the long-run
-rule; reflect 2026-11-05, P1). The timer itself is not raised while the run it times is live, and a
-timer named in the turn that answers the block counts as declared (reflect 2026-11-13, P1). A
-background agent still running at a Stop with no timer live costs one block too, named by its
-description, since its id is never quoted to him (D87).
+**A watcher dies with its producer, and the all-clear is measured, not remembered.** Kill a shell
+that polls another shell's output together with its producer, and prefer the `Monitor` tool to a
+hand-rolled polling shell. `hooks/bg-shells-open.sh` (Stop) names any shell launched and neither
+completed nor stopped; answer its `[bg-shells] N background shell(s) still live` block with a
+`TaskStop` per id, or a line saying which must keep running and why. A shell that must outlive its
+turn is named by id in that turn's closing message, with a `sleep` timer live beside it (§ Tools,
+the long-run rule). A background agent still running at a Stop with no timer live is raised too.
 
-**Herdr panes are a third registry, and this is the one he watches.** Background shells and
-background agents live in a status line; a pane sits in his window. A pane you split is yours to
-close when its work ends, before the summary that says done — and an idle pane you already own is
-the one to reuse, not to split a fresh one beside. **Read the pane's tail before you close it:** a
-`Monitor` counting output files never sees a stack trace scroll past, so anything that went wrong in
-there becomes his read instead of yours. Enumerate with
-`herdr pane list --workspace "$HERDR_WORKSPACE_ID"`; panes you did not create stay untouched, and
-split with `--cwd "$PWD"` — a pane opened elsewhere renames the tab, and closing it does not restore
-the label (`skills/herdr/SKILL.md`).
+**Herdr panes are a third registry, and this is the one he watches.** A pane you split is yours to
+close when its work ends, before the summary that says done; reuse an idle pane you own instead of
+splitting another. **Read the pane's tail before you close it.** Enumerate with
+`herdr pane list --workspace "$HERDR_WORKSPACE_ID"`; leave panes you did not create, and split with
+`--cwd "$PWD"`. Details: `skills/herdr/SKILL.md`.
 
 ## REST API probes
 
-Probing or sniffing an HTTP API uses safe verbs only — `GET`, `HEAD`, `OPTIONS`. Mutating verbs
-(`PUT`, `POST`, `DELETE`, `PATCH`) may have side effects even on paths that don't exist
-(auto-create, idempotent overwrite, audit-log entries). For existence checks: prefer `OPTIONS` or
-`GET`. For shape discovery: `OPTIONS`.
+Probe an HTTP API with safe verbs only: `GET`, `HEAD`, `OPTIONS`. Use `OPTIONS` or `GET` for
+existence, and `OPTIONS` for shape.
 
 ## Config repo
 
-Where these rules came from: [[projects/agent-workflow/claude-md-origins/config-repo]].
-
-This file + `~/.claude/{settings.json,commands,skills,hooks}` are symlinks from
-`~/Open/claude-config/` (repo `uhop/claude-config`) — edits via either path land in the repo. Shell
-edits, that is — the harness's Edit/Write tools **refuse symlinked paths** ("Refusing to write
-through symlink"). For tool edits address the real file under `~/Open/claude-config/...` directly
-(`readlink -f` when unsure); treat `~/.claude/...` as read-only aliases. New artifacts go there —
-and **run `node install.mjs --apply` in the same session that adds one**. `settings.json` is itself
-a symlink, so a reference to a new hook/skill goes live the moment it is committed while the file it
-names stays unlinked: every session on the authoring host then fails at that reference until someone
-runs the installer. Fleet propagation (below) already does the `--apply`, so this only covers the
-authoring host — exactly the one that breaks first. Per-host overrides:
+This file and `~/.claude/{settings.json,commands,skills,hooks}` are symlinks from
+`~/Open/claude-config/` (repo `uhop/claude-config`). The harness's Edit and Write tools **refuse
+symlinked paths**: edit the real file under `~/Open/claude-config/` (`readlink -f` when unsure), and
+treat `~/.claude/...` as read-only aliases. New artifacts go there, and **run
+`node install.mjs --apply` in the same session that adds one**. Per-host overrides:
 `~/.claude/settings.local.json`. Fleet propagation: `claude-config-update` (in
 `playbash-{daily,weekly,clean}`).
