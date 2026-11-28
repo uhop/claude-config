@@ -90,7 +90,7 @@ asks=$(awk -F'\t' '$1 == "instruction" {printf "%s%s", (n++ ? ", " : ""), $2}' <
 
 reason="[handed-command] A command block in your closing message"
 if [[ -n "$places" ]]; then
-  reason+=" holds $places: look the value up and put it in the block; when only he can know it, have the block read it or its first line say where it comes from."
+  reason+=" holds $places: look the value up and put it in the block; when only he can know it, have the block read it, for a terminal of his own, since a command run with ! gets no keyboard input, or its first line say where it comes from."
 fi
 if [[ -n "$paths" ]]; then
   reason+=" ${places:+It also }names a scratch path, $paths: copy what he needs to where he will look (~/.cache/<project>/, a vault note), or say in one line why the scratch path is right here."
@@ -98,7 +98,7 @@ fi
 also=""
 [[ -z "$places$paths" ]] || also="It also "
 if [[ -n "$asks" ]]; then
-  reason+=" ${also}holds an instruction where a value goes, $asks: look the value up and put it in, or have the block read it."
+  reason+=" ${also}holds an instruction where a value goes, $asks: look the value up and put it in, or have the block read it, for a terminal of his own, since a command run with ! gets no keyboard input."
   also="It also "
 fi
 if [[ -n "$pushes" ]]; then

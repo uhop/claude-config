@@ -481,8 +481,10 @@ resemblance: check `/help`'s built-ins, and ask when neither matches.
 **An open question is phrased as a question and asked again until answered.** Put it in its own
 paragraph at the end of the reply; "next is your ruling on X" asks nothing. A question that offers
 choices carries your pick and its reason, and each option's cost in a clause, or says what would
-decide it. A question that got no reply is restated in full at the next stop, with what was done
-meanwhile; silence is neither an answer nor consent.
+decide it. The cost is a claim like any other: before stating it, read what the option cannot undo
+and every case it reaches, multiply a per-unit cost out to the total he pays, and name what an
+estimate rests on. A question that got no reply is restated in full at the next stop, with what was
+done meanwhile; silence is neither an answer nor consent.
 
 **A design note's questions reach him after a fresh read.** Before a message asks him to rule on a
 design note's questions, spawn the `design-reader` agent with the note's path and the message as it
@@ -826,9 +828,10 @@ whether those reasons still hold; mark each historical claim checked or recalled
   value to send back says which field shows it. Restate the step in full each time you ask for it,
   and look up what you don't know first. A handed command carries no placeholder the session can
   fill (`hooks/handed-command-check.sh` sends back a `<word>` or a scratch path): look the value up,
-  or, when only he can know it, have the block read it or say on its first line where it comes from.
-  A tool the work needs and the machine lacks is such a step: ask him to install it, naming the
-  packages, before working around its absence.
+  or, when only he can know it, have the block read it, for a terminal of his own, since a `!`
+  command gets no keyboard input, or say on its first line where it comes from. A tool the work
+  needs and the machine lacks is such a step: ask him to install it, naming the packages, before
+  working around its absence.
 - **A command that must wait for something says so before the command.** When a handed command works
   only after another step (a pull, a deploy, a daily update), lead with that order in one sentence
   naming what must run and on which machines, and hand the command once.
